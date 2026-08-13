@@ -3,6 +3,10 @@
 venv/
 env/
 
+# Node / Capacitor 依赖（体积大，不入库；CI 用 npm ci 重建）
+node_modules/
+.capacitor/
+
 # Python 缓存
 __pycache__/
 *.py[cod]

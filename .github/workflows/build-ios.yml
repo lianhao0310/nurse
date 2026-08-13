@@ -1,0 +1,138 @@
+name: Build iOS IPA
+
+# 在 GitHub 的 macOS runner 上把 Capacitor iOS 工程编译为 .ipa
+# 触发：推送到 master/main、发布 Release、或手动触发
+on:
+  push:
+    branches: [master, main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Ensure CocoaPods
+        run: |
+          which pod || sudo gem install cocoapods
+          pod --version
+
+      # 复制前端静态资源到 iOS 工程，并 pod install（macOS 自带 CocoaPods）
+      - name: Capacitor sync (web assets + pods)
+        run: npx cap sync ios
+
+      # ---------- 可选：签名（未配置密钥时仅产出未签名 xcarchive 供检视） ----------
+      - name: Decode signing assets
+        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          APP_CERT_PATH=$RUNNER_TEMP/cert.p12
+          PP_PATH=$RUNNER_TEMP/profile.mobileprovision
+          echo -n "$IOS_CERTIFICATE" | base64 --decode > "$APP_CERT_PATH"
+          echo -n "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$PP_PATH"
+
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-sign.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$APP_CERT_PATH" -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S utool: -s "$KEYCHAIN_PATH"
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(/usr/bin/plutil -extract UUID xml1 -o - "$PP_PATH" | tr -d '\n' | sed -e 's/.*<string>\(.*\)<\/string>.*/\1/')
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID.mobileprovision"
+
+      - name: Write export options plist
+        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPORT_METHOD: ${{ secrets.IOS_EXPORT_METHOD || 'ad-hoc' }}
+        run: |
+          cat > "$RUNNER_TEMP/exportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${EXPORT_METHOD}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build & archive (signed)
+        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=manual \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            clean archive | xcpretty || xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=manual CODE_SIGN_IDENTITY="iPhone Distribution" clean archive
+
+      - name: Export IPA (signed)
+        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/ipa"
+          ls -la "$RUNNER_TEMP/ipa"
+
+      # 未配置签名密钥时：仅做无签名归档（供检视，不可安装）
+      - name: Build archive (unsigned, no signing)
+        if: ${{ secrets.IOS_CERTIFICATE == '' }}
+        run: |
+          echo "::warning::未配置 iOS 签名密钥（IOS_CERTIFICATE 等），仅生成未签名 xcarchive，无法安装到设备。请在仓库 Secrets 中配置签名证书与描述文件后重新运行。"
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            clean archive
+
+      - name: Upload IPA artifact
+        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nurse-ios-ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
+          if-no-files-found: error
+
+      - name: Upload xcarchive artifact
+        if: ${{ secrets.IOS_CERTIFICATE == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nurse-ios-xcarchive-unsigned
+          path: ${{ runner.temp }}/App.xcarchive

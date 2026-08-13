@@ -67,22 +67,32 @@ function stopRec() {
   else $("#recState").textContent = "未识别到内容，请重试或粘贴文本";
 }
 
-// ------------------------- 解析请求 -------------------------
+// ------------------------- 解析（本地引擎，零后端） -------------------------
 async function doParse(text) {
   if (!text.trim()) { alert("请先录音或粘贴文本"); return; }
   $("#loading").classList.remove("hidden");
   $("#result").classList.add("hidden");
   try {
-    const res = await fetch("/api/parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript: text }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    // 优先使用内置本地引擎（iOS / 浏览器均可离线运行）；
+    // 仅在引擎缺失时回退到后端 /api/parse（本地 Web 演示用）
+    let data;
+    if (window.NurseEngine && typeof window.NurseEngine.parse === "function") {
+      data = window.NurseEngine.parse(text);
+    } else {
+      const res = await fetch("/api/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: text }),
+      });
+      data = await res.json();
+      if (data.error) throw new Error(data.error);
+    }
     currentResult = data;
     render(data);
     $("#result").classList.remove("hidden");
+    // 自动持久化到手机文件系统（换机可导出迁移）
+    await NurseStorage.appendRecord({ transcript: text, result: data });
+    renderArchive();
   } catch (err) {
     alert("解析失败：" + err.message);
   } finally {
@@ -209,34 +219,77 @@ function scheduleDemoNotif() {
   });
 }
 
-// ------------------------- 健康档案（localStorage） -------------------------
-const ARCHIVE_KEY = "pn_archive";
-function saveArchive() {
+// ------------------------- 健康档案（手机文件系统持久化） -------------------------
+async function saveArchive() {
   if (!currentResult) return;
-  const list = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]");
-  list.unshift({
-    id: Date.now(),
-    date: new Date().toLocaleString("zh-CN"),
-    diseases: currentResult.diseases,
-    data: currentResult,
-  });
-  localStorage.setItem(ARCHIVE_KEY, JSON.stringify(list.slice(0, 30)));
+  await NurseStorage.appendRecord({ transcript: $("#transcript").textContent || "", result: currentResult });
   renderArchive();
-  alert("已存入本机健康档案");
+  alert("已存入本机（手机文件）健康档案");
 }
-function renderArchive() {
-  const list = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]");
+async function renderArchive() {
+  const list = await NurseStorage.getRecords();
   const ul = $("#archiveList");
-  if (!list.length) { ul.innerHTML = `<li class="a-empty">暂无档案，解析后可存入</li>`; return; }
-  ul.innerHTML = list.map((a) => `
+  if (!list.length) { ul.innerHTML = `<li class="a-empty">暂无档案，解析后可自动存入</li>`; return; }
+  ul.innerHTML = list.map((a) => {
+    const d = (a.result && a.result.diseases) || [];
+    const date = new Date(a.createdAt).toLocaleString("zh-CN");
+    const preview = (a.transcript || "").slice(0, 24).replace(/\n/g, " ");
+    return `
     <li data-id="${a.id}">
-      <span>📝 ${a.diseases.join("、") || "问诊记录"}<br><span class="a-date">${a.date}</span></span>
-      <span>查看 ›</span>
-    </li>`).join("");
-  $$("#archiveList li[data-id]").forEach((li) => li.addEventListener("click", () => {
+      <span>📝 ${d.join("、") || "问诊记录"}<br>
+      <span class="a-date">${date} · ${preview || "（无转写文本）"}</span></span>
+      <span class="a-ops">
+        <button class="a-del" data-del="${a.id}" aria-label="删除">✕</button>
+        查看 ›
+      </span>
+    </li>`;
+  }).join("");
+  $$("#archiveList li[data-id]").forEach((li) => li.addEventListener("click", (e) => {
+    if (e.target.closest(".a-del")) return; // 删除按钮单独处理
     const item = list.find((x) => String(x.id) === li.dataset.id);
-    if (item) { currentResult = item.data; render(item.data); $("#result").classList.remove("hidden"); window.scrollTo({ top: 0, behavior: "smooth" }); }
+    if (item && item.result) {
+      currentResult = item.result;
+      render(item.result);
+      $("#result").classList.remove("hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }));
+  $$("#archiveList .a-del").forEach((b) => b.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (confirm("删除这条档案？")) { await NurseStorage.deleteRecord(b.dataset.del); renderArchive(); }
+  }));
+}
+
+// ------------------------- 导出 / 导入（换机迁移） -------------------------
+async function exportData() {
+  const json = await NurseStorage.exportJSON();
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "nurse-archive-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  // 原生环境（iOS）额外尝试系统分享，便于 AirDrop / 网盘迁移
+  try {
+    const cap = window.Capacitor;
+    const Share = cap && cap.Plugins && cap.Plugins.Share;
+    if (Share && typeof Share.share === "function") {
+      await Share.share({ title: "私人护士档案", text: json, dialogTitle: "导出健康档案" });
+    }
+  } catch (_) {}
+}
+async function importData(file) {
+  try {
+    const text = await file.text();
+    await NurseStorage.importJSON(text);
+    renderArchive();
+    alert("导入成功，历史档案已合并");
+  } catch (e) {
+    alert("导入失败：文件格式不正确");
+  }
 }
 
 // ------------------------- 事件绑定 -------------------------
@@ -252,6 +305,13 @@ $("#parseBtn").addEventListener("click", () => {
 });
 $("#enableNotif").addEventListener("click", enableNotif);
 $("#saveBtn").addEventListener("click", saveArchive);
+$("#exportBtn").addEventListener("click", exportData);
+$("#importBtn").addEventListener("click", () => $("#importFile").click());
+$("#importFile").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) importData(f);
+  e.target.value = "";
+});
 $("#newBtn").addEventListener("click", () => {
   currentResult = null;
   $("#result").classList.add("hidden");
@@ -259,8 +319,12 @@ $("#newBtn").addEventListener("click", () => {
   recState.finalText = "";
   $("#recState").textContent = "点击开始录音（医生问诊时）";
 });
-$("#clearArchive").addEventListener("click", () => {
-  if (confirm("确认清空本机健康档案？")) { localStorage.removeItem(ARCHIVE_KEY); renderArchive(); }
+$("#clearArchive").addEventListener("click", async () => {
+  if (confirm("确认清空本机健康档案？此操作不可恢复")) {
+    const recs = await NurseStorage.getRecords();
+    for (const r of recs.slice()) await NurseStorage.deleteRecord(r.id);
+    renderArchive();
+  }
 });
 
 renderArchive();

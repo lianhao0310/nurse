@@ -1,0 +1,44 @@
+name: Sync from Gitee
+
+# 把 Gitee 仓库（lianhao0310/nurse，源码真源）镜像到本 GitHub 仓库，
+# 使本仓库的 GitHub Actions 能基于最新代码构建 iOS .ipa。
+# 运行位置：GitHub 侧；通过 Secret GITEE_TOKEN 拉取 Gitee。
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # 每 30 分钟同步一次
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-sync[bot]"
+          git config user.email "github-sync@users.noreply.github.com"
+
+      - name: Add Gitee remote & pull
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          GITEE_REMOTE="https://${GITEE_TOKEN}@gitee.com/lianhao0310/nurse.git"
+          git remote add gitee "$GITEE_REMOTE" 2>/dev/null || git remote set-url gitee "$GITEE_REMOTE"
+          # 拉取 Gitee 全部分支与标签
+          git fetch gitee --tags --force
+          # 以 Gitee 为权威，强制对齐默认分支
+          DEFAULT=$(git remote show origin | sed -n 's/.*HEAD branch: //p')
+          echo "Default branch: $DEFAULT"
+          git checkout "$DEFAULT" || git checkout -B "$DEFAULT" "gitee/$DEFAULT"
+          git reset --hard "gitee/$DEFAULT"
+          git push origin "$DEFAULT" --force
+          # 同步其余分支与标签
+          git push origin --force --all
+          git push origin --force --tags
+          echo "::notice::Synced from Gitee to GitHub at $(date -u)"

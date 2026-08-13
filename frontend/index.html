@@ -103,14 +103,21 @@
       <!-- 健康档案 -->
       <section class="card archive-card">
         <div class="archive-head">
-          <span>📁 健康档案（本机）</span>
-          <button id="clearArchive" class="btn btn-mini btn-danger">清空</button>
+          <span>📁 健康档案（本机文件）</span>
+          <div class="archive-actions">
+            <button id="exportBtn" class="btn btn-mini">导出</button>
+            <button id="importBtn" class="btn btn-mini">导入</button>
+            <button id="clearArchive" class="btn btn-mini btn-danger">清空</button>
+          </div>
         </div>
         <ul id="archiveList" class="archive-list"></ul>
+        <input type="file" id="importFile" accept="application/json,.json" style="display:none" />
       </section>
     </main>
   </div>
 
+  <script src="engine.js"></script>
+  <script src="storage.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
