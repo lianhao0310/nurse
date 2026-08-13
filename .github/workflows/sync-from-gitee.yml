@@ -29,7 +29,7 @@ jobs:
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          GITEE_REMOTE="https://${GITEE_TOKEN}@gitee.com/lianhao0310/nurse.git"
+          GITEE_REMOTE="https://oauth2:${GITEE_TOKEN}@gitee.com/lianhao0310/nurse.git"
           git remote add gitee "$GITEE_REMOTE" 2>/dev/null || git remote set-url gitee "$GITEE_REMOTE"
           # 拉取 Gitee 全部分支与标签
           git fetch gitee --tags --force
