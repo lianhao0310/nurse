@@ -4,8 +4,9 @@ name: Sync from Gitee
 # 使本仓库的 GitHub Actions 能基于最新代码构建 iOS .ipa。
 # 运行位置：GitHub 侧；通过 Secret GITEE_TOKEN 拉取 Gitee。
 on:
+  # 每 30 分钟从 Gitee 拉取一次，保持 GitHub 镜像最新
   schedule:
-    - cron: "*/30 * * * *"   # 每 30 分钟同步一次
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
