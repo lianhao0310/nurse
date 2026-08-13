@@ -1,0 +1,19 @@
+# 虚拟环境（体积大，不入库；README 已说明用内置 .venv 或自行安装）
+.venv/
+venv/
+env/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 本地配置 / 密钥
+.env
+*.local
+
+# 系统 / 编辑器
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>私人护士</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="phone">
+    <header class="app-bar">
+      <div class="brand">
+        <span class="logo">🩺</span>
+        <div>
+          <div class="brand-title">私人护士</div>
+          <div class="brand-sub">把一次问诊，变成能执行的护理计划</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="screen">
+      <!-- 免责声明 -->
+      <div class="disclaimer">⚠️ AI 根据录音生成，仅供参考，具体以医生处方为准</div>
+
+      <!-- 录音 / 输入区 -->
+      <section class="card record-card">
+        <button id="micBtn" class="mic-btn" aria-label="开始录音">
+          <span class="mic-icon">🎙️</span>
+        </button>
+        <div id="recState" class="rec-state">点击开始录音（医生问诊时）</div>
+        <div id="timer" class="timer">00:00</div>
+
+        <div id="transcript" class="transcript" placeholder="转写内容将显示在这里…"></div>
+
+        <div class="row gap">
+          <button id="stopBtn" class="btn btn-ghost" disabled>停止并解析</button>
+          <button id="sampleBtn" class="btn btn-ghost">载入示例</button>
+        </div>
+        <details class="paste-box">
+          <summary>粘贴 / 编辑文本后解析</summary>
+          <textarea id="manualText" rows="4" placeholder="把问诊对话粘贴到这里…"></textarea>
+          <button id="parseBtn" class="btn btn-primary block">解析文本</button>
+        </details>
+      </section>
+
+      <!-- 加载 -->
+      <div id="loading" class="loading hidden">正在生成护理计划…</div>
+
+      <!-- 结果区 -->
+      <section id="result" class="result hidden">
+        <div id="diseaseChips" class="chips"></div>
+
+        <nav class="tabs">
+          <button class="tab active" data-tab="med">💊 药物清单</button>
+          <button class="tab" data-tab="task">📋 护理任务</button>
+          <button class="tab" data-tab="advice">🥗 护士叮嘱</button>
+          <button class="tab" data-tab="risk">⚠️ 风险预警</button>
+        </nav>
+
+        <!-- 药物 -->
+        <div class="tab-panel active" data-panel="med">
+          <div class="remind-bar">
+            <span>🔔 用药提醒</span>
+            <button id="enableNotif" class="btn btn-mini">开启通知</button>
+          </div>
+          <ul id="reminderList" class="reminder-list"></ul>
+          <div class="table-wrap">
+            <table class="med-table">
+              <thead><tr><th>药品</th><th>剂量</th><th>频次</th><th>时间</th><th>病种</th></tr></thead>
+              <tbody id="medBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 任务 -->
+        <div class="tab-panel" data-panel="task">
+          <div id="taskList" class="task-group"></div>
+        </div>
+
+        <!-- 叮嘱 -->
+        <div class="tab-panel" data-panel="advice">
+          <div class="advice-block">
+            <h4>🚫 禁忌</h4>
+            <ul id="tabooList" class="advice-list"></ul>
+          </div>
+          <div class="advice-block">
+            <h4>🥦 饮食建议</h4>
+            <ul id="dietList" class="advice-list"></ul>
+          </div>
+        </div>
+
+        <!-- 风险 -->
+        <div class="tab-panel" data-panel="risk">
+          <div id="riskList" class="risk-list"></div>
+        </div>
+
+        <div class="row gap" style="margin-top:12px">
+          <button id="saveBtn" class="btn btn-ghost">存入健康档案</button>
+          <button id="newBtn" class="btn btn-primary">新的录音</button>
+        </div>
+      </section>
+
+      <!-- 健康档案 -->
+      <section class="card archive-card">
+        <div class="archive-head">
+          <span>📁 健康档案（本机）</span>
+          <button id="clearArchive" class="btn btn-mini btn-danger">清空</button>
+        </div>
+        <ul id="archiveList" class="archive-list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
