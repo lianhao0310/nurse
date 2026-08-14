@@ -1,123 +1,222 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>私人护士</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div class="phone">
-    <header class="app-bar">
-      <div class="brand">
-        <span class="logo">🩺</span>
-        <div>
-          <div class="brand-title">私人护士</div>
-          <div class="brand-sub">把一次问诊，变成能执行的护理计划</div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#2bb673" />
+    <title>私人护士</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- ============ 顶部标题栏 ============ -->
+      <header class="app-header">
+        <div class="app-header__inner">
+          <span id="header-title">私人护士</span>
+          <span id="header-sub" class="app-header__sub"></span>
+        </div>
+      </header>
+
+      <!-- ============ 页面容器 ============ -->
+      <main id="page-root">
+        <!-- 首页 -->
+        <section class="page" id="page-home">
+          <div class="home-greet">
+            <div class="home-greet__hi" id="greet-text">你好</div>
+            <div class="home-greet__date" id="today-date"></div>
+          </div>
+
+          <section class="card-block">
+            <div class="block-head">
+              <h2>💊 今日用药提醒</h2>
+              <span class="block-sub" id="home-meds-count"></span>
+            </div>
+            <div id="home-meds" class="med-list">
+              <div class="empty-tip">还没有用药提醒。点下方「录音」记录门诊，或「上传归档」处方照片。</div>
+            </div>
+          </section>
+
+          <section class="card-block">
+            <div class="block-head">
+              <h2>✅ 今日待办</h2>
+              <span class="block-sub" id="home-tasks-count"></span>
+            </div>
+            <div id="home-tasks" class="task-list">
+              <div class="empty-tip">暂无待办事项。</div>
+            </div>
+          </section>
+        </section>
+
+        <!-- 问诊记录 -->
+        <section class="page" id="page-records" hidden>
+          <div class="page-pad">
+            <div id="records-list" class="records-list"></div>
+            <div id="records-empty" class="empty-tip big">还没有问诊记录。<br />回到首页，点「录音」或「上传归档」开始。</div>
+          </div>
+        </section>
+
+        <!-- 我的 -->
+        <section class="page" id="page-me" hidden>
+          <div class="page-pad">
+            <div class="me-card">
+              <div class="me-card__title">🤖 AI 智能解析</div>
+              <p class="me-card__desc">
+                开启后，问诊文字与处方/报告照片将由大模型整理为用药、待办、生活医嘱与风险提醒。关闭则使用本地规则引擎。
+              </p>
+              <label class="switch-row">
+                <span>启用 AI 解析</span>
+                <input type="checkbox" id="ai-enabled" />
+                <span class="switch"></span>
+              </label>
+              <div id="ai-fields" class="ai-fields" hidden>
+                <label class="field">
+                  <span>接口地址 (Base URL)</span>
+                  <input type="text" id="ai-baseurl" placeholder="https://api.openai.com/v1" />
+                </label>
+                <label class="field">
+                  <span>模型 (Model)</span>
+                  <input type="text" id="ai-model" placeholder="gpt-4o" />
+                </label>
+                <label class="field">
+                  <span>API Key</span>
+                  <input type="password" id="ai-key" placeholder="sk-..." autocomplete="off" />
+                </label>
+                <p class="hint">支持 OpenAI 兼容接口（含支持图片识别的模型）。密钥仅保存在本机，不会上传至除你所填接口外的任何服务器。</p>
+              </div>
+            </div>
+
+            <div class="me-card">
+              <div class="me-card__title">🔔 提醒与显示</div>
+              <label class="switch-row">
+                <span>用药提醒通知</span>
+                <input type="checkbox" id="opt-notify" />
+                <span class="switch"></span>
+              </label>
+              <label class="switch-row">
+                <span>大字体（适老化）</span>
+                <input type="checkbox" id="opt-large" />
+                <span class="switch"></span>
+              </label>
+            </div>
+
+            <div class="me-card">
+              <div class="me-card__title">📦 数据</div>
+              <div class="btn-row">
+                <button class="btn btn-ghost" id="btn-export">导出备份</button>
+                <button class="btn btn-ghost" id="btn-import">导入恢复</button>
+                <input type="file" id="import-file" accept="application/json" hidden />
+              </div>
+              <p class="hint">数据仅存于本机（iOS 在"文件"App 可见）。换机请用导出/导入迁移。</p>
+            </div>
+
+            <div class="me-foot">私人护士 v1.0 · 仅供健康管理参考，不替代医生诊断</div>
+          </div>
+        </section>
+      </main>
+
+      <!-- ============ 底部 Tab 栏 ============ -->
+      <nav class="tabbar">
+        <button class="tabbar__btn is-active" data-page="home">
+          <span class="tabbar__icon">🏠</span><span>首页</span>
+        </button>
+        <button class="tabbar__btn" data-page="records">
+          <span class="tabbar__icon">📋</span><span>问诊记录</span>
+        </button>
+        <button class="tabbar__btn" data-page="me">
+          <span class="tabbar__icon">👤</span><span>我的</span>
+        </button>
+      </nav>
+
+      <!-- ============ 首页底部常驻操作条 ============ -->
+      <div class="actionbar">
+        <button class="actionbar__btn actionbar__btn--record" id="btn-record">
+          <span class="actionbar__icon">🎙</span><span>录音问诊</span>
+        </button>
+        <button class="actionbar__btn actionbar__btn--upload" id="btn-upload">
+          <span class="actionbar__icon">📷</span><span>上传归档</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ 新建问诊 / 归档 弹层 ============ -->
+    <div class="modal" id="capture-modal" hidden>
+      <div class="modal__mask" data-close="capture"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <span id="capture-title">新建问诊</span>
+          <button class="modal__close" data-close="capture">✕</button>
+        </div>
+        <div class="modal__body">
+          <div class="field">
+            <span class="field__label">问诊内容（可录音或手动输入）</span>
+            <div class="textarea-wrap">
+              <textarea id="cap-text" rows="5" placeholder="例如：医生开了络活喜每天早上一片，缬沙坦晚上一片，两周后复查血压…"></textarea>
+              <button class="mic-btn" id="cap-mic" title="语音输入">🎙</button>
+            </div>
+            <div id="cap-mic-status" class="mic-status"></div>
+          </div>
+
+          <div class="field">
+            <span class="field__label">归档图片（检查报告 / 处方，可选）</span>
+            <label class="upload-btn">
+              ＋ 添加图片
+              <input type="file" id="cap-images" accept="image/*" multiple hidden />
+            </label>
+            <div id="cap-preview" class="thumb-grid"></div>
+          </div>
+
+          <div class="capture-actions">
+            <button class="btn btn-primary" id="cap-parse">智能解析并保存</button>
+            <button class="btn btn-ghost" id="cap-save-only">仅归档（不解析）</button>
+          </div>
+
+          <!-- 解析结果编辑区 -->
+          <div id="cap-result" class="cap-result" hidden>
+            <div class="cap-result__head">解析结果（可手动增删改）</div>
+
+            <div class="edit-group">
+              <div class="edit-group__head">
+                <span>💊 用药</span>
+                <button class="mini-add" id="add-med">＋ 添加</button>
+              </div>
+              <div id="edit-meds" class="edit-list"></div>
+            </div>
+
+            <div class="edit-group">
+              <div class="edit-group__head">
+                <span>✅ 待办</span>
+                <button class="mini-add" id="add-task">＋ 添加</button>
+              </div>
+              <div id="edit-tasks" class="edit-list"></div>
+            </div>
+
+            <button class="btn btn-primary block" id="cap-confirm">保存此问诊</button>
+          </div>
         </div>
       </div>
-    </header>
+    </div>
 
-    <main class="screen">
-      <!-- 免责声明 -->
-      <div class="disclaimer">⚠️ AI 根据录音生成，仅供参考，具体以医生处方为准</div>
-
-      <!-- 录音 / 输入区 -->
-      <section class="card record-card">
-        <button id="micBtn" class="mic-btn" aria-label="开始录音">
-          <span class="mic-icon">🎙️</span>
-        </button>
-        <div id="recState" class="rec-state">点击开始录音（医生问诊时）</div>
-        <div id="timer" class="timer">00:00</div>
-
-        <div id="transcript" class="transcript" placeholder="转写内容将显示在这里…"></div>
-
-        <div class="row gap">
-          <button id="stopBtn" class="btn btn-ghost" disabled>停止并解析</button>
-          <button id="sampleBtn" class="btn btn-ghost">载入示例</button>
+    <!-- ============ 问诊详情 弹层 ============ -->
+    <div class="modal" id="detail-modal" hidden>
+      <div class="modal__mask" data-close="detail"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <span>问诊详情</span>
+          <button class="modal__close" data-close="detail">✕</button>
         </div>
-        <details class="paste-box">
-          <summary>粘贴 / 编辑文本后解析</summary>
-          <textarea id="manualText" rows="4" placeholder="把问诊对话粘贴到这里…"></textarea>
-          <button id="parseBtn" class="btn btn-primary block">解析文本</button>
-        </details>
-      </section>
+        <div class="modal__body" id="detail-body"></div>
+      </div>
+    </div>
 
-      <!-- 加载 -->
-      <div id="loading" class="loading hidden">正在生成护理计划…</div>
+    <!-- ============ 轻提示 ============ -->
+    <div id="toast" class="toast" hidden></div>
 
-      <!-- 结果区 -->
-      <section id="result" class="result hidden">
-        <div id="diseaseChips" class="chips"></div>
-
-        <nav class="tabs">
-          <button class="tab active" data-tab="med">💊 药物清单</button>
-          <button class="tab" data-tab="task">📋 护理任务</button>
-          <button class="tab" data-tab="advice">🥗 护士叮嘱</button>
-          <button class="tab" data-tab="risk">⚠️ 风险预警</button>
-        </nav>
-
-        <!-- 药物 -->
-        <div class="tab-panel active" data-panel="med">
-          <div class="remind-bar">
-            <span>🔔 用药提醒</span>
-            <button id="enableNotif" class="btn btn-mini">开启通知</button>
-          </div>
-          <ul id="reminderList" class="reminder-list"></ul>
-          <div class="table-wrap">
-            <table class="med-table">
-              <thead><tr><th>药品</th><th>剂量</th><th>频次</th><th>时间</th><th>病种</th></tr></thead>
-              <tbody id="medBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 任务 -->
-        <div class="tab-panel" data-panel="task">
-          <div id="taskList" class="task-group"></div>
-        </div>
-
-        <!-- 叮嘱 -->
-        <div class="tab-panel" data-panel="advice">
-          <div class="advice-block">
-            <h4>🚫 禁忌</h4>
-            <ul id="tabooList" class="advice-list"></ul>
-          </div>
-          <div class="advice-block">
-            <h4>🥦 饮食建议</h4>
-            <ul id="dietList" class="advice-list"></ul>
-          </div>
-        </div>
-
-        <!-- 风险 -->
-        <div class="tab-panel" data-panel="risk">
-          <div id="riskList" class="risk-list"></div>
-        </div>
-
-        <div class="row gap" style="margin-top:12px">
-          <button id="saveBtn" class="btn btn-ghost">存入健康档案</button>
-          <button id="newBtn" class="btn btn-primary">新的录音</button>
-        </div>
-      </section>
-
-      <!-- 健康档案 -->
-      <section class="card archive-card">
-        <div class="archive-head">
-          <span>📁 健康档案（本机文件）</span>
-          <div class="archive-actions">
-            <button id="exportBtn" class="btn btn-mini">导出</button>
-            <button id="importBtn" class="btn btn-mini">导入</button>
-            <button id="clearArchive" class="btn btn-mini btn-danger">清空</button>
-          </div>
-        </div>
-        <ul id="archiveList" class="archive-list"></ul>
-        <input type="file" id="importFile" accept="application/json,.json" style="display:none" />
-      </section>
-    </main>
-  </div>
-
-  <script src="engine.js"></script>
-  <script src="storage.js"></script>
-  <script src="app.js"></script>
-</body>
+    <script src="storage.js"></script>
+    <script src="engine.js"></script>
+    <script src="ai.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

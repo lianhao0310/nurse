@@ -104,35 +104,36 @@ jobs:
       - name: Export IPA (signed)
         if: ${{ secrets.IOS_CERTIFICATE != '' }}
         run: |
+          mkdir -p "$RUNNER_TEMP/ipa"
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
             -exportPath "$RUNNER_TEMP/ipa"
           ls -la "$RUNNER_TEMP/ipa"
 
-      # 未配置签名密钥时：仅做无签名归档（供检视，不可安装）
-      - name: Build archive (unsigned, no signing)
+      # 未配置签名密钥时：无签名归档，并手动将 .app 打包为 .ipa
+      # （未签名 .ipa 无法安装到设备，仅供下载检视；配置签名后会导出可安装包）
+      - name: Build archive & package IPA (unsigned)
         if: ${{ secrets.IOS_CERTIFICATE == '' }}
         run: |
-          echo "::warning::未配置 iOS 签名密钥（IOS_CERTIFICATE 等），仅生成未签名 xcarchive，无法安装到设备。请在仓库 Secrets 中配置签名证书与描述文件后重新运行。"
+          echo "::warning::未配置 iOS 签名密钥（IOS_CERTIFICATE 等），将生成未签名 .ipa，无法安装到设备。请在仓库 Secrets 中配置签名证书与描述文件后重新运行以获得可安装包。"
           xcodebuild -workspace ios/App/App.xcworkspace \
             -scheme App -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             clean archive
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -r "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa" && zip -r nurse.ipa Payload
+          ls -la "$RUNNER_TEMP/ipa"
 
+      # 无论是否签名，构建成功即上传 .ipa 产物（供本机自动下载）
       - name: Upload IPA artifact
-        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: nurse-ios-ipa
           path: ${{ runner.temp }}/ipa/*.ipa
           if-no-files-found: error
-
-      - name: Upload xcarchive artifact
-        if: ${{ secrets.IOS_CERTIFICATE == '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: nurse-ios-xcarchive-unsigned
-          path: ${{ runner.temp }}/App.xcarchive
+          retention-days: 90

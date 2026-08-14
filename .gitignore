@@ -21,3 +21,16 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# 同步调试 / 一次性脚本（不入库）
+.venv_secret/
+.set_secret.py
+_gh_sync_raw.yml
+_run_logs*.zip
+_run_*.zip
+
+# 本地 GitHub PAT（仅供本机下载脚本使用，切勿入库）
+.ipa_config
+
+# 构建产物下载目录
+builds/

@@ -1,330 +1,714 @@
-// 私人护士 App 前端逻辑
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
+/*
+ * 私人护士 · 前端交互逻辑
+ * 三页 Tab：首页（今日看板）/ 问诊记录 / 我的
+ * 录音/上传 -> AI 或本地引擎解析 -> 可编辑 -> 保存
+ */
+(function () {
+  "use strict";
 
-let currentResult = null;     // 当前解析结果
-let recState = { rec: null, timer: null, secs: 0, finalText: "", interim: "" };
+  const $ = (sel, el) => (el || document).querySelector(sel);
+  const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
 
-// ------------------------- 示例文本 -------------------------
-const SAMPLE = `医生：您这次主要是高血压和糖尿病，我给您调整一下用药。降压药继续吃苯磺酸氨氯地平片，每天一次，5毫克，早起空腹吃。二甲双胍缓释片加到0.5克，每天两次，早晚饭后20分钟吃，一周后加量到1克。另外加一个阿托伐他汀钙片，每天一次，10毫克，睡前吃。平时要清淡饮食，少吃盐，每天散步30分钟。回去每天早晚测血压，餐后测血糖。下个月来复诊。要是出现头晕或者心慌手抖出冷汗，赶紧吃点糖，严重的马上去医院。`;
+  // 当前数据（内存缓存，操作时从 storage 重新加载）
+  let DATA = null;
+  let TODAY = dateKey(new Date());
 
-// ------------------------- 录音（Web Speech API） -------------------------
-function setupSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    $("#micBtn").disabled = true;
-    $("#recState").textContent = "当前浏览器不支持语音识别，请用「粘贴文本」";
-    return null;
+  // 录音/上传弹层状态
+  const capture = {
+    mode: "record", // record | upload
+    images: [], // {name,type,dataUrl}
+    parsed: null, // 解析结果（编辑前）
+    editMeds: [],
+    editTasks: [],
+    recording: false,
+    recognizer: null,
+  };
+
+  // ===================== 工具 =====================
+  function dateKey(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
-  const rec = new SR();
-  rec.lang = "zh-CN";
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.onresult = (e) => {
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) recState.finalText += t;
-      else interim += t;
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.hidden = true), 2200);
+  }
+
+  // ===================== 初始化 =====================
+  async function init() {
+    DATA = await NurseStorage.load();
+    applySettingsUI();
+    bindEvents();
+    renderHome();
+    renderRecords();
+    setHeader("私人护士", "");
+  }
+
+  function setHeader(title, sub) {
+    $("#header-title").textContent = title;
+    $("#header-sub").textContent = sub || "";
+  }
+
+  function applySettingsUI() {
+    const s = DATA.settings;
+    $("#ai-enabled").checked = !!s.ai.enabled;
+    $("#ai-baseurl").value = s.ai.baseUrl || "https://api.openai.com/v1";
+    $("#ai-model").value = s.ai.model || "gpt-4o";
+    $("#ai-key").value = s.ai.apiKey || "";
+    $("#ai-fields").hidden = !s.ai.enabled;
+    $("#opt-notify").checked = !!s.notifications;
+    $("#opt-large").checked = !!s.largeFont;
+    document.body.classList.toggle("large-font", !!s.largeFont);
+  }
+
+  // ===================== 页面路由 =====================
+  function goPage(page) {
+    $$(".page").forEach((p) => (p.hidden = p.id !== "page-" + page));
+    $$(".tabbar__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.page === page));
+    if (page === "home") {
+      setHeader("私人护士", "");
+      renderHome();
+    } else if (page === "records") {
+      setHeader("问诊记录", "");
+      renderRecords();
+    } else if (page === "me") {
+      setHeader("我的", "");
     }
-    $("#transcript").textContent = recState.finalText + interim;
-  };
-  rec.onerror = (e) => {
-    $("#recState").textContent = "识别出错：" + e.error + "（可改用粘贴文本）";
-    stopRec();
-  };
-  rec.onend = () => { if (recState.rec && recState.rec._active) try { rec.start(); } catch (_) {} };
-  return rec;
-}
+  }
 
-function startRec() {
-  if (!recState.rec) recState.rec = setupSpeech();
-  if (!recState.rec) return;
-  recState.rec._active = true;
-  recState.finalText = "";
-  recState.secs = 0;
-  $("#transcript").textContent = "";
-  try { recState.rec.start(); } catch (_) {}
-  $("#micBtn").classList.add("recording");
-  $("#stopBtn").disabled = false;
-  $("#recState").textContent = "正在录音…（医生与您对话中）";
-  recState.timer = setInterval(() => {
-    recState.secs++;
-    const m = String(Math.floor(recState.secs / 60)).padStart(2, "0");
-    const s = String(recState.secs % 60).padStart(2, "0");
-    $("#timer").textContent = `${m}:${s}`;
-  }, 1000);
-}
+  // ===================== 首页：今日看板 =====================
+  async function renderHome() {
+    const now = new Date();
+    TODAY = dateKey(now);
+    const h = now.getHours();
+    const greet = h < 6 ? "夜深了" : h < 11 ? "早上好" : h < 13 ? "中午好" : h < 18 ? "下午好" : "晚上好";
+    $("#greet-text").textContent = greet + "，今天也要好好照顾自己";
+    $("#today-date").textContent = fmtDate(now).slice(0, 10) + " " + ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][now.getDay()];
 
-function stopRec() {
-  if (recState.rec) { recState.rec._active = false; try { recState.rec.stop(); } catch (_) {} }
-  clearInterval(recState.timer);
-  $("#micBtn").classList.remove("recording");
-  $("#stopBtn").disabled = true;
-  $("#recState").textContent = "录音结束，正在解析…";
-  const text = (recState.finalText + ($("#transcript").textContent || "")).trim();
-  if (text) doParse(text);
-  else $("#recState").textContent = "未识别到内容，请重试或粘贴文本";
-}
+    const done = await NurseStorage.getDone(TODAY);
 
-// ------------------------- 解析（本地引擎，零后端） -------------------------
-async function doParse(text) {
-  if (!text.trim()) { alert("请先录音或粘贴文本"); return; }
-  $("#loading").classList.remove("hidden");
-  $("#result").classList.add("hidden");
-  try {
-    // 优先使用内置本地引擎（iOS / 浏览器均可离线运行）；
-    // 仅在引擎缺失时回退到后端 /api/parse（本地 Web 演示用）
-    let data;
-    if (window.NurseEngine && typeof window.NurseEngine.parse === "function") {
-      data = window.NurseEngine.parse(text);
+    // 用药：聚合所有记录的药品 -> 提醒时间
+    const medItems = [];
+    for (const rec of DATA.records) {
+      const meds = (rec.result && rec.result.medications) || [];
+      if (!meds.length) continue;
+      let reminders = [];
+      try {
+        reminders = NurseEngine.schedule_reminders(meds);
+      } catch (e) {
+        reminders = meds.map((m) => ({ med: m.name, dose: m.dose, time: "12:00", note: m.note }));
+      }
+      for (const r of reminders) {
+        const med = meds.find((m) => m.name === r.med) || {};
+        medItems.push({
+          id: med.id || r.med,
+          name: r.med,
+          dose: r.dose || med.dose || "",
+          time: r.time || "12:00",
+          note: r.note || med.note || "",
+          done: !!done.meds[med.id || r.med + "@" + (r.time || "12:00")],
+        });
+      }
+    }
+    medItems.sort((a, b) => a.time.localeCompare(b.time));
+    const medBox = $("#home-meds");
+    if (!medItems.length) {
+      medBox.innerHTML = '<div class="empty-tip">还没有用药提醒。点下方「录音」记录门诊，或「上传归档」处方照片。</div>';
     } else {
-      const res = await fetch("/api/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: text }),
-      });
-      data = await res.json();
-      if (data.error) throw new Error(data.error);
+      medBox.innerHTML = medItems
+        .map(
+          (m) => `<div class="med ${m.done ? "done" : ""}" data-med-id="${esc(m.id)}" data-time="${esc(m.time)}">
+            <div class="med__check">${m.done ? "✓" : ""}</div>
+            <div class="med__main">
+              <div class="med__name">${esc(m.name)}</div>
+              <div class="med__meta">${esc(m.dose)}${m.note ? " · " + esc(m.note) : ""}</div>
+            </div>
+            <div class="med__time">${esc(m.time)}</div>
+          </div>`
+        )
+        .join("");
+      $("#home-meds-count").textContent = medItems.length + " 项";
     }
-    currentResult = data;
-    render(data);
-    $("#result").classList.remove("hidden");
-    // 自动持久化到手机文件系统（换机可导出迁移）
-    await NurseStorage.appendRecord({ transcript: text, result: data });
-    renderArchive();
-  } catch (err) {
-    alert("解析失败：" + err.message);
-  } finally {
-    $("#loading").classList.add("hidden");
-    $("#recState").textContent = "点击开始录音（医生问诊时）";
+
+    // 待办
+    const taskItems = [];
+    for (const rec of DATA.records) {
+      const tasks = (rec.result && rec.result.tasks) || [];
+      for (const t of tasks) {
+        taskItems.push({ id: t.id, title: t.title, detail: t.detail, type: t.type, done: !!done.tasks[t.id] });
+      }
+    }
+    const taskBox = $("#home-tasks");
+    if (!taskItems.length) {
+      taskBox.innerHTML = '<div class="empty-tip">暂无待办事项。</div>';
+    } else {
+      const tagMap = { monitor: "监测", revisit: "复诊", life: "生活" };
+      taskBox.innerHTML = taskItems
+        .map(
+          (t) => `<div class="task ${t.done ? "done" : ""}" data-task-id="${esc(t.id)}">
+            <div class="task__check">${t.done ? "✓" : ""}</div>
+            <div class="task__main">
+              <div class="task__title">${esc(t.title)}<span class="task__tag">${tagMap[t.type] || "待办"}</span></div>
+              <div class="task__detail">${esc(t.detail)}</div>
+            </div>
+          </div>`
+        )
+        .join("");
+      $("#home-tasks-count").textContent = taskItems.length + " 项";
+    }
+
+    scheduleNotifications(medItems, done);
   }
-}
 
-// ------------------------- 渲染 -------------------------
-function render(d) {
-  // 病种
-  $("#diseaseChips").innerHTML = (d.diseases || [])
-    .map((x) => `<span class="chip">${x}</span>`).join("");
+  // 首页勾选
+  async function toggleMed(id, time) {
+    const key = id + "@" + time;
+    const done = await NurseStorage.getDone(TODAY);
+    const nowDone = !done.meds[key];
+    await NurseStorage.setDone(TODAY, "meds", key, nowDone);
+    await renderHome();
+  }
+  async function toggleTask(id) {
+    const done = await NurseStorage.getDone(TODAY);
+    const nowDone = !done.tasks[id];
+    await NurseStorage.setDone(TODAY, "tasks", id, nowDone);
+    await renderHome();
+  }
 
-  renderMeds(d.medications || []);
-  renderReminders(d.reminders || []);
-  renderTasks(d.tasks || []);
-  renderAdvice(d.advice || {});
-  renderRisks(d.risks || []);
-  switchTab("med");
-}
+  // ===================== 通知 =====================
+  function scheduleNotifications(medItems, done) {
+    if (!DATA.settings.notifications) return;
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const now = Date.now();
+    for (const m of medItems) {
+      if (m.done) continue;
+      const [hh, mm] = m.time.split(":").map(Number);
+      const t = new Date();
+      t.setHours(hh, mm, 0, 0);
+      let diff = t.getTime() - now;
+      if (diff < 0) diff += 24 * 3600 * 1000; // 次日
+      if (diff > 12 * 3600 * 1000) continue;
+      const name = m.name;
+      setTimeout(() => {
+        try {
+          new Notification("私人护士 · 用药提醒", { body: (m.dose ? m.dose + " " : "") + name + (m.note ? "（" + m.note + "）" : "") });
+        } catch (e) {}
+      }, diff);
+    }
+  }
 
-function renderMeds(meds) {
-  const tb = $("#medBody");
-  if (!meds.length) { tb.innerHTML = `<tr><td colspan="5" style="color:#9aa6b2">未识别到药物</td></tr>`; return; }
-  tb.innerHTML = meds.map((m) => {
-    const note = m.note ? `<span class="note-hl">${m.note}</span>` : "—";
-    return `<tr>
-      <td><b>${m.name}</b>${m.note ? "<br>" + note : ""}</td>
-      <td>${m.dose || "—"}</td>
-      <td>${m.freq || "—"}</td>
-      <td>${m.time || "—"}</td>
-      <td>${m.disease || "—"}</td>
-    </tr>`;
-  }).join("");
-}
+  // ===================== 问诊记录 =====================
+  function renderRecords() {
+    const list = $("#records-list");
+    const empty = $("#records-empty");
+    if (!DATA.records.length) {
+      list.innerHTML = "";
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    list.innerHTML = DATA.records
+      .map((rec) => {
+        const res = rec.result || {};
+        const meds = res.medications || [];
+        const tasks = res.tasks || [];
+        const diseases = res.diseases || [];
+        const badge = rec.manual
+          ? '<span class="rec-card__badge badge-rule">手动</span>'
+          : res.engine === "ai"
+          ? '<span class="rec-card__badge badge-ai">AI</span>'
+          : '<span class="rec-card__badge badge-rule">本地</span>';
+        const imgBadge = rec.images && rec.images.length ? `<span class="rec-card__badge badge-img">📷 ${rec.images.length}</span>` : "";
+        const chips = diseases.map((d) => `<span class="chip">${esc(d)}</span>`).join("");
+        return `<div class="rec-card" data-rec-id="${esc(rec.id)}">
+          <div class="rec-card__top">
+            <span class="rec-card__date">${esc(fmtDate(rec.createdAt))}</span>
+            <span>${badge}${imgBadge}</span>
+          </div>
+          ${chips ? `<div class="rec-card__diseases">${chips}</div>` : ""}
+          <div class="rec-card__stat">
+            <span>💊 <b>${meds.length}</b> 用药</span>
+            <span>✅ <b>${tasks.length}</b> 待办</span>
+            <span>⚠️ <b>${(res.risks || []).length}</b> 风险</span>
+          </div>
+        </div>`;
+      })
+      .join("");
+  }
 
-function renderReminders(rem) {
-  const ul = $("#reminderList");
-  if (!rem.length) { ul.innerHTML = `<li><span class="rm">暂无用药提醒</span></li>`; return; }
-  ul.innerHTML = rem.map((r) => `
-    <li>
-      <span class="rt">${r.time}</span>
-      <span class="rm">${r.med} ${r.dose ? "· " + r.dose : ""}</span>
-      ${r.note ? `<span class="rn">${r.note}</span>` : ""}
-    </li>`).join("");
-}
+  function openDetail(id) {
+    const rec = DATA.records.find((r) => r.id === id);
+    if (!rec) return;
+    const res = rec.result || {};
+    const body = $("#detail-body");
+    let html = "";
+    html += `<div class="detail-sec"><h3>基本信息</h3>
+      <p>时间：${esc(fmtDate(rec.createdAt))}　来源：${esc(sourceLabel(rec.source))}${rec.manual ? "（手动录入）" : ""}</p></div>`;
+    if (rec.images && rec.images.length) {
+      html += `<div class="detail-sec"><h3>归档图片（${rec.images.length}）</h3>`;
+      rec.images.forEach((im) => (html += `<img class="detail-img" src="${im.dataUrl}" alt="${esc(im.name)}" />`));
+      html += `</div>`;
+    }
+    if (rec.transcript) {
+      html += `<div class="detail-sec"><h3>原始内容</h3><div class="detail-transcript">${esc(rec.transcript)}</div></div>`;
+    }
+    const diseases = res.diseases || [];
+    if (diseases.length) {
+      html += `<div class="detail-sec"><h3>相关诊断</h3><div class="rec-card__diseases">${diseases.map((d) => `<span class="chip">${esc(d)}</span>`).join("")}</div></div>`;
+    }
+    const meds = res.medications || [];
+    if (meds.length) {
+      html += `<div class="detail-sec"><h3>用药</h3><ul>${meds
+        .map((m) => `<li><b>${esc(m.name)}</b> ${esc(m.dose)} ${esc(m.freq)} ${esc(m.time)} ${m.note ? "· " + esc(m.note) : ""}</li>`)
+        .join("")}</ul></div>`;
+    }
+    const tasks = res.tasks || [];
+    if (tasks.length) {
+      html += `<div class="detail-sec"><h3>待办 / 生活医嘱</h3><ul>${tasks
+        .map((t) => `<li><b>${esc(t.title)}</b>：${esc(t.detail)}${t.due ? "（" + esc(t.due) + "）" : ""}</li>`)
+        .join("")}</ul></div>`;
+    }
+    const taboo = (res.advice && res.advice.taboo) || [];
+    const diet = (res.advice && res.advice.diet) || [];
+    if (taboo.length || diet.length) {
+      html += `<div class="detail-sec"><h3>生活 / 饮食医嘱</h3>`;
+      if (diet.length) html += `<p>🥗 ${diet.map(esc).join("；")}</p>`;
+      if (taboo.length) html += `<p>⛔ ${taboo.map(esc).join("；")}</p>`;
+      html += `</div>`;
+    }
+    const risks = res.risks || [];
+    if (risks.length) {
+      html += `<div class="detail-sec"><h3>风险提醒</h3>`;
+      risks.forEach((r) => {
+        html += `<div class="risk ${esc(r.level)}"><b>${esc(r.trigger)}</b>（${levelLabel(r.level)}）<br/>${esc(r.action)}</div>`;
+      });
+      html += `</div>`;
+    }
+    if (res.summary) html += `<div class="detail-sec"><h3>一句话总结</h3><p>${esc(res.summary)}</p></div>`;
+    if (res.disclaimer) html += `<p class="hint">${esc(res.disclaimer)}</p>`;
 
-function renderTasks(tasks) {
-  const groups = { monitor: [], revisit: [], life: [] };
-  tasks.forEach((t) => { (groups[t.type] || groups.life).push(t); });
-  const titles = { monitor: "📈 监测项", revisit: "🗓️ 复诊", life: "🌿 生活任务" };
-  let html = "";
-  for (const k of ["monitor", "revisit", "life"]) {
-    if (!groups[k].length) continue;
-    html += `<div class="task-sub">${titles[k]}</div>`;
-    groups[k].forEach((t, i) => {
-      html += `<label class="task-item" data-type="${k}" data-i="${i}">
-        <input type="checkbox" />
-        <span><span class="t-title">${t.title}</span>
-        <span class="t-detail">${t.detail}</span></span>
-      </label>`;
+    html += `<div class="detail-actions">
+      <button class="btn btn-ghost block" id="detail-close">关闭</button>
+      <button class="btn btn-primary block" id="detail-del" data-rec-id="${esc(rec.id)}" style="background:var(--danger)">删除记录</button>
+    </div>`;
+    body.innerHTML = html;
+    $("#detail-modal").hidden = false;
+    $("#detail-close").onclick = closeModal;
+    $("#detail-del").onclick = async (e) => {
+      if (confirm("确定删除这条问诊记录？此操作不可恢复。")) {
+        await NurseStorage.deleteRecord(e.currentTarget.dataset.recId);
+        DATA = await NurseStorage.load();
+        closeModal();
+        renderRecords();
+        renderHome();
+        toast("已删除");
+      }
+    };
+  }
+
+  function sourceLabel(s) {
+    return s === "recording" ? "录音" : s === "upload" ? "上传归档" : "文字";
+  }
+  function levelLabel(l) {
+    return l === "red" ? "紧急" : l === "yellow" ? "警惕" : "一般";
+  }
+
+  // ===================== 录音 / 上传 弹层 =====================
+  function openCapture(mode) {
+    capture.mode = mode;
+    capture.images = [];
+    capture.parsed = null;
+    capture.editMeds = [];
+    capture.editTasks = [];
+    $("#capture-title").textContent = mode === "upload" ? "上传归档" : "录音问诊";
+    $("#cap-text").value = "";
+    $("#cap-preview").innerHTML = "";
+    $("#cap-mic-status").textContent = "";
+    $("#cap-result").hidden = true;
+    $("#cap-text").disabled = false;
+    $("#capture-modal").hidden = false;
+  }
+
+  function closeModal() {
+    $$(".modal").forEach((m) => (m.hidden = true));
+    stopRecording();
+  }
+
+  // 图片降采样后加入 state
+  async function addImages(files) {
+    for (const f of files) {
+      if (!f.type.startsWith("image/")) continue;
+      const dataUrl = await downscaleImage(f, 1280, 0.82);
+      capture.images.push({ name: f.name, type: "image/jpeg", dataUrl });
+    }
+    renderPreview();
+  }
+  function downscaleImage(file, maxDim, quality) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const cv = document.createElement("canvas");
+          cv.width = width;
+          cv.height = height;
+          cv.getContext("2d").drawImage(img, 0, 0, width, height);
+          try {
+            resolve(cv.toDataURL("image/jpeg", quality));
+          } catch (e) {
+            resolve(reader.result);
+          }
+        };
+        img.onerror = () => resolve(reader.result);
+        img.src = reader.result;
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
     });
   }
-  if (!html) html = `<div class="task-item"><span class="t-detail">未识别到非药物指令</span></div>`;
-  $("#taskList").innerHTML = html;
-  $$("#taskList input").forEach((cb) => cb.addEventListener("change", (e) => {
-    e.target.closest(".task-item").classList.toggle("done", e.target.checked);
-  }));
-}
+  function renderPreview() {
+    const box = $("#cap-preview");
+    box.innerHTML = capture.images
+      .map(
+        (im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-idx="${i}">✕</button></div>`
+      )
+      .join("");
+    $$(".thumb__del", box).forEach((b) => {
+      b.onclick = () => {
+        capture.images.splice(+b.dataset.idx, 1);
+        renderPreview();
+      };
+    });
+  }
 
-function renderAdvice(adv) {
-  const taboo = adv.taboo || [], diet = adv.diet || [];
-  $("#tabooList").innerHTML = taboo.length
-    ? taboo.map((t) => `<li><b>${t.disease}：</b>${t.text}</li>`).join("")
-    : `<li>暂无</li>`;
-  $("#dietList").innerHTML = diet.length
-    ? diet.map((t) => `<li><b>${t.disease}：</b>${t.text}</li>`).join("")
-    : `<li>暂无</li>`;
-}
+  // 语音输入（Web Speech API，尽力而为）
+  function setupMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const mic = $("#cap-mic");
+    if (!SR) {
+      mic.disabled = true;
+      mic.style.opacity = 0.4;
+      mic.title = "当前环境不支持语音，请手动输入";
+      return;
+    }
+    mic.onclick = () => {
+      if (capture.recording) {
+        stopRecording();
+        return;
+      }
+      const rec = new SR();
+      rec.lang = "zh-CN";
+      rec.interimResults = true;
+      rec.continuous = true;
+      capture.recognizer = rec;
+      capture.recording = true;
+      mic.classList.add("recording");
+      $("#cap-mic-status").textContent = "正在聆听…（再次点击结束）";
+      rec.onresult = (e) => {
+        let txt = "";
+        for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+        const ta = $("#cap-text");
+        ta.value = txt;
+      };
+      rec.onerror = (e) => {
+        $("#cap-mic-status").textContent = "语音识别出错：" + e.error + "（可手动输入）";
+        stopRecording();
+      };
+      rec.onend = () => stopRecording();
+      try {
+        rec.start();
+      } catch (e) {
+        stopRecording();
+      }
+    };
+  }
+  function stopRecording() {
+    capture.recording = false;
+    if (capture.recognizer) {
+      try {
+        capture.recognizer.stop();
+      } catch (e) {}
+      capture.recognizer = null;
+    }
+    const mic = $("#cap-mic");
+    if (mic) mic.classList.remove("recording");
+    const st = $("#cap-mic-status");
+    if (st && st.textContent.indexOf("正在聆听") >= 0) st.textContent = "已停止，可补充或修改文字后解析。";
+  }
 
-function renderRisks(risks) {
-  const wrap = $("#riskList");
-  if (!risks.length) { wrap.innerHTML = `<div class="risk-card"><div class="r-trigger">暂无特定风险预警</div></div>`; return; }
-  const lvText = { green: "居家观察", yellow: "加强监测", red: "立即就医" };
-  wrap.innerHTML = risks.map((r) => `
-    <div class="risk-card ${r.level}">
-      <span class="r-level">${lvText[r.level] || r.level}</span>
-      <div class="r-disease">${r.disease}</div>
-      <div class="r-trigger">⚠️ ${r.trigger}</div>
-      <div class="r-action">${r.action}</div>
-    </div>`).join("");
-}
+  // 解析
+  async function doParse() {
+    const transcript = $("#cap-text").value.trim();
+    if (!transcript && !capture.images.length) {
+      toast("请先输入文字或添加图片");
+      return;
+    }
+    const s = DATA.settings;
+    let result = null;
+    const useAI = s.ai.enabled && s.ai.apiKey;
+    toast(useAI ? "AI 解析中…" : "本地解析中…");
+    try {
+      if (useAI) {
+        result = await NurseAI.parse({ transcript, images: capture.images, settings: s });
+      } else {
+        result = NurseEngine.parse(transcript || "（仅图片，无文字）");
+        if (!transcript) {
+          // 仅图片无文字时，规则引擎无意义，给出空结构
+          result = {
+            engine: "rule",
+            diseases: [],
+            medications: [],
+            tasks: [],
+            advice: { taboo: [], diet: [] },
+            risks: [],
+            summary: "",
+            disclaimer: "未提供文字，本地引擎无法解析，建议开启 AI 以识别图片。",
+          };
+        }
+      }
+    } catch (err) {
+      toast("解析失败：" + err.message);
+      return;
+    }
+    capture.parsed = result;
+    capture.editMeds = (result.medications || []).map((m) => Object.assign({}, m));
+    capture.editTasks = (result.tasks || []).map((t) => Object.assign({}, t));
+    renderEditResult();
+    $("#cap-result").hidden = false;
+    toast("解析完成，可手动调整后保存");
+  }
 
-// ------------------------- Tab 切换 -------------------------
-function switchTab(name) {
-  $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  $$(".tab-panel").forEach((p) => p.classList.toggle("active", p.dataset.panel === name));
-}
-$$(".tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-
-// ------------------------- 提醒通知 -------------------------
-function enableNotif() {
-  if (!("Notification" in window)) { alert("当前环境不支持系统通知"); return; }
-  Notification.requestPermission().then((p) => {
-    if (p === "granted") {
-      alert("已开启。将在设定的用药时间弹出提醒（演示：仅本次会话有效）。");
-      scheduleDemoNotif();
-    } else alert("未授权通知");
-  });
-}
-function scheduleDemoNotif() {
-  const now = new Date();
-  (currentResult?.reminders || []).slice(0, 4).forEach((r) => {
-    const [h, m] = r.time.split(":").map(Number);
-    let fire = new Date(now); fire.setHours(h, m, 0, 0);
-    if (fire <= now) fire.setDate(fire.getDate() + 1);
-    const delay = fire - now;
-    setTimeout(() => {
-      new Notification("私人护士 · 用药提醒", {
-        body: `${r.med} ${r.dose ? "· " + r.dose : ""}${r.note ? "（" + r.note + "）" : ""}`,
+  function renderEditResult() {
+    const medBox = $("#edit-meds");
+    medBox.innerHTML = capture.editMeds
+      .map(
+        (m, i) => `<div class="edit-row" data-i="${i}">
+          <span class="edit-row__del" data-del-med="${i}">删除</span>
+          <input data-f="name" value="${esc(m.name)}" placeholder="药名" />
+          <div class="edit-row__cols">
+            <input data-f="dose" value="${esc(m.dose)}" placeholder="剂量" />
+            <input data-f="freq" value="${esc(m.freq)}" placeholder="频次" />
+          </div>
+          <div class="edit-row__cols">
+            <input data-f="time" value="${esc(m.time)}" placeholder="时间" />
+            <input data-f="note" value="${esc(m.note)}" placeholder="说明" />
+          </div>
+        </div>`
+      )
+      .join("");
+    const taskBox = $("#edit-tasks");
+    taskBox.innerHTML = capture.editTasks
+      .map(
+        (t, i) => `<div class="edit-row" data-i="${i}">
+          <span class="edit-row__del" data-del-task="${i}">删除</span>
+          <input data-f="title" value="${esc(t.title)}" placeholder="待办标题" />
+          <input data-f="detail" value="${esc(t.detail)}" placeholder="说明" />
+        </div>`
+      )
+      .join("");
+    bindEditInputs();
+  }
+  function bindEditInputs() {
+    $$("#edit-meds .edit-row").forEach((row) => {
+      const i = +row.dataset.i;
+      $$("input", row).forEach((inp) => {
+        inp.oninput = () => (capture.editMeds[i][inp.dataset.f] = inp.value);
       });
-    }, Math.min(delay, 60000)); // 演示上限 60s
-  });
-}
-
-// ------------------------- 健康档案（手机文件系统持久化） -------------------------
-async function saveArchive() {
-  if (!currentResult) return;
-  await NurseStorage.appendRecord({ transcript: $("#transcript").textContent || "", result: currentResult });
-  renderArchive();
-  alert("已存入本机（手机文件）健康档案");
-}
-async function renderArchive() {
-  const list = await NurseStorage.getRecords();
-  const ul = $("#archiveList");
-  if (!list.length) { ul.innerHTML = `<li class="a-empty">暂无档案，解析后可自动存入</li>`; return; }
-  ul.innerHTML = list.map((a) => {
-    const d = (a.result && a.result.diseases) || [];
-    const date = new Date(a.createdAt).toLocaleString("zh-CN");
-    const preview = (a.transcript || "").slice(0, 24).replace(/\n/g, " ");
-    return `
-    <li data-id="${a.id}">
-      <span>📝 ${d.join("、") || "问诊记录"}<br>
-      <span class="a-date">${date} · ${preview || "（无转写文本）"}</span></span>
-      <span class="a-ops">
-        <button class="a-del" data-del="${a.id}" aria-label="删除">✕</button>
-        查看 ›
-      </span>
-    </li>`;
-  }).join("");
-  $$("#archiveList li[data-id]").forEach((li) => li.addEventListener("click", (e) => {
-    if (e.target.closest(".a-del")) return; // 删除按钮单独处理
-    const item = list.find((x) => String(x.id) === li.dataset.id);
-    if (item && item.result) {
-      currentResult = item.result;
-      render(item.result);
-      $("#result").classList.remove("hidden");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }));
-  $$("#archiveList .a-del").forEach((b) => b.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    if (confirm("删除这条档案？")) { await NurseStorage.deleteRecord(b.dataset.del); renderArchive(); }
-  }));
-}
-
-// ------------------------- 导出 / 导入（换机迁移） -------------------------
-async function exportData() {
-  const json = await NurseStorage.exportJSON();
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "nurse-archive-" + new Date().toISOString().slice(0, 10) + ".json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  // 原生环境（iOS）额外尝试系统分享，便于 AirDrop / 网盘迁移
-  try {
-    const cap = window.Capacitor;
-    const Share = cap && cap.Plugins && cap.Plugins.Share;
-    if (Share && typeof Share.share === "function") {
-      await Share.share({ title: "私人护士档案", text: json, dialogTitle: "导出健康档案" });
-    }
-  } catch (_) {}
-}
-async function importData(file) {
-  try {
-    const text = await file.text();
-    await NurseStorage.importJSON(text);
-    renderArchive();
-    alert("导入成功，历史档案已合并");
-  } catch (e) {
-    alert("导入失败：文件格式不正确");
+      const del = row.querySelector("[data-del-med]");
+      if (del) del.onclick = () => {
+        capture.editMeds.splice(i, 1);
+        renderEditResult();
+      };
+    });
+    $$("#edit-tasks .edit-row").forEach((row) => {
+      const i = +row.dataset.i;
+      $$("input", row).forEach((inp) => {
+        inp.oninput = () => (capture.editTasks[i][inp.dataset.f] = inp.value);
+      });
+      const del = row.querySelector("[data-del-task]");
+      if (del) del.onclick = () => {
+        capture.editTasks.splice(i, 1);
+        renderEditResult();
+      };
+    });
   }
-}
 
-// ------------------------- 事件绑定 -------------------------
-$("#micBtn").addEventListener("click", startRec);
-$("#stopBtn").addEventListener("click", stopRec);
-$("#sampleBtn").addEventListener("click", () => {
-  $("#transcript").textContent = SAMPLE;
-  doParse(SAMPLE);
-});
-$("#parseBtn").addEventListener("click", () => {
-  const t = $("#manualText").value.trim();
-  if (t) doParse(t);
-});
-$("#enableNotif").addEventListener("click", enableNotif);
-$("#saveBtn").addEventListener("click", saveArchive);
-$("#exportBtn").addEventListener("click", exportData);
-$("#importBtn").addEventListener("click", () => $("#importFile").click());
-$("#importFile").addEventListener("change", (e) => {
-  const f = e.target.files && e.target.files[0];
-  if (f) importData(f);
-  e.target.value = "";
-});
-$("#newBtn").addEventListener("click", () => {
-  currentResult = null;
-  $("#result").classList.add("hidden");
-  $("#transcript").textContent = "";
-  recState.finalText = "";
-  $("#recState").textContent = "点击开始录音（医生问诊时）";
-});
-$("#clearArchive").addEventListener("click", async () => {
-  if (confirm("确认清空本机健康档案？此操作不可恢复")) {
-    const recs = await NurseStorage.getRecords();
-    for (const r of recs.slice()) await NurseStorage.deleteRecord(r.id);
-    renderArchive();
+  function addMed() {
+    capture.editMeds.push({ name: "", dose: "", freq: "", time: "", note: "", disease: "" });
+    renderEditResult();
   }
-});
+  function addTask() {
+    capture.editTasks.push({ type: "life", title: "", detail: "", freq: "", due: "" });
+    renderEditResult();
+  }
 
-renderArchive();
+  // 保存：仅归档 / 解析后保存
+  async function saveCapture(onlyArchive) {
+    const transcript = $("#cap-text").value.trim();
+    if (!onlyArchive && capture.parsed) {
+      // 用编辑后的 meds/tasks 覆盖
+      capture.parsed.medications = capture.editMeds.filter((m) => m.name && m.name.trim());
+      capture.parsed.tasks = capture.editTasks.filter((t) => t.title && t.title.trim());
+      // 重新计算提醒时间表
+      try {
+        capture.parsed.reminders = NurseEngine.schedule_reminders(capture.parsed.medications);
+      } catch (e) {
+        capture.parsed.reminders = [];
+      }
+    }
+    if (onlyArchive && !transcript && !capture.images.length) {
+      toast("没有可归档的内容");
+      return;
+    }
+    const rec = {
+      source: capture.mode === "upload" ? "upload" : transcript ? "recording" : "upload",
+      transcript: transcript,
+      images: capture.images,
+      result: onlyArchive ? null : capture.parsed,
+      manual: onlyArchive,
+    };
+    await NurseStorage.appendRecord(rec);
+    DATA = await NurseStorage.load();
+    closeModal();
+    renderHome();
+    renderRecords();
+    toast(onlyArchive ? "已归档" : "已保存问诊");
+  }
+
+  // ===================== 设置 =====================
+  async function saveAISettings() {
+    await NurseStorage.updateSettings({
+      ai: {
+        enabled: $("#ai-enabled").checked,
+        baseUrl: $("#ai-baseurl").value.trim(),
+        apiKey: $("#ai-key").value.trim(),
+        model: $("#ai-model").value.trim() || "gpt-4o",
+      },
+    });
+    DATA = await NurseStorage.load();
+    $("#ai-fields").hidden = !DATA.settings.ai.enabled;
+    toast("AI 设置已保存");
+  }
+
+  async function toggleNotify() {
+    const on = $("#opt-notify").checked;
+    if (on && "Notification" in window && Notification.permission === "default") {
+      try {
+        const p = await Notification.requestPermission();
+        if (p !== "granted") {
+          $("#opt-notify").checked = false;
+          toast("未授予通知权限");
+          return;
+        }
+      } catch (e) {}
+    }
+    await NurseStorage.updateSettings({ notifications: on });
+    DATA = await NurseStorage.load();
+    toast(on ? "已开启用药提醒通知" : "已关闭通知");
+  }
+  async function toggleLarge() {
+    const on = $("#opt-large").checked;
+    await NurseStorage.updateSettings({ largeFont: on });
+    DATA = await NurseStorage.load();
+    document.body.classList.toggle("large-font", on);
+  }
+
+  async function exportData() {
+    const json = await NurseStorage.exportJSON();
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "nurse-data-" + TODAY + ".json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast("已导出备份");
+  }
+  async function importData(file) {
+    try {
+      const text = await file.text();
+      await NurseStorage.importJSON(text);
+      DATA = await NurseStorage.load();
+      applySettingsUI();
+      renderHome();
+      renderRecords();
+      toast("已导入并恢复");
+    } catch (e) {
+      toast("导入失败：文件格式不正确");
+    }
+  }
+
+  // ===================== 事件绑定 =====================
+  function bindEvents() {
+    $$(".tabbar__btn").forEach((b) => (b.onclick = () => goPage(b.dataset.page)));
+    $("#btn-record").onclick = () => openCapture("record");
+    $("#btn-upload").onclick = () => openCapture("upload");
+
+    $$("[data-close]").forEach((el) => (el.onclick = closeModal));
+
+    $("#cap-images").onchange = (e) => {
+      if (e.target.files && e.target.files.length) addImages(e.target.files);
+      e.target.value = "";
+    };
+    $("#cap-parse").onclick = doParse;
+    $("#cap-save-only").onclick = () => saveCapture(true);
+    $("#cap-confirm").onclick = () => saveCapture(false);
+    $("#add-med").onclick = addMed;
+    $("#add-task").onclick = addTask;
+
+    // 首页勾选（事件委托）
+    $("#home-meds").onclick = (e) => {
+      const card = e.target.closest(".med");
+      if (card) toggleMed(card.dataset.medId, card.dataset.time);
+    };
+    $("#home-tasks").onclick = (e) => {
+      const card = e.target.closest(".task");
+      if (card) toggleTask(card.dataset.taskId);
+    };
+
+    // 记录列表 -> 详情
+    $("#records-list").onclick = (e) => {
+      const card = e.target.closest(".rec-card");
+      if (card) openDetail(card.dataset.recId);
+    };
+
+    // 设置
+    $("#ai-enabled").onchange = saveAISettings;
+    ["#ai-baseurl", "#ai-model", "#ai-key"].forEach((s) => ($(s).onchange = saveAISettings));
+    $("#opt-notify").onchange = toggleNotify;
+    $("#opt-large").onchange = toggleLarge;
+    $("#btn-export").onclick = exportData;
+    $("#btn-import").onclick = () => $("#import-file").click();
+    $("#import-file").onchange = (e) => {
+      if (e.target.files && e.target.files[0]) importData(e.target.files[0]);
+      e.target.value = "";
+    };
+  }
+
+  // 启动
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => init().then(setupMic));
+  } else {
+    init().then(setupMic);
+  }
+})();
