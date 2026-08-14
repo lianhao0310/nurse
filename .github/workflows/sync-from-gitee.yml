@@ -3,6 +3,10 @@ name: Sync from Gitee
 # 把 Gitee 仓库（lianhao0310/nurse，源码真源）镜像到本 GitHub 仓库，
 # 使本仓库的 GitHub Actions 能基于最新代码构建 iOS .ipa。
 # 运行位置：GitHub 侧；通过 Secret GITEE_TOKEN 拉取 Gitee。
+# 需要 contents: write 才能把同步结果推回本仓库
+permissions:
+  contents: write
+
 on:
   # 每 30 分钟从 Gitee 拉取一次，保持 GitHub 镜像最新
   schedule:
