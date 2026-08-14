@@ -2,6 +2,10 @@ name: Build iOS IPA
 
 # 在 GitHub 的 macOS runner 上把 Capacitor iOS 工程编译为 .ipa
 # 触发：推送到 master/main、发布 Release、或手动触发
+#
+# 说明：GitHub Actions 的 `if:` 条件不允许直接引用 secrets 上下文，
+# 因此这里在 job 级 env 把 IOS_CERTIFICATE 映射为 SIGN_CERT，
+# 各步骤的 if 统一使用 env.SIGN_CERT。
 on:
   push:
     branches: [master, main]
@@ -13,6 +17,8 @@ jobs:
   build:
     runs-on: macos-latest
     timeout-minutes: 60
+    env:
+      SIGN_CERT: ${{ secrets.IOS_CERTIFICATE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,7 +43,7 @@ jobs:
 
       # ---------- 可选：签名（未配置密钥时仅产出未签名 xcarchive 供检视） ----------
       - name: Decode signing assets
-        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        if: ${{ env.SIGN_CERT != '' }}
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
@@ -63,7 +69,7 @@ jobs:
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID.mobileprovision"
 
       - name: Write export options plist
-        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        if: ${{ env.SIGN_CERT != '' }}
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           EXPORT_METHOD: ${{ secrets.IOS_EXPORT_METHOD || 'ad-hoc' }}
@@ -88,7 +94,7 @@ jobs:
           EOF
 
       - name: Build & archive (signed)
-        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        if: ${{ env.SIGN_CERT != '' }}
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
@@ -102,7 +108,7 @@ jobs:
             clean archive | xcpretty || xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=manual CODE_SIGN_IDENTITY="iPhone Distribution" clean archive
 
       - name: Export IPA (signed)
-        if: ${{ secrets.IOS_CERTIFICATE != '' }}
+        if: ${{ env.SIGN_CERT != '' }}
         run: |
           mkdir -p "$RUNNER_TEMP/ipa"
           xcodebuild -exportArchive \
@@ -114,7 +120,7 @@ jobs:
       # 未配置签名密钥时：无签名归档，并手动将 .app 打包为 .ipa
       # （未签名 .ipa 无法安装到设备，仅供下载检视；配置签名后会导出可安装包）
       - name: Build archive & package IPA (unsigned)
-        if: ${{ secrets.IOS_CERTIFICATE == '' }}
+        if: ${{ env.SIGN_CERT == '' }}
         run: |
           echo "::warning::未配置 iOS 签名密钥（IOS_CERTIFICATE 等），将生成未签名 .ipa，无法安装到设备。请在仓库 Secrets 中配置签名证书与描述文件后重新运行以获得可安装包。"
           xcodebuild -workspace ios/App/App.xcworkspace \
