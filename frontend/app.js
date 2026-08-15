@@ -7,7 +7,7 @@
   "use strict";
 
   // 诊断用构建戳：装到真机后在顶部标题栏可见，用于确认运行的是哪个包
-  const BUILD_TAG = "fix-innerspan1";
+  const BUILD_TAG = "diag-modal1";
 
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
@@ -370,6 +370,18 @@
     $("#cap-result").hidden = true;
     $("#cap-text").disabled = false;
     $("#capture-modal").hidden = false;
+    // 诊断：读出弹层真实渲染状态，用于判定「代码已显示但真机看不到」的根因
+    try {
+      const m = $("#capture-modal");
+      const cs = getComputedStyle(m);
+      const r = m.getBoundingClientRect();
+      toast(
+        "MODAL disp=" + cs.display + " " + Math.round(r.width) + "x" + Math.round(r.height) + " @" + Math.round(r.left) + "," + Math.round(r.top),
+        3000
+      );
+    } catch (e) {
+      toast("MODAL 诊断失败：" + (e && e.message));
+    }
   }
 
   function closeModal() {
