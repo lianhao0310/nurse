@@ -18,6 +18,8 @@ import json
 import zipfile
 import urllib.request
 import urllib.error
+import urllib.parse
+from http.client import HTTPResponse
 
 REPO = "lianhao0310/nurse"
 WORKFLOW = "build-ios.yml"
@@ -45,6 +47,14 @@ def api(url, token, method="GET", data=None, accept="application/vnd.github+json
     req.add_header("Accept", accept)
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     return urllib.request.urlopen(req, timeout=90)
+
+
+def safe_remove(path):
+    """删除文件；忽略沙箱安全删除机制（回收站不可用）导致的异常。"""
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # 沙箱禁止硬删除时忽略，不影响主流程
 
 
 def main():
@@ -89,8 +99,31 @@ def main():
         size = art.get("size_in_bytes", 0)
         print(f"下载 run-{rid} ({head}) 的 {ARTIFACT_NAME}  大小≈{size/1024:.0f}KB ...")
         try:
-            with api(f"https://api.github.com/repos/{REPO}/actions/artifacts/{aid}/zip",
-                     token, accept="application/vnd.github+json") as r:
+            # 该接口会 302 跳转到 Azure blob（自带 SAS 令牌）。
+            # 跳转后若仍带 GitHub 的 Authorization 头，Azure 会返回 401。
+            # 因此用自定义 opener：跨主机跳转时剥离 Authorization 头。
+            class _NoAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    newreq = super().redirect_request(req, fp, code, msg, headers, newurl)
+                    if newreq is None:
+                        return newreq
+                    old_host = urllib.parse.urlparse(req.get_full_url()).netloc
+                    new_host = urllib.parse.urlparse(newurl).netloc
+                    if new_host != old_host and "Authorization" in newreq.headers:
+                        del newreq.headers["Authorization"]
+                    return newreq
+
+            opener = urllib.request.build_opener(_NoAuthOnRedirect())
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{REPO}/actions/artifacts/{aid}/zip",
+                headers={
+                    "Authorization": "Bearer " + token,
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "User-Agent": "workbuddy-ipa-downloader",
+                },
+            )
+            with opener.open(req, timeout=120) as r:
                 data = r.read()
         except urllib.error.HTTPError as e:
             print(f"  下载失败 HTTP {e.code}: {e.read().decode('utf-8','replace')[:300]}",
@@ -102,15 +135,16 @@ def main():
             f.write(data)
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(dest)
-        os.remove(zip_path)
 
-        # 把 .ipa 重命名为带 commit 短哈希的清晰名字
+        # 把 .ipa 重命名为带 commit 短哈希的清晰名字（先于清理临时 zip，确保结果正确）
         for f in os.listdir(dest):
             if f.endswith(".ipa"):
                 new = os.path.join(dest, f"nurse-{head}.ipa")
                 if os.path.exists(new):
-                    os.remove(new)
+                    safe_remove(new)
                 os.rename(os.path.join(dest, f), new)
+
+        safe_remove(zip_path)
         with open(done, "w") as f:
             f.write(str(rid))
 

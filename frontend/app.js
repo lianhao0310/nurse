@@ -44,6 +44,18 @@
     toastTimer = setTimeout(() => (t.hidden = true), 2200);
   }
 
+  // 全局错误捕获：把原本“静默失败”的运行时错误显示出来，便于在真机上定位
+  window.addEventListener("error", (e) => {
+    const msg = (e.error && e.error.message) || e.message || String(e);
+    toast("出错：" + msg);
+    console.error("[nurse] error:", e.error || e);
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const msg = (e.reason && e.reason.message) || String(e.reason);
+    toast("出错：" + msg);
+    console.error("[nurse] unhandledrejection:", e.reason);
+  });
+
   // ===================== 初始化 =====================
   async function init() {
     DATA = await NurseStorage.load();
@@ -407,9 +419,12 @@
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const mic = $("#cap-mic");
     if (!SR) {
-      mic.disabled = true;
-      mic.style.opacity = 0.4;
-      mic.title = "当前环境不支持语音，请手动输入";
+      // iOS 的 WKWebView 不实现 SpeechRecognition：不要静默禁用，改为点按提示，
+      // 并提示用户用「手动输入文字」或「上传报告照片」两条可用路径。
+      mic.disabled = false;
+      mic.style.opacity = 0.55;
+      mic.title = "当前设备（iOS WebView）不支持语音输入";
+      mic.onclick = () => toast("当前设备不支持语音输入，请直接输入文字，或点「＋添加图片」上传报告/处方照片");
       return;
     }
     mic.onclick = () => {
@@ -706,9 +721,13 @@
   }
 
   // 启动
+  const boot = () => init().then(setupMic).catch((e) => {
+    toast("初始化失败：" + (e && e.message || e));
+    console.error("[nurse] init failed:", e);
+  });
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => init().then(setupMic));
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
-    init().then(setupMic);
+    boot();
   }
 })();

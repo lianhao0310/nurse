@@ -45,5 +45,14 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- iOS 隐私权限声明：WKWebView 中 <input type=file> 选图/相机、getUserMedia 麦克风都依赖这些键，缺失会导致“点了没反应” -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于选择检查报告、处方等图片进行归档与 AI 识别</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于将归档的图片保存到相册</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于拍摄检查报告、处方等图片</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于录音记录门诊问诊内容</string>
 </dict>
 </plist>
