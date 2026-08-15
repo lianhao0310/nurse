@@ -6,6 +6,9 @@
 (function () {
   "use strict";
 
+  // 诊断用构建戳：装到真机后在顶部标题栏可见，用于确认运行的是哪个包
+  const BUILD_TAG = "0d9c170-dbg1";
+
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
 
@@ -36,12 +39,12 @@
     return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
   let toastTimer = null;
-  function toast(msg) {
+  function toast(msg, ms) {
     const t = $("#toast");
     t.textContent = msg;
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (t.hidden = true), 2200);
+    toastTimer = setTimeout(() => (t.hidden = true), ms || 2200);
   }
 
   // 全局错误捕获：把原本“静默失败”的运行时错误显示出来，便于在真机上定位
@@ -56,6 +59,22 @@
     console.error("[nurse] unhandledrejection:", e.reason);
   });
 
+  // 诊断：捕获阶段全局记录点击事件目标，便于在真机区分
+  // 「点击没传到按钮(CSS/命中测试)」还是「传到了但逻辑出错」
+  document.addEventListener(
+    "click",
+    (e) => {
+      const t = e.target;
+      const info = t.id
+        ? "#" + t.id
+        : t.className && typeof t.className === "string"
+        ? "." + t.className.trim().split(/\s+/)[0]
+        : t.tagName;
+      toast("TAP→" + info, 1100);
+    },
+    true
+  );
+
   // ===================== 初始化 =====================
   async function init() {
     DATA = await NurseStorage.load();
@@ -68,7 +87,7 @@
 
   function setHeader(title, sub) {
     $("#header-title").textContent = title;
-    $("#header-sub").textContent = sub || "";
+    $("#header-sub").textContent = (sub || "") + (BUILD_TAG ? " · " + BUILD_TAG : "");
   }
 
   function applySettingsUI() {

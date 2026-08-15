@@ -286,8 +286,9 @@ textarea {
 /* ===================== 首页底部操作条 ===================== */
 .actionbar {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
   width: 100%;
   max-width: 480px;
@@ -297,9 +298,6 @@ textarea {
   padding: 12px 16px;
   background: linear-gradient(to top, var(--bg) 70%, rgba(244, 246, 248, 0));
   z-index: 25;
-  /* 注意：iOS WKWebView 对「父级 pointer-events:none + 子级 auto」的命中测试不可靠，
-     会把子按钮的 tap 吞掉导致点击无反应。操作条下方是页面留白、无需穿透点击，
-     因此整条使用 pointer-events:auto。 */
   pointer-events: auto;
 }
 .actionbar__btn {
