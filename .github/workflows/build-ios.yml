@@ -41,6 +41,23 @@ jobs:
       - name: Capacitor sync (web assets + pods)
         run: npx cap sync ios
 
+      # cap sync 会重写原生 Info.plist 并清掉手动添加的权限键，这里在编译前重新注入
+      - name: Inject privacy usage descriptions
+        run: |
+          PLIST=ios/App/App/Info.plist
+          add_key() {
+            /usr/libexec/PlistBuddy -c "Print :$1" "$PLIST" >/dev/null 2>&1 \
+              && /usr/libexec/PlistBuddy -c "Set :$1 \"$2\"" "$PLIST" \
+              || /usr/libexec/PlistBuddy -c "Add :$1 string \"$2\"" "$PLIST"
+          }
+          add_key NSMicrophoneUsageDescription "用于录音记录门诊问诊内容"
+          add_key NSSpeechRecognitionUsageDescription "用于将门诊录音实时转写为文字，便于生成用药与待办"
+          add_key NSPhotoLibraryUsageDescription "用于选择检查报告、处方等图片进行归档与 AI 识别"
+          add_key NSPhotoLibraryAddUsageDescription "用于将归档的图片保存到相册"
+          add_key NSCameraUsageDescription "用于拍摄检查报告、处方等图片"
+          echo "--- 注入后的权限键 ---"
+          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | grep -i UsageDescription || true
+
       # ---------- 可选：签名（未配置密钥时仅产出未签名 xcarchive 供检视） ----------
       - name: Decode signing assets
         if: ${{ env.SIGN_CERT != '' }}
