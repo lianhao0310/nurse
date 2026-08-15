@@ -524,7 +524,10 @@ textarea {
 /* ===================== 弹层 ===================== */
 .modal {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 50;
   display: flex;
   align-items: flex-end;
@@ -535,7 +538,10 @@ textarea {
 }
 .modal__mask {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(20, 28, 38, 0.45);
 }
 .modal__panel {
