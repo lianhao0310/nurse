@@ -9,6 +9,7 @@
     "build:web": "echo '前端为静态资源，无需构建步骤；Capacitor 直接复制 frontend/ 目录'"
   },
   "dependencies": {
+    "@capacitor/camera": "^6.0.2",
     "@capacitor/core": "^6.1.2",
     "@capacitor/filesystem": "^6.0.1",
     "@capacitor/share": "^6.0.2"

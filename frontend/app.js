@@ -366,6 +366,37 @@
     }
     renderPreview();
   }
+  // 原生相册选择（@capacitor/camera，绕过 WebView 的 file input 限制，权限由系统正常弹窗）
+  async function pickNativeImages() {
+    try {
+      if (!window.Capacitor || !Capacitor.Plugins || !Capacitor.Plugins.Camera) {
+        // 插件未就绪时退回系统 file input
+        $("#cap-images").click();
+        return;
+      }
+      const { Camera } = Capacitor.Plugins;
+      const res = await Camera.pickImages({ quality: 80, limit: 6, correctOrientation: true });
+      const photos = (res && res.photos) || [];
+      for (const ph of photos) {
+        let file = null;
+        if (ph.webPath) {
+          const blob = await (await fetch(ph.webPath)).blob();
+          file = new File([blob], "image.jpg", { type: blob.type || "image/jpeg" });
+        } else if (ph.path) {
+          const b64 = await Capacitor.Plugins.Filesystem.readFile({ path: ph.path });
+          const mime = ph.mimeType || "image/jpeg";
+          file = await (await fetch("data:" + mime + ";base64," + b64.data)).blob().then(
+            (b) => new File([b], "image.jpg", { type: mime })
+          );
+        }
+        if (file) await addImages([file]);
+      }
+      renderPreview();
+    } catch (e) {
+      if (e && e.message && /cancel/i.test(e.message)) return; // 用户取消选择
+      toast("选图失败：" + (e && e.message ? e.message : e));
+    }
+  }
   function downscaleImage(file, maxDim, quality) {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -681,6 +712,8 @@
 
     $$("[data-close]").forEach((el) => (el.onclick = closeModal));
 
+    $("#cap-add-image").onclick = pickNativeImages;
+    // 保留原生 file input 作为兜底（部分环境可触发系统选图器）
     $("#cap-images").onchange = (e) => {
       if (e.target.files && e.target.files.length) addImages(e.target.files);
       e.target.value = "";

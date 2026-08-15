@@ -54,5 +54,7 @@
 	<string>用于拍摄检查报告、处方等图片</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于录音记录门诊问诊内容</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>用于将门诊录音实时转写为文字，便于生成用药与待办</string>
 </dict>
 </plist>
