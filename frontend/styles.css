@@ -325,6 +325,14 @@ textarea {
   font-size: 1.3em;
 }
 
+/* iOS WKWebView 坑：button 内嵌 <span> 图标/文字时，点击落在子元素上
+   常不冒泡给 <button>，导致 onclick 不触发、表现“点了没反应”。
+   让按钮内部子元素不接收指针事件，点击目标回退为 <button> 本身。 */
+.actionbar__btn > *,
+.tabbar__btn > * {
+  pointer-events: none;
+}
+
 /* ===================== 我的页 ===================== */
 .me-card {
   background: var(--surface);

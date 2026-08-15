@@ -7,7 +7,7 @@
   "use strict";
 
   // 诊断用构建戳：装到真机后在顶部标题栏可见，用于确认运行的是哪个包
-  const BUILD_TAG = "0d9c170-dbg1";
+  const BUILD_TAG = "fix-innerspan1";
 
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
@@ -357,6 +357,7 @@
 
   // ===================== 录音 / 上传 弹层 =====================
   function openCapture(mode) {
+    toast("OPEN→" + mode, 900);
     capture.mode = mode;
     capture.images = [];
     capture.parsed = null;
