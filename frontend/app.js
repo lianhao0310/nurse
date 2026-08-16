@@ -777,7 +777,7 @@
       if (s.ai.enabled && s.ai.apiKey) {
         result = await NurseAI.parse({ transcript, images, settings: s });
       } else {
-        result = NurseEngine.parse(transcript || "（仅图片，无文字）");
+        result = await NurseEngine.parse(transcript || "（仅图片，无文字）");
         if (!transcript) {
           result = {
             engine: "rule",
