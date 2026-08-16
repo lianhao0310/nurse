@@ -1,7 +1,7 @@
 /*
- * 私人护士 · 前端交互逻辑
- * 三页 Tab：首页（今日看板）/ 问诊记录 / 我的
- * 录音/上传 -> AI 或本地引擎解析 -> 可编辑 -> 保存
+ * 私人护士 · 前端交互逻辑（v2  redesign）
+ * 四页 Tab：首页 / 问诊记录 / 我的药箱 / 我的
+ * 录音/上传 -> AI 或本地引擎解析 -> 可编辑 -> 保存 -> 同步药箱
  */
 (function () {
   "use strict";
@@ -15,14 +15,20 @@
 
   // 录音/上传弹层状态
   const capture = {
-    mode: "record", // record | upload
-    images: [], // {name,type,dataUrl}
-    parsed: null, // 解析结果（编辑前）
-    editMeds: [],
-    editTasks: [],
+    mode: "record",
+    images: [],
     recording: false,
     recognizer: null,
   };
+
+  // 药箱状态
+  const cabinetState = {
+    filter: "all", // all | active | disabled | out
+    editing: null, // 当前编辑的药箱条目 id（null 为新增）
+  };
+
+  // 首页「提醒 / 待办」页签状态
+  let homeTab = "remind";
 
   // ===================== 工具 =====================
   function dateKey(d) {
@@ -44,7 +50,7 @@
     toastTimer = setTimeout(() => (t.hidden = true), ms || 2200);
   }
 
-  // 全局错误捕获：把原本“静默失败”的运行时错误显示出来，便于在真机上定位
+  // 全局错误捕获
   window.addEventListener("error", (e) => {
     const msg = (e.error && e.error.message) || e.message || String(e);
     toast("出错：" + msg);
@@ -59,10 +65,20 @@
   // ===================== 初始化 =====================
   async function init() {
     DATA = await NurseStorage.load();
+    DATA.cabinet = DATA.cabinet || [];
+    // 把上次遗留的「解析中」标记为失败（进程被中断 / App 被杀后不会自动完成）
+    if (DATA.records.some((r) => r.status === "parsing")) {
+      DATA.records.forEach((r) => {
+        if (r.status === "parsing") r.status = "failed";
+      });
+      await NurseStorage.save(DATA);
+    }
     applySettingsUI();
     bindEvents();
+    await runDailyDecrement(); // 每日药箱自动扣减（每天最多一次）
     renderHome();
     renderRecords();
+    renderCabinet();
     setHeader("私人护士", "");
   }
 
@@ -81,18 +97,30 @@
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
     document.body.classList.toggle("large-font", !!s.largeFont);
+
+    // 提醒设置
+    $("#opt-med-min").value = Number(s.medReminderMinutes) >= 0 ? s.medReminderMinutes : 10;
+    renderAISummary();
+    renderRemindersList();
   }
 
   // ===================== 页面路由 =====================
   function goPage(page) {
     $$(".page").forEach((p) => (p.hidden = p.id !== "page-" + page));
     $$(".tabbar__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.page === page));
+    // 录音 / 上传操作条只在首页常驻
+    const ab = $(".actionbar");
+    if (ab) ab.style.display = page === "home" ? "" : "none";
     if (page === "home") {
       setHeader("私人护士", "");
+      applyHomeTab();
       renderHome();
     } else if (page === "records") {
       setHeader("问诊记录", "");
       renderRecords();
+    } else if (page === "cabinet") {
+      setHeader("我的药箱", "");
+      renderCabinet();
     } else if (page === "me") {
       setHeader("我的", "");
     }
@@ -108,6 +136,9 @@
     $("#today-date").textContent = fmtDate(now).slice(0, 10) + " " + ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][now.getDay()];
 
     const done = await NurseStorage.getDone(TODAY);
+
+    // 下次就诊提醒横幅
+    renderVisitBanner();
 
     // 用药：聚合所有记录的药品 -> 提醒时间
     const medItems = [];
@@ -136,6 +167,7 @@
     const medBox = $("#home-meds");
     if (!medItems.length) {
       medBox.innerHTML = '<div class="empty-tip">还没有用药提醒。点下方「录音」记录门诊，或「上传归档」处方照片。</div>';
+      $("#home-meds-count").textContent = "";
     } else {
       medBox.innerHTML = medItems
         .map(
@@ -163,6 +195,7 @@
     const taskBox = $("#home-tasks");
     if (!taskItems.length) {
       taskBox.innerHTML = '<div class="empty-tip">暂无待办事项。</div>';
+      $("#home-tasks-count").textContent = "";
     } else {
       const tagMap = { monitor: "监测", revisit: "复诊", life: "生活" };
       taskBox.innerHTML = taskItems
@@ -179,7 +212,68 @@
       $("#home-tasks-count").textContent = taskItems.length + " 项";
     }
 
+    renderPersonalReminders();
     scheduleNotifications(medItems, done);
+    renderHomeAlerts();
+  }
+
+  // 首页药箱告警（缺药 / 库存不足）
+  function renderHomeAlerts() {
+    const box = $("#home-alerts");
+    if (!box) return;
+    const items = [];
+    for (const it of DATA.cabinet || []) {
+      if (it.status === "out") {
+        items.push({ level: "out", text: "💊 " + it.name + "：已缺药，请及时补充。" });
+      } else if (it.status === "active" && it.threshold > 0 && it.qty <= it.threshold) {
+        items.push({ level: "low", text: "💊 " + it.name + "：库存不足（剩 " + it.qty + " " + it.unit + "），建议尽快补药。" });
+      }
+    }
+    if (!items.length) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = items
+      .map((i) => `<div class="alerts__item ${i.level === "out" ? "is-out" : "is-low"}">${esc(i.text)}</div>`)
+      .join("");
+    box.hidden = false;
+  }
+
+  function renderVisitBanner() {
+    const banner = $("#home-visit-banner");
+    if (!banner) return;
+    const rems = (DATA.settings.reminders || []).filter((r) => r.enabled && r.date);
+    if (!rems.length) {
+      banner.hidden = true;
+      return;
+    }
+    const today = new Date(TODAY + "T00:00:00");
+    let nearest = null;
+    let nd = Infinity;
+    for (const r of rems) {
+      const d = new Date(r.date + "T00:00:00");
+      const diff = Math.round((d - today) / (24 * 3600 * 1000));
+      if (diff < nd) {
+        nd = diff;
+        nearest = r;
+      }
+    }
+    if (!nearest) {
+      banner.hidden = true;
+      return;
+    }
+    let label = "";
+    if (nd < 0) label = `已逾期 ${Math.abs(nd)} 天，请尽快处理`;
+    else if (nd === 0) label = "就是今天：" + nearest.title;
+    else if (nd <= 3) label = `${nearest.title} 还有 ${nd} 天，请提前准备`;
+    else label = `${nearest.title}：${nearest.date}（还有 ${nd} 天）`;
+    $("#home-visit-text").textContent = label;
+    const titleEl = banner.querySelector(".visit-banner__title");
+    if (titleEl) titleEl.textContent = nearest.type === "visit" ? "下次就诊" : "提醒";
+    const iconEl = banner.querySelector(".visit-banner__icon");
+    if (iconEl) iconEl.textContent = nearest.type === "visit" ? "🏥" : "📌";
+    banner.hidden = false;
   }
 
   // 首页勾选
@@ -203,13 +297,14 @@
     if (!("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
     const now = Date.now();
+    const提前 = Number(DATA.settings.medReminderMinutes) || 0;
     for (const m of medItems) {
       if (m.done) continue;
       const [hh, mm] = m.time.split(":").map(Number);
       const t = new Date();
-      t.setHours(hh, mm, 0, 0);
+      t.setHours(hh, mm - 提前, 0, 0);
       let diff = t.getTime() - now;
-      if (diff < 0) diff += 24 * 3600 * 1000; // 次日
+      if (diff < 0) diff += 24 * 3600 * 1000;
       if (diff > 12 * 3600 * 1000) continue;
       const name = m.name;
       setTimeout(() => {
@@ -241,19 +336,31 @@
           : res.engine === "ai"
           ? '<span class="rec-card__badge badge-ai">AI</span>'
           : '<span class="rec-card__badge badge-rule">本地</span>';
+        const statusBadge =
+          rec.status === "parsing"
+            ? '<span class="rec-card__badge badge-parsing">⏳ 解析中</span>'
+            : rec.status === "failed"
+            ? '<span class="rec-card__badge badge-failed">⚠️ 失败</span>'
+            : "";
         const imgBadge = rec.images && rec.images.length ? `<span class="rec-card__badge badge-img">📷 ${rec.images.length}</span>` : "";
         const chips = diseases.map((d) => `<span class="chip">${esc(d)}</span>`).join("");
+        const statHtml =
+          rec.status === "done"
+            ? `<div class="rec-card__stat">
+                <span>💊 <b>${meds.length}</b> 用药</span>
+                <span>✅ <b>${tasks.length}</b> 待办</span>
+                <span>⚠️ <b>${(res.risks || []).length}</b> 风险</span>
+              </div>`
+            : `<div class="rec-card__stat rec-card__stat--hint">${
+                rec.status === "parsing" ? "⏳ 正在后台解析…" : "⚠️ 解析未完成，点开处理"
+              }</div>`;
         return `<div class="rec-card" data-rec-id="${esc(rec.id)}">
           <div class="rec-card__top">
             <span class="rec-card__date">${esc(fmtDate(rec.createdAt))}</span>
-            <span>${badge}${imgBadge}</span>
+            <span>${badge}${statusBadge}${imgBadge}</span>
           </div>
           ${chips ? `<div class="rec-card__diseases">${chips}</div>` : ""}
-          <div class="rec-card__stat">
-            <span>💊 <b>${meds.length}</b> 用药</span>
-            <span>✅ <b>${tasks.length}</b> 待办</span>
-            <span>⚠️ <b>${(res.risks || []).length}</b> 风险</span>
-          </div>
+          ${statHtml}
         </div>`;
       })
       .join("");
@@ -262,9 +369,71 @@
   function openDetail(id) {
     const rec = DATA.records.find((r) => r.id === id);
     if (!rec) return;
+
+    // 解析中：等待后台完成
+    if (rec.status === "parsing") {
+      const body = $("#detail-body");
+      body.innerHTML = `<div class="detail-sec"><h3>⏳ 正在解析</h3><p>这条问诊记录正在后台解析，请稍候片刻。你可以关闭弹窗，稍后回到「问诊记录」刷新查看结果。</p></div>
+        <div class="detail-actions"><button class="btn btn-ghost block" id="detail-close">关闭</button></div>`;
+      $("#detail-modal").hidden = false;
+      $("#detail-close").onclick = closeModal;
+      return;
+    }
+
+    // 解析失败：展示原始内容，支持重试 / 仅归档 / 删除
+    if (rec.status === "failed") {
+      const body = $("#detail-body");
+      let html = `<div class="detail-sec"><h3>⚠️ 解析失败</h3><p>该记录未能完成智能解析。你可以重试解析，或转为纯归档（保留文字与图片，不做智能整理），也可直接删除。</p></div>`;
+      html += `<div class="detail-sec"><h3>基本信息</h3><p>时间：${esc(fmtDate(rec.createdAt))}　来源：${esc(sourceLabel(rec.source))}</p></div>`;
+      if (rec.transcript) html += `<div class="detail-sec"><h3>原始内容</h3><div class="detail-transcript">${esc(rec.transcript)}</div></div>`;
+      if (rec.images && rec.images.length) {
+        html += `<div class="detail-sec"><h3>归档图片（${rec.images.length}）</h3>`;
+        rec.images.forEach((im) => (html += `<img class="detail-img" src="${im.dataUrl}" alt="${esc(im.name)}" />`));
+        html += `</div>`;
+      }
+      html += `<div class="detail-actions">
+        <button class="btn btn-primary block" id="detail-retry">重试解析</button>
+        <button class="btn btn-ghost block" id="detail-archive">仅归档（放弃解析）</button>
+        <button class="btn btn-primary block" id="detail-del" data-rec-id="${esc(rec.id)}" style="background:var(--danger)">删除记录</button>
+        <button class="btn btn-ghost block" id="detail-close">关闭</button>
+      </div>`;
+      body.innerHTML = html;
+      $("#detail-modal").hidden = false;
+      $("#detail-close").onclick = closeModal;
+      $("#detail-retry").onclick = async () => {
+        await NurseStorage.updateRecord(rec.id, { status: "parsing" });
+        DATA = await NurseStorage.load();
+        closeModal();
+        renderRecords();
+        runParse(rec.id);
+      };
+      $("#detail-archive").onclick = async () => {
+        await NurseStorage.updateRecord(rec.id, { status: "done", manual: true, result: null });
+        DATA = await NurseStorage.load();
+        closeModal();
+        renderRecords();
+        renderHome();
+        toast("已转为纯归档");
+      };
+      $("#detail-del").onclick = async (e) => {
+        if (confirm("确定删除这条问诊记录？此操作不可恢复。")) {
+          await NurseStorage.deleteRecord(e.currentTarget.dataset.recId);
+          DATA = await NurseStorage.load();
+          closeModal();
+          renderRecords();
+          renderHome();
+          toast("已删除");
+        }
+      };
+      return;
+    }
+
     const res = rec.result || {};
     const body = $("#detail-body");
     let html = "";
+    if (!rec.result) {
+      html += `<div class="detail-sec"><h3>📝 说明</h3><p class="hint">这是纯归档记录（未做智能解析）。你可以直接在下方表格手动补充用药与待办，保存后会同步到药箱。</p></div>`;
+    }
     html += `<div class="detail-sec"><h3>基本信息</h3>
       <p>时间：${esc(fmtDate(rec.createdAt))}　来源：${esc(sourceLabel(rec.source))}${rec.manual ? "（手动录入）" : ""}</p></div>`;
     if (rec.images && rec.images.length) {
@@ -331,6 +500,11 @@
     if (res.summary) html += `<div class="detail-sec"><h3>一句话总结</h3><p>${esc(res.summary)}</p></div>`;
     if (res.disclaimer) html += `<p class="hint">${esc(res.disclaimer)}</p>`;
 
+    // 问诊记录详情增加「同步到药箱」按钮
+    if (meds.length) {
+      html += `<button class="btn btn-ghost block" id="detail-sync-cab" data-rec-id="${esc(rec.id)}">💊 将用药同步到药箱</button>`;
+    }
+
     html += `<div class="detail-actions">
       <button class="btn btn-primary block" id="detail-save">保存修改</button>
       <button class="btn btn-ghost block" id="detail-close">关闭</button>
@@ -350,13 +524,28 @@
         toast("已删除");
       }
     };
+    const syncBtn = $("#detail-sync-cab");
+    if (syncBtn) syncBtn.onclick = () => syncRecordMedsToCabinet(rec);
   }
 
   function sourceLabel(s) {
     return s === "recording" ? "录音" : s === "upload" ? "上传归档" : "文字";
   }
-  // 详情内联编辑用药/待办后写回记录
+
   async function saveDetailEdit(rec, res) {
+    // 修复：手动归档/解析失败等场景下 rec.result 可能为 null，先兜底为对象
+    if (!rec.result) {
+      rec.result = {
+        engine: "manual",
+        diseases: [],
+        medications: [],
+        tasks: [],
+        advice: { taboo: [], diet: [] },
+        risks: [],
+        summary: "",
+        disclaimer: "",
+      };
+    }
     const meds = $$('#detail-body tr[data-kind="med"]')
       .map((row, i) => {
         const base = (res.medications && res.medications[i]) || {};
@@ -398,14 +587,10 @@
   function openCapture(mode) {
     capture.mode = mode;
     capture.images = [];
-    capture.parsed = null;
-    capture.editMeds = [];
-    capture.editTasks = [];
     $("#capture-title").textContent = mode === "upload" ? "上传归档" : "录音问诊";
     $("#cap-text").value = "";
     $("#cap-preview").innerHTML = "";
     $("#cap-mic-status").textContent = "";
-    $("#cap-result").hidden = true;
     $("#cap-text").disabled = false;
     $("#capture-modal").hidden = false;
   }
@@ -413,9 +598,9 @@
   function closeModal() {
     $$(".modal").forEach((m) => (m.hidden = true));
     stopRecording();
+    cabinetState.editing = null;
   }
 
-  // 图片降采样后加入 state
   async function addImages(files) {
     for (const f of files) {
       if (!f.type.startsWith("image/")) continue;
@@ -424,11 +609,10 @@
     }
     renderPreview();
   }
-  // 原生相册选择（@capacitor/camera，绕过 WebView 的 file input 限制，权限由系统正常弹窗）
+
   async function pickNativeImages() {
     try {
       if (!window.Capacitor || !Capacitor.Plugins || !Capacitor.Plugins.Camera) {
-        // 插件未就绪时退回系统 file input
         $("#cap-images").click();
         return;
       }
@@ -451,7 +635,7 @@
       }
       renderPreview();
     } catch (e) {
-      if (e && e.message && /cancel/i.test(e.message)) return; // 用户取消选择
+      if (e && e.message && /cancel/i.test(e.message)) return;
       toast("选图失败：" + (e && e.message ? e.message : e));
     }
   }
@@ -503,13 +687,10 @@
     });
   }
 
-  // 语音输入（Web Speech API，尽力而为）
   function setupMic() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const mic = $("#cap-mic");
     if (!SR) {
-      // iOS 的 WKWebView 不实现 SpeechRecognition：不要静默禁用，改为点按提示，
-      // 并提示用户用「手动输入文字」或「上传报告照片」两条可用路径。
       mic.disabled = false;
       mic.style.opacity = 0.55;
       mic.title = "当前设备（iOS WebView）不支持语音输入";
@@ -561,24 +742,43 @@
     if (st && st.textContent.indexOf("正在聆听") >= 0) st.textContent = "已停止，可补充或修改文字后解析。";
   }
 
-  // 解析
-  async function doParse() {
+  // 智能解析并归档：先写「解析中」记录 + 收起弹窗，后台解析完成后自动归档
+  async function startParse() {
     const transcript = $("#cap-text").value.trim();
     if (!transcript && !capture.images.length) {
       toast("请先输入文字或添加图片");
       return;
     }
+    const rec = await NurseStorage.appendRecord({
+      source: capture.mode === "upload" ? "upload" : transcript ? "recording" : "upload",
+      transcript: transcript,
+      images: capture.images,
+      result: null,
+      manual: false,
+      status: "parsing",
+    });
+    DATA = await NurseStorage.load();
+    closeModal();
+    renderRecords();
+    renderHome();
+    toast("已提交，正在后台解析…");
+    runParse(rec.id);
+  }
+
+  // 后台执行解析：成功 -> status=done + 同步药箱；失败 -> status=failed
+  async function runParse(id) {
+    const rec = await NurseStorage.getRecord(id);
+    if (!rec || rec.status !== "parsing") return;
+    const transcript = rec.transcript || "";
+    const images = rec.images || [];
     const s = DATA.settings;
     let result = null;
-    const useAI = s.ai.enabled && s.ai.apiKey;
-    toast(useAI ? "AI 解析中…" : "本地解析中…");
     try {
-      if (useAI) {
-        result = await NurseAI.parse({ transcript, images: capture.images, settings: s });
+      if (s.ai.enabled && s.ai.apiKey) {
+        result = await NurseAI.parse({ transcript, images, settings: s });
       } else {
         result = NurseEngine.parse(transcript || "（仅图片，无文字）");
         if (!transcript) {
-          // 仅图片无文字时，规则引擎无意义，给出空结构
           result = {
             engine: "rule",
             diseases: [],
@@ -592,120 +792,544 @@
         }
       }
     } catch (err) {
-      toast("解析失败：" + err.message);
+      await NurseStorage.updateRecord(id, { status: "failed", result: null });
+      DATA = await NurseStorage.load();
+      renderRecords();
+      renderHome();
+      toast("解析失败：" + (err && err.message ? err.message : err));
       return;
     }
-    capture.parsed = result;
-    capture.editMeds = (result.medications || []).map((m) => Object.assign({}, m));
-    capture.editTasks = (result.tasks || []).map((t) => Object.assign({}, t));
-    renderEditResult();
-    $("#cap-result").hidden = false;
-    if (result.warning) toast(result.warning, 4200);
-    else toast("解析完成，可手动调整后保存");
-  }
-
-  function renderEditResult() {
-    const medBox = $("#edit-meds");
-    medBox.innerHTML = capture.editMeds.length
-      ? `<table class="edit-table">
-          <thead><tr><th>药名</th><th>剂量</th><th>频次</th><th>时间</th><th>说明</th><th></th></tr></thead>
-          <tbody>${capture.editMeds
-            .map(
-              (m, i) => `<tr class="edit-row" data-i="${i}">
-                <td><input data-f="name" value="${esc(m.name)}" placeholder="药名" /></td>
-                <td><input data-f="dose" value="${esc(m.dose)}" placeholder="剂量" /></td>
-                <td><input data-f="freq" value="${esc(m.freq)}" placeholder="频次" /></td>
-                <td><input data-f="time" value="${esc(m.time)}" placeholder="时间" /></td>
-                <td><input data-f="note" value="${esc(m.note)}" placeholder="说明" /></td>
-                <td class="edit-row__act"><span class="edit-row__del" data-del-med="${i}">删除</span></td>
-              </tr>`
-            )
-            .join("")}</tbody>
-        </table>`
-      : '<div class="empty-tip">暂无用药，点「＋ 添加」增加。</div>';
-
-    const taskBox = $("#edit-tasks");
-    taskBox.innerHTML = capture.editTasks.length
-      ? `<table class="edit-table">
-          <thead><tr><th>待办标题</th><th>说明</th><th></th></tr></thead>
-          <tbody>${capture.editTasks
-            .map(
-              (t, i) => `<tr class="edit-row" data-i="${i}">
-                <td><input data-f="title" value="${esc(t.title)}" placeholder="待办标题" /></td>
-                <td><input data-f="detail" value="${esc(t.detail)}" placeholder="说明" /></td>
-                <td class="edit-row__act"><span class="edit-row__del" data-del-task="${i}">删除</span></td>
-              </tr>`
-            )
-            .join("")}</tbody>
-        </table>`
-      : '<div class="empty-tip">暂无待办，点「＋ 添加」增加。</div>';
-    bindEditInputs();
-  }
-  function bindEditInputs() {
-    $$("#edit-meds .edit-row").forEach((row) => {
-      const i = +row.dataset.i;
-      $$("input", row).forEach((inp) => {
-        inp.oninput = () => (capture.editMeds[i][inp.dataset.f] = inp.value);
-      });
-      const del = row.querySelector("[data-del-med]");
-      if (del) del.onclick = () => {
-        capture.editMeds.splice(i, 1);
-        renderEditResult();
-      };
-    });
-    $$("#edit-tasks .edit-row").forEach((row) => {
-      const i = +row.dataset.i;
-      $$("input", row).forEach((inp) => {
-        inp.oninput = () => (capture.editTasks[i][inp.dataset.f] = inp.value);
-      });
-      const del = row.querySelector("[data-del-task]");
-      if (del) del.onclick = () => {
-        capture.editTasks.splice(i, 1);
-        renderEditResult();
-      };
-    });
-  }
-
-  function addMed() {
-    capture.editMeds.push({ name: "", dose: "", freq: "", time: "", note: "", disease: "" });
-    renderEditResult();
-  }
-  function addTask() {
-    capture.editTasks.push({ type: "life", title: "", detail: "", freq: "", due: "" });
-    renderEditResult();
-  }
-
-  // 保存：仅归档 / 解析后保存
-  async function saveCapture(onlyArchive) {
-    const transcript = $("#cap-text").value.trim();
-    if (!onlyArchive && capture.parsed) {
-      // 用编辑后的 meds/tasks 覆盖
-      capture.parsed.medications = capture.editMeds.filter((m) => m.name && m.name.trim());
-      capture.parsed.tasks = capture.editTasks.filter((t) => t.title && t.title.trim());
-      // 重新计算提醒时间表
-      try {
-        capture.parsed.reminders = NurseEngine.schedule_reminders(capture.parsed.medications);
-      } catch (e) {
-        capture.parsed.reminders = [];
-      }
+    await NurseStorage.updateRecord(id, { status: "done", result: result });
+    let added = 0;
+    if (result && result.medications && result.medications.length) {
+      const diseases = result.diseases || [];
+      added = await syncMedsToCabinet(result.medications, diseases);
     }
-    if (onlyArchive && !transcript && !capture.images.length) {
+    DATA = await NurseStorage.load();
+    renderRecords();
+    renderHome();
+    if (added > 0) toast(`解析完成，并同步 ${added} 种药品到药箱`);
+    else toast("解析完成，已自动归档");
+  }
+
+  // 仅归档（不解析）：保存纯文本/图片记录，status=done、result=null
+  async function saveCapture() {
+    const transcript = $("#cap-text").value.trim();
+    if (!transcript && !capture.images.length) {
       toast("没有可归档的内容");
       return;
     }
-    const rec = {
+    await NurseStorage.appendRecord({
       source: capture.mode === "upload" ? "upload" : transcript ? "recording" : "upload",
       transcript: transcript,
       images: capture.images,
-      result: onlyArchive ? null : capture.parsed,
-      manual: onlyArchive,
-    };
-    await NurseStorage.appendRecord(rec);
+      result: null,
+      manual: true,
+      status: "done",
+    });
     DATA = await NurseStorage.load();
     closeModal();
-    renderHome();
     renderRecords();
-    toast(onlyArchive ? "已归档" : "已保存问诊");
+    renderHome();
+    toast("已归档");
+  }
+
+  // 每日药箱自动扣减：按 dailyDose 减少余量，每天最多执行一次
+  async function runDailyDecrement() {
+    const today = dateKey(new Date());
+    const data = await NurseStorage.load();
+    if (data.lastDecrement === today) {
+      DATA.lastDecrement = today;
+      return;
+    }
+    let changed = false;
+    for (const it of data.cabinet) {
+      if (it.status !== "active") continue;
+      if (it.dailyDose > 0 && it.qty > 0) {
+        it.qty = Math.max(0, Math.round((it.qty - it.dailyDose) * 100) / 100);
+        if (it.qty <= 0) it.status = "out";
+        changed = true;
+      }
+    }
+    if (changed) {
+      data.lastDecrement = today;
+      await NurseStorage.save(data);
+      DATA = data;
+    } else {
+      await NurseStorage.setLastDecrement(today);
+      DATA.lastDecrement = today;
+    }
+  }
+
+  // ===================== 我的药箱 =====================
+  function statusLabel(s) {
+    return s === "active" ? "使用中" : s === "disabled" ? "停用" : s === "out" ? "缺药" : "使用中";
+  }
+
+  function buildCabinetMeta(name, disease) {
+    const intro = `【${name}】请按医生医嘱规律服用，不要自行增减剂量、停药或更换药品。若出现皮疹、胃肠不适、头晕等异常反应，请及时就诊。`;
+    const kb = disease && NurseEngine.DISEASE_KB && NurseEngine.DISEASE_KB[disease];
+    let precautions = [];
+    let advice = "";
+    if (kb) {
+      precautions = (kb.taboo || []).slice(0, 3);
+      advice = `您本次关联的病种为「${disease}」。${kb.diet && kb.diet[0] ? kb.diet[0] + "；" : ""}服药期间请遵医嘱复查，记录血压/血糖等指标变化，若出现不适及时就诊。`;
+    }
+    if (!precautions.length) {
+      precautions = ["遵医嘱用药，不自行调整剂量", "用药期间注意监测身体反应", "定期复诊并携带当前用药清单"];
+    }
+    if (!advice) {
+      advice = "请按医嘱规律服药，定期复诊，带上当前所有药品清单供医生核对。";
+    }
+    return { intro, precautions, advice };
+  }
+
+  async function syncMedsToCabinet(meds, diseases) {
+    DATA = await NurseStorage.load();
+    let added = 0;
+    for (const m of meds) {
+      if (!m.name || !m.name.trim()) continue;
+      const exists = (DATA.cabinet || []).find((c) => c.name === m.name.trim());
+      if (exists) continue;
+      const disease = m.disease || (diseases && diseases[0]) || "";
+      const meta = buildCabinetMeta(m.name, disease);
+      await NurseStorage.upsertCabinetItem({
+        name: m.name,
+        spec: m.dose || "",
+        qty: 0,
+        unit: "片",
+        dailyDose: 1,
+        threshold: 7,
+        status: "active",
+        intro: meta.intro,
+        precautions: meta.precautions,
+        advice: meta.advice,
+        note: m.note || "",
+      });
+      added++;
+    }
+    return added;
+  }
+
+  async function syncRecordMedsToCabinet(rec) {
+    if (!rec || !rec.result || !rec.result.medications) return;
+    const added = await syncMedsToCabinet(rec.result.medications, rec.result.diseases || []);
+    DATA = await NurseStorage.load();
+    toast(added > 0 ? `已同步 ${added} 种药品到药箱` : "药箱中已有这些药品");
+    closeModal();
+    goPage("cabinet");
+  }
+
+  function renderCabinet() {
+    const listBox = $("#cabinet-list");
+    const empty = $("#cabinet-empty");
+    const items = DATA.cabinet || [];
+
+    // 统计
+    const counts = { active: 0, disabled: 0, out: 0 };
+    items.forEach((it) => {
+      if (counts[it.status] !== undefined) counts[it.status]++;
+    });
+    $("#cab-active-count").textContent = counts.active;
+    $("#cab-disabled-count").textContent = counts.disabled;
+    $("#cab-out-count").textContent = counts.out;
+
+    // 过滤
+    const filtered = cabinetState.filter === "all" ? items : items.filter((it) => it.status === cabinetState.filter);
+
+    if (!filtered.length) {
+      listBox.innerHTML = "";
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    listBox.innerHTML = filtered
+      .map((it) => {
+        const ratio = it.dailyDose > 0 ? Math.min(1, Math.max(0, it.qty / Math.max(it.threshold * 2, it.dailyDose * 14))) : it.qty > 0 ? 1 : 0;
+        const fillClass = it.qty <= 0 ? "empty" : it.qty <= it.threshold ? "low" : "";
+        const hint = it.qty <= 0 ? `<div class="cab-item__hint">⚠️ 已缺药，请及时补充</div>` : it.qty <= it.threshold ? `<div class="cab-item__hint">⚠️ 库存不足，建议补药</div>` : "";
+        return `<div class="cab-item ${esc(it.status)}" data-cab-id="${esc(it.id)}">
+          <div class="cab-item__top">
+            <div>
+              <div class="cab-item__name">${esc(it.name)}</div>
+              ${it.spec ? `<div class="cab-item__spec">${esc(it.spec)}</div>` : ""}
+            </div>
+            <span class="cab-status ${esc(it.status)}">${statusLabel(it.status)}</span>
+          </div>
+          <div class="cab-item__stock">
+            <span>余量</span>
+            <div class="cab-stock__bar"><div class="cab-stock__fill ${fillClass}" style="width:${Math.round(ratio * 100)}%"></div></div>
+            <span><b>${it.qty}</b> ${esc(it.unit)}</span>
+          </div>
+          ${hint}
+        </div>`;
+      })
+      .join("");
+  }
+
+  function openCabinetDetail(id) {
+    const it = (DATA.cabinet || []).find((c) => c.id === id);
+    if (!it) return;
+    $("#cab-modal-title").textContent = "药品详情";
+    const body = $("#cab-body");
+    body.innerHTML = `
+      <div class="cab-detail__head">
+        <div>
+          <div class="cab-detail__title">${esc(it.name)}</div>
+          ${it.spec ? `<div class="cab-detail__spec">${esc(it.spec)}</div>` : ""}
+        </div>
+        <span class="cab-status ${esc(it.status)}">${statusLabel(it.status)}</span>
+      </div>
+
+      ${it.disease ? `<div class="cab-detail__sec"><h4>🩺 针对病症</h4><p>${esc(it.disease)}</p></div>` : ""}
+
+      <div class="cab-detail__sec">
+        <h4>📦 库存</h4>
+        <p>剩余 <b>${it.qty}</b> ${esc(it.unit)}，每日消耗 ${it.dailyDose} ${esc(it.unit)}，低于 ${it.threshold} ${esc(it.unit)} 时提醒补药。</p>
+      </div>
+
+      <div class="cab-detail__sec">
+        <h4>📖 药品介绍</h4>
+        <p>${it.intro ? esc(it.intro) : '<span class="cab-detail__empty">暂无介绍</span>'}</p>
+      </div>
+
+      <div class="cab-detail__sec">
+        <h4>⚠️ 注意事项</h4>
+        ${it.precautions && it.precautions.length ? `<ul>${it.precautions.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : '<p class="cab-detail__empty">暂无注意事项</p>'}
+      </div>
+
+      <div class="cab-detail__sec">
+        <h4>💡 针对个人用药建议</h4>
+        <p>${it.advice ? esc(it.advice) : '<span class="cab-detail__empty">暂无建议</span>'}</p>
+      </div>
+
+      ${it.note ? `<div class="cab-detail__sec"><h4>📝 备注</h4><p>${esc(it.note)}</p></div>` : ""}
+
+      <div class="cab-detail__actions">
+        <button class="btn btn-primary" id="cab-edit-btn">编辑</button>
+        <button class="btn btn-ghost" id="cab-status-btn">${it.status === "active" ? "停用" : "启用"}</button>
+      </div>
+      <button class="btn btn-primary block" id="cab-del-btn" style="background:var(--danger);margin-top:10px">删除药品</button>
+    `;
+    $("#cab-modal").hidden = false;
+    $("#cab-edit-btn").onclick = () => openCabinetEdit(id);
+    $("#cab-status-btn").onclick = () => toggleCabinetStatus(id);
+    $("#cab-del-btn").onclick = () => deleteCabinetItem(id);
+  }
+
+  function openCabinetEdit(id) {
+    const isNew = !id;
+    const it = isNew ? { name: "", spec: "", qty: 0, unit: "片", dailyDose: 1, threshold: 7, status: "active", intro: "", precautions: [], advice: "", note: "" } : (DATA.cabinet || []).find((c) => c.id === id) || {};
+    cabinetState.editing = isNew ? null : id;
+    $("#cab-modal-title").textContent = isNew ? "添加药品" : "编辑药品";
+    $("#cab-body").innerHTML = renderCabinetForm(it, isNew);
+    $("#cab-modal").hidden = false;
+    bindCabinetForm();
+  }
+
+  function renderCabinetForm(it, isNew) {
+    const precautions = (it.precautions || []).map((p, i) => `<span class="cab-edit__tag">${esc(p)} <button type="button" data-rm-prec="${i}">✕</button></span>`).join("");
+    return `
+      <div class="cab-edit__field">
+        <span>药品名称 *</span>
+        <input type="text" id="cab-f-name" value="${esc(it.name)}" placeholder="如：苯磺酸氨氯地平片" />
+      </div>
+      <div class="cab-edit__row">
+        <div class="cab-edit__field">
+          <span>规格</span>
+          <input type="text" id="cab-f-spec" value="${esc(it.spec)}" placeholder="如 5mg/片" />
+        </div>
+        <div class="cab-edit__field">
+          <span>单位</span>
+          <input type="text" id="cab-f-unit" value="${esc(it.unit || "片")}" placeholder="片/粒/支" />
+        </div>
+      </div>
+      <div class="cab-edit__row">
+        <div class="cab-edit__field">
+          <span>当前余量</span>
+          <input type="number" id="cab-f-qty" value="${Number(it.qty) || 0}" min="0" />
+        </div>
+        <div class="cab-edit__field">
+          <span>每日消耗</span>
+          <input type="number" id="cab-f-daily" value="${Number(it.dailyDose) || 0}" min="0" step="0.5" />
+        </div>
+        <div class="cab-edit__field">
+          <span>库存阈值</span>
+          <input type="number" id="cab-f-threshold" value="${Number(it.threshold) || 0}" min="0" />
+        </div>
+      </div>
+      <div class="cab-edit__field">
+        <span>状态</span>
+        <select id="cab-f-status">
+          <option value="active" ${it.status === "active" ? "selected" : ""}>使用中</option>
+          <option value="disabled" ${it.status === "disabled" ? "selected" : ""}>停用</option>
+          <option value="out" ${it.status === "out" ? "selected" : ""}>缺药</option>
+        </select>
+      </div>
+      <div class="cab-edit__field">
+        <span>针对病症</span>
+        <input type="text" id="cab-f-disease" value="${esc(it.disease)}" placeholder="如：高血压、糖尿病（逗号分隔）" />
+      </div>
+      <div class="cab-edit__field">
+        <span>药品介绍</span>
+        <textarea id="cab-f-intro" placeholder="简单介绍该药品作用">${esc(it.intro)}</textarea>
+      </div>
+      <div class="cab-edit__field">
+        <span>注意事项</span>
+        <div class="cab-edit__tags" id="cab-f-prec-tags">${precautions}</div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input type="text" id="cab-f-prec-input" placeholder="输入后点击添加" style="flex:1" />
+          <button type="button" class="btn btn-ghost" id="cab-f-prec-add">添加</button>
+        </div>
+      </div>
+      <div class="cab-edit__field">
+        <span>针对个人用药建议</span>
+        <textarea id="cab-f-advice" placeholder="结合个人病情给出用药建议">${esc(it.advice)}</textarea>
+      </div>
+      <div class="cab-edit__field">
+        <span>备注</span>
+        <input type="text" id="cab-f-note" value="${esc(it.note)}" placeholder="其他备注" />
+      </div>
+      <button class="btn btn-primary block" id="cab-f-save">${isNew ? "添加" : "保存"}</button>
+    `;
+  }
+
+  let formPrecautions = [];
+  function bindCabinetForm() {
+    formPrecautions = [];
+    // 从现有标签收集
+    $$("#cab-f-prec-tags .cab-edit__tag").forEach((tag) => {
+      const txt = tag.textContent.replace(/✕\s*$/, "").trim();
+      if (txt) formPrecautions.push(txt);
+    });
+
+    const renderTags = () => {
+      $("#cab-f-prec-tags").innerHTML = formPrecautions
+        .map((p, i) => `<span class="cab-edit__tag">${esc(p)} <button type="button" data-rm-prec="${i}">✕</button></span>`)
+        .join("");
+      $$("#cab-f-prec-tags [data-rm-prec]").forEach((b) => {
+        b.onclick = () => {
+          formPrecautions.splice(+b.dataset.rmPrec, 1);
+          renderTags();
+        };
+      });
+    };
+    renderTags();
+
+    $("#cab-f-prec-add").onclick = () => {
+      const input = $("#cab-f-prec-input");
+      const val = input.value.trim();
+      if (!val) return;
+      formPrecautions.push(val);
+      input.value = "";
+      renderTags();
+    };
+
+    $("#cab-f-save").onclick = saveCabinetItem;
+  }
+
+  async function saveCabinetItem() {
+    const name = $("#cab-f-name").value.trim();
+    if (!name) {
+      toast("请填写药品名称");
+      return;
+    }
+    const item = {
+      id: cabinetState.editing,
+      name,
+      spec: $("#cab-f-spec").value.trim(),
+      qty: Number($("#cab-f-qty").value) || 0,
+      unit: $("#cab-f-unit").value.trim() || "片",
+      dailyDose: Number($("#cab-f-daily").value) || 0,
+      threshold: Number($("#cab-f-threshold").value) || 0,
+      status: $("#cab-f-status").value,
+      disease: $("#cab-f-disease").value.trim(),
+      intro: $("#cab-f-intro").value.trim(),
+      precautions: formPrecautions,
+      advice: $("#cab-f-advice").value.trim(),
+      note: $("#cab-f-note").value.trim(),
+    };
+    await NurseStorage.upsertCabinetItem(item);
+    DATA = await NurseStorage.load();
+    closeModal();
+    renderCabinet();
+    toast(cabinetState.editing ? "已保存" : "已添加");
+  }
+
+  async function toggleCabinetStatus(id) {
+    const it = (DATA.cabinet || []).find((c) => c.id === id);
+    if (!it) return;
+    const next = it.status === "active" ? "disabled" : "active";
+    await NurseStorage.updateCabinetItem(id, { status: next });
+    DATA = await NurseStorage.load();
+    openCabinetDetail(id);
+    renderCabinet();
+    toast(next === "active" ? "已启用" : "已停用");
+  }
+
+  async function deleteCabinetItem(id) {
+    if (!confirm("确定从药箱删除这条药品？")) return;
+    await NurseStorage.deleteCabinetItem(id);
+    DATA = await NurseStorage.load();
+    closeModal();
+    renderCabinet();
+    toast("已删除");
+  }
+
+  // ===================== 首页「提醒 / 待办」页签 =====================
+  function applyHomeTab() {
+    $$(".home-tab").forEach((b) => b.classList.toggle("is-active", b.dataset.htab === homeTab));
+    const remind = $("#htab-remind");
+    const todo = $("#htab-todo");
+    if (remind) remind.hidden = homeTab !== "remind";
+    if (todo) todo.hidden = homeTab !== "todo";
+  }
+  function switchHomeTab(tab) {
+    homeTab = tab;
+    applyHomeTab();
+  }
+
+  // 首页「个人提醒」列表（来自 settings.reminders）
+  function renderPersonalReminders() {
+    const box = $("#home-reminders");
+    if (!box) return;
+    const rems = (DATA.settings.reminders || []).filter((r) => r.enabled && r.date);
+    if (!rems.length) {
+      box.innerHTML = '<div class="empty-tip">还没有个人提醒。去「我的 → 提醒设置」添加就诊、复诊、复查等。</div>';
+      const c = $("#home-reminders-count");
+      if (c) c.textContent = "";
+      return;
+    }
+    const today = new Date(TODAY + "T00:00:00");
+    box.innerHTML = rems
+      .map((r) => {
+        const d = new Date(r.date + "T00:00:00");
+        const diff = Math.round((d - today) / (24 * 3600 * 1000));
+        const left = diff < 0 ? `已逾期 ${Math.abs(diff)} 天` : diff === 0 ? "就是今天" : `还有 ${diff} 天`;
+        return `<div class="reminder-item">
+          <div class="reminder-item__icon">${r.type === "visit" ? "🏥" : "📌"}</div>
+          <div class="reminder-item__main">
+            <div class="reminder-item__title">${esc(r.title)}</div>
+            <div class="reminder-item__meta">${esc(r.date)}${r.time ? " " + esc(r.time) : ""} · 提前 ${r.advanceDays} 天提醒</div>
+          </div>
+          <div class="reminder-item__left">${left}</div>
+        </div>`;
+      })
+      .join("");
+    const c = $("#home-reminders-count");
+    if (c) c.textContent = rems.length + " 项";
+  }
+
+  // ===================== 个人提醒管理（我的 → 提醒设置） =====================
+  function renderRemindersList() {
+    const box = $("#reminders-list");
+    if (!box) return;
+    const rems = DATA.settings.reminders || [];
+    const sub = $("#reminders-sub");
+    if (sub) sub.textContent = rems.length ? rems.length + " 个" : "";
+    if (!rems.length) {
+      box.innerHTML = '<div class="empty-tip">还没有个人提醒。点「＋ 新增」添加就诊、复诊、复查等。</div>';
+      return;
+    }
+    box.innerHTML = rems
+      .map((r) => {
+        const icon = r.type === "visit" ? "🏥" : "📌";
+        return `<div class="reminder-row ${r.enabled ? "" : "is-off"}" data-rem-id="${esc(r.id)}">
+          <div class="reminder-row__main">
+            <div class="reminder-row__title">${icon} ${esc(r.title)}</div>
+            <div class="reminder-row__meta">${esc(r.date)}${r.time ? " " + esc(r.time) : ""} · 提前 ${r.advanceDays} 天${r.enabled ? "" : " · 已停用"}</div>
+          </div>
+          <div class="reminder-row__ops">
+            <button class="icon-btn" data-rem-edit="${esc(r.id)}" title="编辑">✎</button>
+            <button class="icon-btn icon-btn--danger" data-rem-del="${esc(r.id)}" title="删除">🗑</button>
+          </div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  let editingReminderId = null;
+  function openReminderModal(id) {
+    editingReminderId = id || null;
+    const r = id ? (DATA.settings.reminders || []).find((x) => x.id === id) : null;
+    $("#reminder-modal-title").textContent = id ? "编辑提醒" : "新增提醒";
+    $("#rem-title").value = r ? r.title : "";
+    $("#rem-type").value = r ? r.type : "custom";
+    $("#rem-date").value = r ? r.date : "";
+    $("#rem-time").value = r ? r.time : "";
+    $("#rem-advance").value = r ? r.advanceDays : 3;
+    $("#rem-enabled").checked = r ? r.enabled !== false : true;
+    $("#reminder-modal").hidden = false;
+  }
+  async function saveReminder() {
+    const title = $("#rem-title").value.trim();
+    if (!title) {
+      toast("请填写提醒名称");
+      return;
+    }
+    const data = await NurseStorage.load();
+    const rems = data.settings.reminders || [];
+    const payload = {
+      title,
+      type: $("#rem-type").value,
+      date: $("#rem-date").value,
+      time: $("#rem-time").value,
+      advanceDays: Number($("#rem-advance").value) || 0,
+      enabled: $("#rem-enabled").checked,
+    };
+    if (editingReminderId) {
+      const idx = rems.findIndex((x) => x.id === editingReminderId);
+      if (idx >= 0) rems[idx] = Object.assign({}, rems[idx], payload);
+    } else {
+      rems.unshift(
+        Object.assign({ id: "rem_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) }, payload)
+      );
+    }
+    await NurseStorage.updateSettings({ reminders: rems });
+    DATA = await NurseStorage.load();
+    $("#reminder-modal").hidden = true;
+    renderRemindersList();
+    renderHome();
+    toast("已保存提醒");
+  }
+  async function deleteReminder(id) {
+    if (!confirm("确定删除这条提醒？")) return;
+    const data = await NurseStorage.load();
+    data.settings.reminders = (data.settings.reminders || []).filter((x) => x.id !== id);
+    await NurseStorage.save(data);
+    DATA = await NurseStorage.load();
+    renderRemindersList();
+    renderHome();
+    toast("已删除");
+  }
+
+  // ===================== AI 设置：折叠 / 展开 =====================
+  function renderAISummary() {
+    const s = DATA.settings;
+    const txt = $("#ai-summary-text");
+    if (!txt) return;
+    if (s.ai.enabled) {
+      txt.textContent = "已开启 · " + (s.ai.model || "gpt-4o");
+      txt.classList.add("on");
+    } else {
+      txt.textContent = "未开启（使用本地引擎）";
+      txt.classList.remove("on");
+    }
+  }
+  function openAIEdit() {
+    $("#ai-summary").hidden = true;
+    $("#ai-edit").hidden = false;
+    $("#ai-enabled").checked = !!DATA.settings.ai.enabled;
+    $("#ai-baseurl").value = DATA.settings.ai.baseUrl || "https://api.openai.com/v1";
+    $("#ai-model").value = DATA.settings.ai.model || "gpt-4o";
+    $("#ai-key").value = DATA.settings.ai.apiKey || "";
+    $("#ai-fields").hidden = !DATA.settings.ai.enabled;
+  }
+  function closeAIEdit() {
+    $("#ai-edit").hidden = true;
+    $("#ai-summary").hidden = false;
+    renderAISummary();
   }
 
   // ===================== 设置 =====================
@@ -721,6 +1345,15 @@
     DATA = await NurseStorage.load();
     $("#ai-fields").hidden = !DATA.settings.ai.enabled;
     toast("AI 设置已保存");
+  }
+
+  async function saveReminderSettings() {
+    await NurseStorage.updateSettings({
+      medReminderMinutes: Number($("#opt-med-min").value) || 0,
+    });
+    DATA = await NurseStorage.load();
+    renderHome();
+    toast("提醒设置已保存");
   }
 
   async function toggleNotify() {
@@ -748,6 +1381,22 @@
 
   async function exportData() {
     const json = await NurseStorage.exportJSON();
+    // iOS：优先走系统原生分享（可直接存到「文件」/iCloud/微信，避免卸载丢失）
+    if (navigator.share) {
+      try {
+        const file = new File([json], "nurse-data-" + TODAY + ".json", { type: "application/json" });
+        await navigator.share({
+          title: "私人护士 · 健康档案备份",
+          text: "点「存储到文件」即可保存到 iCloud/本机，避免卸载丢失历史记录。",
+          files: [file],
+        });
+        toast("已调起分享，请选择「存储到文件」");
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return; // 用户取消，不提示
+        // 不支持文件分享时回退到下载
+      }
+    }
     const blob = new Blob([json], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -764,6 +1413,7 @@
       applySettingsUI();
       renderHome();
       renderRecords();
+      renderCabinet();
       toast("已导入并恢复");
     } catch (e) {
       toast("导入失败：文件格式不正确");
@@ -779,18 +1429,14 @@
     $$("[data-close]").forEach((el) => (el.onclick = closeModal));
 
     $("#cap-add-image").onclick = pickNativeImages;
-    // 保留原生 file input 作为兜底（部分环境可触发系统选图器）
     $("#cap-images").onchange = (e) => {
       if (e.target.files && e.target.files.length) addImages(e.target.files);
       e.target.value = "";
     };
-    $("#cap-parse").onclick = doParse;
-    $("#cap-save-only").onclick = () => saveCapture(true);
-    $("#cap-confirm").onclick = () => saveCapture(false);
-    $("#add-med").onclick = addMed;
-    $("#add-task").onclick = addTask;
+    $("#cap-parse").onclick = startParse;
+    $("#cap-save-only").onclick = () => saveCapture();
 
-    // 首页勾选（事件委托）
+    // 首页勾选
     $("#home-meds").onclick = (e) => {
       const card = e.target.closest(".med");
       if (card) toggleMed(card.dataset.medId, card.dataset.time);
@@ -806,11 +1452,45 @@
       if (card) openDetail(card.dataset.recId);
     };
 
+    // 药箱
+    $$(".cab-filter").forEach((b) => {
+      b.onclick = () => {
+        cabinetState.filter = b.dataset.filter;
+        $$(".cab-filter").forEach((x) => x.classList.toggle("is-active", x === b));
+        renderCabinet();
+      };
+    });
+    $("#btn-add-cab").onclick = () => openCabinetEdit(null);
+    $("#cabinet-list").onclick = (e) => {
+      const card = e.target.closest(".cab-item");
+      if (card) openCabinetDetail(card.dataset.cabId);
+    };
+
     // 设置
     $("#ai-enabled").onchange = saveAISettings;
     ["#ai-baseurl", "#ai-model", "#ai-key"].forEach((s) => ($(s).onchange = saveAISettings));
     $("#opt-notify").onchange = toggleNotify;
     $("#opt-large").onchange = toggleLarge;
+    ["#opt-med-min"].forEach((s) => ($(s).onchange = saveReminderSettings));
+
+    // 首页「提醒 / 待办」页签切换
+    $$(".home-tab").forEach((b) => (b.onclick = () => switchHomeTab(b.dataset.htab)));
+    // AI 设置折叠 / 展开
+    $("#ai-edit-btn").onclick = openAIEdit;
+    $("#ai-done-btn").onclick = () => {
+      saveAISettings();
+      closeAIEdit();
+    };
+    // 个人提醒：新增 / 编辑 / 删除
+    $("#btn-add-reminder").onclick = () => openReminderModal(null);
+    $("#reminders-list").onclick = (e) => {
+      const ed = e.target.closest("[data-rem-edit]");
+      const del = e.target.closest("[data-rem-del]");
+      if (ed) openReminderModal(ed.dataset.remEdit);
+      else if (del) deleteReminder(del.dataset.remDel);
+    };
+    $("#rem-save").onclick = saveReminder;
+    $("#rem-cancel").onclick = () => ($("#reminder-modal").hidden = true);
     $("#btn-export").onclick = exportData;
     $("#btn-import").onclick = () => $("#import-file").click();
     $("#import-file").onchange = (e) => {
@@ -820,10 +1500,13 @@
   }
 
   // 启动
-  const boot = () => init().then(setupMic).catch((e) => {
-    toast("初始化失败：" + (e && e.message || e));
-    console.error("[nurse] init failed:", e);
-  });
+  const boot = () =>
+    init()
+      .then(setupMic)
+      .catch((e) => {
+        toast("初始化失败：" + ((e && e.message) || e));
+        console.error("[nurse] init failed:", e);
+      });
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else {

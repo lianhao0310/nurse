@@ -79,13 +79,17 @@
     return {
       version: VERSION,
       updatedAt: null,
+      lastDecrement: null, // 上次药箱每日扣减日期（yyyy-mm-dd）
       settings: {
         ai: { enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" },
         notifications: false,
         largeFont: false,
         dailyDone: {},
+        reminders: [], // 通用个人提醒列表（含「下次就诊」等）
+        medReminderMinutes: 10, // 用药提醒提前 N 分钟
       },
       records: [],
+      cabinet: [], // 我的药箱：用户手头现有药品
     };
   }
 
@@ -102,7 +106,36 @@
       notifications: !!s.notifications,
       largeFont: !!s.largeFont,
       dailyDone: s.dailyDone && typeof s.dailyDone === "object" ? s.dailyDone : {},
+      reminders: _normReminders(s.reminders, s),
+      medReminderMinutes: Number(s.medReminderMinutes) >= 0 ? Number(s.medReminderMinutes) : 10,
     };
+  }
+
+  // 通用个人提醒：优先用 reminders 数组；旧数据用 nextVisit 迁移为一条「下次就诊」
+  function _normReminder(r) {
+    if (!r || typeof r !== "object") return null;
+    if (!r.title || !String(r.title).trim()) return null;
+    return {
+      id: r.id || _uid("rem_"),
+      title: String(r.title).trim(),
+      type: r.type || "custom", // visit | custom（控制图标）
+      date: r.date || "", // YYYY-MM-DD
+      time: r.time || "", // HH:MM（可选）
+      advanceDays: Number(r.advanceDays) >= 0 ? Number(r.advanceDays) : 3,
+      enabled: r.enabled !== false,
+      note: r.note || "",
+    };
+  }
+  function _normReminders(arr, s) {
+    if (Array.isArray(arr)) {
+      const list = arr.map(_normReminder).filter(Boolean);
+      if (list.length) return list;
+    }
+    // 旧数据迁移：若设置了 nextVisit，转成一条就诊提醒
+    if (s && s.nextVisit) {
+      return [_normReminder({ title: "下次就诊", type: "visit", date: s.nextVisit, advanceDays: Number(s.visitReminderDays) || 3 })];
+    }
+    return [];
   }
 
   // 浅+一层对象合并（用于 updateSettings 的嵌套 ai）
@@ -135,8 +168,32 @@
         : [],
       result: r.result || null,
       manual: !!r.manual,
+      // 解析状态：parsing（解析中）/ done（已归档）/ failed（解析失败）；旧数据无 status 默认 done
+      status: r.status || "done",
     };
     return _withIds(rec);
+  }
+
+  // 药箱条目归一化（名称必填，其余带默认）
+  function _cabItem(it) {
+    if (!it || typeof it !== "object") return null;
+    if (!it.name || !String(it.name).trim()) return null;
+    const status = ["active", "disabled", "out"].includes(it.status) ? it.status : "active";
+    return {
+      id: it.id || _uid("cab_"),
+      name: String(it.name).trim(),
+      spec: it.spec || "",
+      qty: Number(it.qty) || 0,
+      unit: it.unit || "片",
+      dailyDose: Number(it.dailyDose) || 0, // 每天消耗量（用于每日自动扣减）
+      threshold: Number(it.threshold) || 0, // 剩余 ≤ 阈值时告警
+      status: status, // active 使用中 / disabled 停用 / out 缺药
+      disease: it.disease || "", // 针对病症（可多个，逗号分隔）
+      intro: it.intro || "", // 药品介绍
+      precautions: Array.isArray(it.precautions) ? it.precautions.filter(Boolean) : [], // 注意事项
+      advice: it.advice || "", // 针对个人用药建议
+      note: it.note || "",
+    };
   }
 
   function _normalize(obj) {
@@ -144,8 +201,12 @@
     if (obj && typeof obj === "object") {
       data.settings = _normSettings(obj.settings);
       data.updatedAt = obj.updatedAt || null;
+      data.lastDecrement = obj.lastDecrement || null;
       if (Array.isArray(obj.records)) {
         data.records = obj.records.map(_recNormalize).filter(Boolean);
+      }
+      if (Array.isArray(obj.cabinet)) {
+        data.cabinet = obj.cabinet.map(_cabItem).filter(Boolean);
       }
     }
     return data;
@@ -196,6 +257,7 @@
       images: record.images || [],
       result: record.result || null,
       manual: !!record.manual,
+      status: record.status || "done", // 保留解析状态：parsing / done / failed
     });
     data.records.unshift(rec); // 最新在前
     await save(data);
@@ -223,6 +285,46 @@
   async function deleteRecord(id) {
     const data = await load();
     data.records = data.records.filter((r) => r.id !== id);
+    await save(data);
+  }
+
+  // ---------------- 我的药箱（手头现有药品） ----------------
+  async function getCabinet() {
+    return (await load()).cabinet;
+  }
+  // 新增或更新一条药箱条目（item 含 id 则按 id 更新）
+  async function upsertCabinetItem(item) {
+    const data = await load();
+    const it = _cabItem(item);
+    if (!it) return null;
+    const exist = item && item.id ? data.cabinet.find((x) => x.id === item.id) : null;
+    if (exist) {
+      Object.assign(exist, it);
+    } else {
+      data.cabinet.unshift(it);
+    }
+    await save(data);
+    return it;
+  }
+  async function updateCabinetItem(id, patch) {
+    const data = await load();
+    const it = data.cabinet.find((x) => x.id === id);
+    if (!it) return null;
+    const merged = _cabItem(Object.assign({}, it, patch));
+    if (!merged) return null;
+    Object.assign(it, merged);
+    await save(data);
+    return it;
+  }
+  async function deleteCabinetItem(id) {
+    const data = await load();
+    data.cabinet = data.cabinet.filter((x) => x.id !== id);
+    await save(data);
+  }
+  // 记录“每日扣减”已执行的日期
+  async function setLastDecrement(dateKey) {
+    const data = await load();
+    data.lastDecrement = dateKey;
     await save(data);
   }
 
@@ -285,6 +387,11 @@
     getRecord,
     updateRecord,
     deleteRecord,
+    getCabinet,
+    upsertCabinetItem,
+    updateCabinetItem,
+    deleteCabinetItem,
+    setLastDecrement,
     updateSettings,
     getDone,
     setDone,

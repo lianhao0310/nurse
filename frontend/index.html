@@ -22,70 +22,162 @@
 
       <!-- ============ 页面容器 ============ -->
       <main id="page-root">
-        <!-- 首页 -->
+        <!-- 首页：今日看板 -->
         <section class="page" id="page-home">
           <div class="home-greet">
             <div class="home-greet__hi" id="greet-text">你好</div>
             <div class="home-greet__date" id="today-date"></div>
           </div>
 
-          <section class="card-block">
-            <div class="block-head">
-              <h2>💊 今日用药提醒</h2>
-              <span class="block-sub" id="home-meds-count"></span>
+          <!-- 下次就诊提醒横幅 -->
+          <div id="home-visit-banner" class="visit-banner" hidden>
+            <span class="visit-banner__icon">🏥</span>
+            <div class="visit-banner__text">
+              <div class="visit-banner__title">下次就诊</div>
+              <div class="visit-banner__date" id="home-visit-text"></div>
             </div>
-            <div id="home-meds" class="med-list">
-              <div class="empty-tip">还没有用药提醒。点下方「录音」记录门诊，或「上传归档」处方照片。</div>
-            </div>
-          </section>
+          </div>
 
-          <section class="card-block">
-            <div class="block-head">
-              <h2>✅ 今日待办</h2>
-              <span class="block-sub" id="home-tasks-count"></span>
+          <!-- 药箱告警 / 待办提醒横幅 -->
+          <div id="home-alerts" class="alerts" hidden></div>
+
+          <div class="home-tabs" id="home-tabs">
+            <div class="home-tabs__bar">
+              <button class="home-tab is-active" data-htab="remind">提醒</button>
+              <button class="home-tab" data-htab="todo">待办</button>
             </div>
-            <div id="home-tasks" class="task-list">
-              <div class="empty-tip">暂无待办事项。</div>
+
+            <div class="home-tab__pane" id="htab-remind">
+              <section class="card-block">
+                <div class="block-head">
+                  <h2>💊 用药提醒</h2>
+                  <span class="block-sub" id="home-meds-count"></span>
+                </div>
+                <div id="home-meds" class="med-list">
+                  <div class="empty-tip">还没有用药提醒。点下方「录音问诊」记录门诊，或「上传归档」处方照片。</div>
+                </div>
+              </section>
+
+              <section class="card-block">
+                <div class="block-head">
+                  <h2>🔔 个人提醒</h2>
+                  <span class="block-sub" id="home-reminders-count"></span>
+                </div>
+                <div id="home-reminders" class="reminder-list">
+                  <div class="empty-tip">还没有个人提醒。去「我的 → 提醒设置」添加就诊、复诊、复查等。</div>
+                </div>
+              </section>
             </div>
-          </section>
+
+            <div class="home-tab__pane" id="htab-todo" hidden>
+              <section class="card-block">
+                <div class="block-head">
+                  <h2>✅ 今日待办</h2>
+                  <span class="block-sub" id="home-tasks-count"></span>
+                </div>
+                <div id="home-tasks" class="task-list">
+                  <div class="empty-tip">暂无待办事项。</div>
+                </div>
+              </section>
+            </div>
+          </div>
         </section>
 
         <!-- 问诊记录 -->
         <section class="page" id="page-records" hidden>
           <div class="page-pad">
             <div id="records-list" class="records-list"></div>
-            <div id="records-empty" class="empty-tip big">还没有问诊记录。<br />回到首页，点「录音」或「上传归档」开始。</div>
+            <div id="records-empty" class="empty-tip big" hidden>还没有问诊记录。<br />回到首页，点「录音」或「上传归档」开始。</div>
           </div>
+        </section>
+
+        <!-- 我的药箱 -->
+        <section class="page" id="page-cabinet" hidden>
+          <div class="cabinet-header card-block">
+            <div class="cabinet-summary">
+              <div class="cabinet-summary__item">
+                <span class="cabinet-summary__num" id="cab-active-count">0</span>
+                <span class="cabinet-summary__label">使用中</span>
+              </div>
+              <div class="cabinet-summary__item">
+                <span class="cabinet-summary__num" id="cab-out-count">0</span>
+                <span class="cabinet-summary__label">缺药</span>
+              </div>
+              <div class="cabinet-summary__item">
+                <span class="cabinet-summary__num" id="cab-disabled-count">0</span>
+                <span class="cabinet-summary__label">停用</span>
+              </div>
+            </div>
+            <div class="cabinet-filters">
+              <button class="cab-filter is-active" data-filter="all">全部</button>
+              <button class="cab-filter" data-filter="active">使用中</button>
+              <button class="cab-filter" data-filter="out">缺药</button>
+              <button class="cab-filter" data-filter="disabled">停用</button>
+            </div>
+          </div>
+
+          <button class="btn btn-primary block" id="btn-add-cab">＋ 添加药品</button>
+
+          <div id="cabinet-list" class="cabinet-list"></div>
+          <div id="cabinet-empty" class="empty-tip big" hidden>药箱还是空的。<br />点上方「添加药品」或从问诊记录一键入库。</div>
         </section>
 
         <!-- 我的 -->
         <section class="page" id="page-me" hidden>
           <div class="page-pad">
-            <div class="me-card">
-              <div class="me-card__title">🤖 AI 智能解析</div>
-              <p class="me-card__desc">
-                开启后，问诊文字与处方/报告照片将由大模型整理为用药、待办、生活医嘱与风险提醒。关闭则使用本地规则引擎。
-              </p>
-              <label class="switch-row">
-                <span>启用 AI 解析</span>
-                <input type="checkbox" id="ai-enabled" />
-                <span class="switch"></span>
-              </label>
-              <div id="ai-fields" class="ai-fields" hidden>
-                <label class="field">
-                  <span>接口地址 (Base URL)</span>
-                  <input type="text" id="ai-baseurl" placeholder="https://api.openai.com/v1" />
-                </label>
-                <label class="field">
-                  <span>模型 (Model)</span>
-                  <input type="text" id="ai-model" placeholder="gpt-4o" />
-                </label>
-                <label class="field">
-                  <span>API Key</span>
-                  <input type="password" id="ai-key" placeholder="sk-..." autocomplete="off" />
-                </label>
-                <p class="hint">支持 OpenAI 兼容接口（含支持图片识别的模型）。密钥仅保存在本机，不会上传至除你所填接口外的任何服务器。</p>
+            <div class="me-card me-card--collapse" id="ai-card">
+              <div class="me-card__head" id="ai-summary">
+                <div class="me-card__head-l">
+                  <div class="me-card__title">🤖 AI 智能解析</div>
+                  <div class="me-card__sub" id="ai-summary-text">未开启</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="ai-edit-btn" type="button">编辑</button>
               </div>
+              <div class="me-card__edit" id="ai-edit" hidden>
+                <p class="me-card__desc">
+                  开启后，问诊文字与处方/报告照片将由大模型整理为用药、待办、生活医嘱与风险提醒。关闭则使用本地规则引擎。
+                </p>
+                <label class="switch-row">
+                  <span>启用 AI 解析</span>
+                  <input type="checkbox" id="ai-enabled" />
+                  <span class="switch"></span>
+                </label>
+                <div id="ai-fields" class="ai-fields" hidden>
+                  <label class="field">
+                    <span>接口地址 (Base URL)</span>
+                    <input type="text" id="ai-baseurl" placeholder="https://api.openai.com/v1" />
+                  </label>
+                  <label class="field">
+                    <span>模型 (Model)</span>
+                    <input type="text" id="ai-model" placeholder="gpt-4o" />
+                  </label>
+                  <label class="field">
+                    <span>API Key</span>
+                    <input type="password" id="ai-key" placeholder="sk-..." autocomplete="off" />
+                  </label>
+                  <p class="hint">支持 OpenAI 兼容接口（含支持图片识别的模型）。密钥仅保存在本机，不会上传至除你所填接口外的任何服务器。</p>
+                </div>
+                <button class="btn btn-primary block" id="ai-done-btn" type="button">完成</button>
+              </div>
+            </div>
+
+            <div class="me-card">
+              <div class="me-card__head">
+                <div class="me-card__head-l">
+                  <div class="me-card__title">⏰ 提醒设置</div>
+                  <div class="me-card__sub" id="reminders-sub"></div>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="btn-add-reminder" type="button">＋ 新增</button>
+              </div>
+
+              <div id="reminders-list" class="reminders-list">
+                <div class="empty-tip">还没有个人提醒。点「＋ 新增」添加就诊、复诊、复查等。</div>
+              </div>
+
+              <label class="field field--inline">
+                <span>用药提醒提前（分钟）</span>
+                <input type="number" id="opt-med-min" min="0" max="120" />
+              </label>
             </div>
 
             <div class="me-card">
@@ -109,7 +201,9 @@
                 <button class="btn btn-ghost" id="btn-import">导入恢复</button>
                 <input type="file" id="import-file" accept="application/json" hidden />
               </div>
-              <p class="hint">数据仅存于本机（iOS 在"文件"App 可见）。换机请用导出/导入迁移。</p>
+              <p class="hint warn-hint">
+                ⚠️ 数据仅存于本机（iOS 在「文件」App 可见）。<b>卸载 App 会清空所有历史记录与药箱</b>，重装前请先点「导出备份」保存到「文件」/iCloud/微信。
+              </p>
             </div>
 
             <div class="me-foot">私人护士 v1.0 · 仅供健康管理参考，不替代医生诊断</div>
@@ -124,6 +218,9 @@
         </button>
         <button class="tabbar__btn" data-page="records">
           <span class="tabbar__icon">📋</span><span>问诊记录</span>
+        </button>
+        <button class="tabbar__btn" data-page="cabinet">
+          <span class="tabbar__icon">💊</span><span>我的药箱</span>
         </button>
         <button class="tabbar__btn" data-page="me">
           <span class="tabbar__icon">👤</span><span>我的</span>
@@ -166,32 +263,12 @@
             <div id="cap-preview" class="thumb-grid"></div>
           </div>
 
+          <p class="hint capture-hint">
+            点「智能解析并归档」后弹窗会自动收起，问诊记录里会先出现一条「解析中」，完成时自动归档。
+          </p>
           <div class="capture-actions">
-            <button class="btn btn-primary" id="cap-parse">智能解析并保存</button>
+            <button class="btn btn-primary" id="cap-parse">智能解析并归档</button>
             <button class="btn btn-ghost" id="cap-save-only">仅归档（不解析）</button>
-          </div>
-
-          <!-- 解析结果编辑区 -->
-          <div id="cap-result" class="cap-result" hidden>
-            <div class="cap-result__head">解析结果（可手动增删改）</div>
-
-            <div class="edit-group">
-              <div class="edit-group__head">
-                <span>💊 用药</span>
-                <button class="mini-add" id="add-med">＋ 添加</button>
-              </div>
-              <div id="edit-meds" class="edit-list"></div>
-            </div>
-
-            <div class="edit-group">
-              <div class="edit-group__head">
-                <span>✅ 待办</span>
-                <button class="mini-add" id="add-task">＋ 添加</button>
-              </div>
-              <div id="edit-tasks" class="edit-list"></div>
-            </div>
-
-            <button class="btn btn-primary block" id="cap-confirm">保存此问诊</button>
           </div>
         </div>
       </div>
@@ -206,6 +283,63 @@
           <button class="modal__close" data-close="detail">✕</button>
         </div>
         <div class="modal__body" id="detail-body"></div>
+      </div>
+    </div>
+
+    <!-- ============ 药品详情 / 编辑 弹层 ============ -->
+    <div class="modal" id="cab-modal" hidden>
+      <div class="modal__mask" data-close="cab"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <span id="cab-modal-title">药品详情</span>
+          <button class="modal__close" data-close="cab">✕</button>
+        </div>
+        <div class="modal__body" id="cab-body"></div>
+      </div>
+    </div>
+
+    <!-- ============ 个人提醒 编辑 弹层 ============ -->
+    <div class="modal" id="reminder-modal" hidden>
+      <div class="modal__mask" data-close="reminder"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <span id="reminder-modal-title">新增提醒</span>
+          <button class="modal__close" data-close="reminder">✕</button>
+        </div>
+        <div class="modal__body">
+          <label class="field">
+            <span>提醒名称</span>
+            <input type="text" id="rem-title" placeholder="如：下次就诊、复查血压、打疫苗" />
+          </label>
+          <label class="field">
+            <span>类型</span>
+            <select id="rem-type">
+              <option value="custom">通用提醒</option>
+              <option value="visit">就诊 / 复诊</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>日期</span>
+            <input type="date" id="rem-date" />
+          </label>
+          <label class="field">
+            <span>时间（可选）</span>
+            <input type="time" id="rem-time" />
+          </label>
+          <label class="field">
+            <span>提前提醒（天，0=当天）</span>
+            <input type="number" id="rem-advance" min="0" max="60" value="3" />
+          </label>
+          <label class="switch-row">
+            <span>启用此提醒</span>
+            <input type="checkbox" id="rem-enabled" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="capture-actions">
+            <button class="btn btn-primary" id="rem-save" type="button">保存</button>
+            <button class="btn btn-ghost" id="rem-cancel" type="button">取消</button>
+          </div>
+        </div>
       </div>
     </div>
 

@@ -837,3 +837,665 @@ textarea {
     opacity: 1;
   }
 }
+
+/* ===================== 首页：就诊提醒横幅 ===================== */
+.visit-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #4a90d9 0%, #6aa8e8 100%);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.visit-banner__icon {
+  font-size: 1.6em;
+  flex: 0 0 auto;
+}
+.visit-banner__text {
+  flex: 1 1 auto;
+}
+.visit-banner__title {
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+.visit-banner__date {
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+/* ===================== 我的药箱 ===================== */
+.cabinet-header {
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.cabinet-summary {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 14px;
+}
+.cabinet-summary__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.cabinet-summary__num {
+  font-size: 1.6em;
+  font-weight: 800;
+  color: var(--primary-dark);
+  line-height: 1;
+}
+.cabinet-summary__label {
+  font-size: 0.78em;
+  color: var(--ink-2);
+}
+.cabinet-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.cab-filter {
+  flex: 1 0 auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  color: var(--ink-2);
+  background: #f0f2f5;
+  font-weight: 600;
+  min-width: 64px;
+  text-align: center;
+}
+.cab-filter.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.cabinet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cab-item {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 4px solid var(--primary);
+}
+.cab-item.disabled {
+  border-left-color: var(--ink-3);
+  opacity: 0.85;
+}
+.cab-item.out {
+  border-left-color: var(--danger);
+}
+.cab-item__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.cab-item__name {
+  font-weight: 700;
+  font-size: 1.05em;
+  flex: 1 1 auto;
+}
+.cab-item__spec {
+  font-size: 0.8em;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.cab-status {
+  flex: 0 0 auto;
+  font-size: 0.72em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.cab-status.active {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+.cab-status.disabled {
+  background: #eef1f5;
+  color: var(--ink-2);
+}
+.cab-status.out {
+  background: #fdecea;
+  color: var(--danger);
+}
+.cab-item__stock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9em;
+  color: var(--ink-2);
+}
+.cab-stock__bar {
+  flex: 1 1 auto;
+  height: 8px;
+  background: #eef1f5;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.cab-stock__fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  min-width: 2px;
+}
+.cab-stock__fill.low {
+  background: var(--warn);
+}
+.cab-stock__fill.empty {
+  background: var(--danger);
+}
+.cab-item__hint {
+  font-size: 0.8em;
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 药品详情 */
+.cab-detail__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cab-detail__title {
+  font-size: 1.2em;
+  font-weight: 800;
+}
+.cab-detail__spec {
+  font-size: 0.85em;
+  color: var(--ink-2);
+  margin-top: 3px;
+}
+.cab-detail__sec {
+  margin-bottom: 14px;
+}
+.cab-detail__sec h4 {
+  font-size: 0.95em;
+  margin: 0 0 6px;
+  color: var(--primary-dark);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cab-detail__sec p,
+.cab-detail__sec li {
+  font-size: 0.9em;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin: 0;
+}
+.cab-detail__sec ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.cab-detail__sec .cab-status {
+  font-size: 0.85em;
+  padding: 4px 12px;
+}
+.cab-detail__empty {
+  color: var(--ink-3);
+  font-style: italic;
+}
+.cab-detail__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.cab-detail__actions .btn {
+  flex: 1;
+}
+
+/* 药品编辑表单 */
+.cab-edit__field {
+  margin-bottom: 12px;
+}
+.cab-edit__field > span {
+  display: block;
+  font-size: 0.85em;
+  color: var(--ink-2);
+  margin-bottom: 5px;
+}
+.cab-edit__field input,
+.cab-edit__field textarea,
+.cab-edit__field select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+  color: var(--ink);
+  outline: none;
+  font-size: 1em;
+}
+.cab-edit__field input:focus,
+.cab-edit__field textarea:focus,
+.cab-edit__field select:focus {
+  border-color: var(--primary);
+  background: #fff;
+}
+.cab-edit__field textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.cab-edit__row {
+  display: flex;
+  gap: 10px;
+}
+.cab-edit__row .cab-edit__field {
+  flex: 1 1 0;
+}
+.cab-edit__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.cab-edit__tag {
+  font-size: 0.82em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cab-edit__tag button {
+  color: var(--ink-3);
+  font-size: 0.9em;
+}
+
+/* 四栏 Tab 适配 */
+.tabbar__btn {
+  font-size: 0.68em;
+}
+.tabbar__icon {
+  font-size: 1.45em;
+}
+
+/* 就诊提醒横幅进入动画 */
+.visit-banner {
+  animation: fadeIn 0.3s ease;
+}
+
+/* ===================== 解析状态徽标（新增） ===================== */
+.badge-parsing {
+  background: #fff4e0;
+  color: #d98700;
+}
+.badge-failed {
+  background: #fdeae6;
+  color: var(--danger);
+}
+
+/* ===================== 首页告警（新增） ===================== */
+.alerts {
+  background: #fff7e6;
+  border: 1px solid #ffe0a3;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.alerts__head {
+  font-weight: 700;
+  color: #b9720a;
+  margin-bottom: 6px;
+}
+.alerts__item {
+  font-size: 0.9em;
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.alerts__item:last-child {
+  margin-bottom: 0;
+}
+.alerts__item.is-low {
+  background: #fff0d6;
+  color: #9a6300;
+}
+.alerts__item.is-out {
+  background: #fdeae6;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ===================== 我的药箱卡片（新增实现） ===================== */
+.cab-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  border-left: 4px solid var(--primary);
+}
+.cab-card.is-low {
+  border-left-color: var(--warn);
+  background: #fffaf0;
+}
+.cab-card.is-out {
+  border-left-color: var(--danger);
+  background: #fdf3f1;
+}
+.cab-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.cab-card__name {
+  font-weight: 700;
+  font-size: 1.05em;
+}
+.cab-status.is-active {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+.cab-status.is-disabled {
+  background: #eef1f5;
+  color: var(--ink-2);
+}
+.cab-status.is-out {
+  background: #fdecea;
+  color: var(--danger);
+}
+.cab-warn {
+  font-size: 0.72em;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.cab-warn.is-low {
+  background: #fff0d6;
+  color: #9a6300;
+}
+.cab-warn.is-out {
+  background: var(--danger);
+  color: #fff;
+}
+.cab-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.85em;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.cab-card__meta .qty-low {
+  color: #9a6300;
+  font-weight: 600;
+}
+.cab-card__meta .qty-out {
+  color: var(--danger);
+  font-weight: 600;
+}
+.cab-card__note {
+  font-size: 0.82em;
+  color: var(--ink-2);
+  background: #fafbfc;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+.cab-card__act {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.mini-btn {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 10px;
+  background: #f2f5f8;
+  color: var(--primary-dark);
+  font-weight: 600;
+  font-size: 0.88em;
+}
+.mini-btn.danger {
+  background: #fdeae6;
+  color: var(--danger);
+}
+
+/* 药箱弹层表单（复用 .field，补充行布局与 select） */
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+.field-row .field {
+  flex: 1;
+}
+.field select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+  color: var(--ink);
+  outline: none;
+  font-size: 1em;
+}
+.field select:focus {
+  border-color: var(--primary);
+}
+.warn-hint {
+  border: 1px solid #ffd9c2;
+  background: #fff6f1;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.warn-hint b {
+  color: var(--danger);
+}
+.capture-hint {
+  background: #f3faf6;
+  border: 1px solid #d6efe0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 4px 0 0;
+}
+
+/* ===================== 首页「提醒 / 待办」页签 ===================== */
+.home-tabs {
+  margin-top: 4px;
+}
+.home-tabs__bar {
+  display: flex;
+  gap: 6px;
+  background: #eef1f5;
+  padding: 4px;
+  border-radius: 999px;
+  margin-bottom: 14px;
+}
+.home-tab {
+  flex: 1 1 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 0.95em;
+  font-weight: 600;
+  padding: 9px 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.home-tab.is-active {
+  background: #fff;
+  color: var(--primary-dark);
+  box-shadow: 0 2px 6px rgba(31, 39, 51, 0.08);
+}
+.home-tab__pane[hidden] {
+  display: none;
+}
+
+/* 首页个人提醒列表 */
+.reminder-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f6faf8;
+  border: 1px solid #e3f0ea;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+.reminder-item__icon {
+  font-size: 1.5em;
+  flex: 0 0 auto;
+}
+.reminder-item__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.reminder-item__title {
+  font-weight: 700;
+  font-size: 0.98em;
+  color: var(--ink);
+}
+.reminder-item__meta {
+  font-size: 0.82em;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.reminder-item__left {
+  flex: 0 0 auto;
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* ===================== 我的：提醒设置列表 ===================== */
+.reminders-list {
+  margin: 8px 0 4px;
+}
+.reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.reminder-row.is-off {
+  opacity: 0.55;
+}
+.reminder-row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.reminder-row__title {
+  font-weight: 700;
+  font-size: 0.95em;
+  color: var(--ink);
+}
+.reminder-row__meta {
+  font-size: 0.8em;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.reminder-row__ops {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 1em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.icon-btn:active {
+  background: #f2f4f7;
+}
+.icon-btn--danger {
+  color: var(--danger);
+  border-color: #f6cfc8;
+}
+
+/* ===================== 我的：AI 设置折叠卡 ===================== */
+.me-card--collapse {
+  padding: 0;
+  overflow: hidden;
+}
+.me-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+}
+.me-card__head-l {
+  min-width: 0;
+}
+.me-card__sub {
+  font-size: 0.8em;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+.me-card__sub.on {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+.me-card__edit {
+  padding: 0 14px 14px;
+}
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 0.85em;
+  border-radius: 999px;
+}
+
+/* 个人提醒 modal 内联字段间距 */
+#reminder-modal .field {
+  margin: 10px 0;
+}
+#reminder-modal .field > span {
+  display: block;
+  font-size: 0.85em;
+  color: var(--ink-2);
+  margin-bottom: 5px;
+}
+#reminder-modal .field input,
+#reminder-modal .field select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfc;
+  color: var(--ink);
+  outline: none;
+  font-size: 1em;
+}
+#reminder-modal .field input:focus,
+#reminder-modal .field select:focus {
+  border-color: var(--primary);
+  background: #fff;
+}
