@@ -6,9 +6,6 @@
 (function () {
   "use strict";
 
-  // 诊断用构建戳：装到真机后在顶部标题栏可见，用于确认运行的是哪个包
-  const BUILD_TAG = "fix-inset1";
-
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
 
@@ -59,22 +56,6 @@
     console.error("[nurse] unhandledrejection:", e.reason);
   });
 
-  // 诊断：捕获阶段全局记录点击事件目标，便于在真机区分
-  // 「点击没传到按钮(CSS/命中测试)」还是「传到了但逻辑出错」
-  document.addEventListener(
-    "click",
-    (e) => {
-      const t = e.target;
-      const info = t.id
-        ? "#" + t.id
-        : t.className && typeof t.className === "string"
-        ? "." + t.className.trim().split(/\s+/)[0]
-        : t.tagName;
-      toast("TAP→" + info, 1100);
-    },
-    true
-  );
-
   // ===================== 初始化 =====================
   async function init() {
     DATA = await NurseStorage.load();
@@ -87,7 +68,7 @@
 
   function setHeader(title, sub) {
     $("#header-title").textContent = title;
-    $("#header-sub").textContent = (sub || "") + (BUILD_TAG ? " · " + BUILD_TAG : "");
+    $("#header-sub").textContent = sub || "";
   }
 
   function applySettingsUI() {
@@ -300,15 +281,36 @@
     }
     const meds = res.medications || [];
     if (meds.length) {
-      html += `<div class="detail-sec"><h3>用药</h3><ul>${meds
-        .map((m) => `<li><b>${esc(m.name)}</b> ${esc(m.dose)} ${esc(m.freq)} ${esc(m.time)} ${m.note ? "· " + esc(m.note) : ""}</li>`)
-        .join("")}</ul></div>`;
+      html += `<div class="detail-sec"><h3>💊 用药（可编辑）</h3>
+        <div class="table-wrap"><table class="view-table">
+          <thead><tr><th>药名</th><th>剂量</th><th>频次</th><th>时间</th><th>说明</th></tr></thead>
+          <tbody>${meds
+            .map(
+              (m, i) => `<tr data-kind="med" data-i="${i}">
+                <td><input data-f="name" value="${esc(m.name)}" /></td>
+                <td><input data-f="dose" value="${esc(m.dose)}" /></td>
+                <td><input data-f="freq" value="${esc(m.freq)}" /></td>
+                <td><input data-f="time" value="${esc(m.time)}" /></td>
+                <td><input data-f="note" value="${esc(m.note)}" /></td>
+              </tr>`
+            )
+            .join("")}</tbody>
+        </table></div></div>`;
     }
     const tasks = res.tasks || [];
     if (tasks.length) {
-      html += `<div class="detail-sec"><h3>待办 / 生活医嘱</h3><ul>${tasks
-        .map((t) => `<li><b>${esc(t.title)}</b>：${esc(t.detail)}${t.due ? "（" + esc(t.due) + "）" : ""}</li>`)
-        .join("")}</ul></div>`;
+      html += `<div class="detail-sec"><h3>✅ 待办 / 生活医嘱（可编辑）</h3>
+        <div class="table-wrap"><table class="view-table">
+          <thead><tr><th>待办标题</th><th>说明</th></tr></thead>
+          <tbody>${tasks
+            .map(
+              (t, i) => `<tr data-kind="task" data-i="${i}">
+                <td><input data-f="title" value="${esc(t.title)}" /></td>
+                <td><input data-f="detail" value="${esc(t.detail)}" /></td>
+              </tr>`
+            )
+            .join("")}</tbody>
+        </table></div></div>`;
     }
     const taboo = (res.advice && res.advice.taboo) || [];
     const diet = (res.advice && res.advice.diet) || [];
@@ -330,12 +332,14 @@
     if (res.disclaimer) html += `<p class="hint">${esc(res.disclaimer)}</p>`;
 
     html += `<div class="detail-actions">
+      <button class="btn btn-primary block" id="detail-save">保存修改</button>
       <button class="btn btn-ghost block" id="detail-close">关闭</button>
       <button class="btn btn-primary block" id="detail-del" data-rec-id="${esc(rec.id)}" style="background:var(--danger)">删除记录</button>
     </div>`;
     body.innerHTML = html;
     $("#detail-modal").hidden = false;
     $("#detail-close").onclick = closeModal;
+    $("#detail-save").onclick = () => saveDetailEdit(rec, res);
     $("#detail-del").onclick = async (e) => {
       if (confirm("确定删除这条问诊记录？此操作不可恢复。")) {
         await NurseStorage.deleteRecord(e.currentTarget.dataset.recId);
@@ -351,13 +355,47 @@
   function sourceLabel(s) {
     return s === "recording" ? "录音" : s === "upload" ? "上传归档" : "文字";
   }
+  // 详情内联编辑用药/待办后写回记录
+  async function saveDetailEdit(rec, res) {
+    const meds = $$('#detail-body tr[data-kind="med"]')
+      .map((row, i) => {
+        const base = (res.medications && res.medications[i]) || {};
+        const get = (f) => row.querySelector('[data-f="' + f + '"]').value;
+        return Object.assign({}, base, {
+          name: get("name"),
+          dose: get("dose"),
+          freq: get("freq"),
+          time: get("time"),
+          note: get("note"),
+        });
+      })
+      .filter((m) => m.name && m.name.trim());
+    const tasks = $$('#detail-body tr[data-kind="task"]')
+      .map((row, i) => {
+        const base = (res.tasks && res.tasks[i]) || {};
+        const get = (f) => row.querySelector('[data-f="' + f + '"]').value;
+        return Object.assign({}, base, { title: get("title"), detail: get("detail") });
+      })
+      .filter((t) => t.title && t.title.trim());
+    rec.result.medications = meds;
+    rec.result.tasks = tasks;
+    try {
+      rec.result.reminders = NurseEngine.schedule_reminders(meds);
+    } catch (e) {
+      rec.result.reminders = [];
+    }
+    await NurseStorage.updateRecord(rec.id, { result: rec.result });
+    DATA = await NurseStorage.load();
+    renderHome();
+    renderRecords();
+    toast("已保存修改");
+  }
   function levelLabel(l) {
     return l === "red" ? "紧急" : l === "yellow" ? "警惕" : "一般";
   }
 
   // ===================== 录音 / 上传 弹层 =====================
   function openCapture(mode) {
-    toast("OPEN→" + mode, 900);
     capture.mode = mode;
     capture.images = [];
     capture.parsed = null;
@@ -370,18 +408,6 @@
     $("#cap-result").hidden = true;
     $("#cap-text").disabled = false;
     $("#capture-modal").hidden = false;
-    // 诊断：读出弹层真实渲染状态，用于判定「代码已显示但真机看不到」的根因
-    try {
-      const m = $("#capture-modal");
-      const cs = getComputedStyle(m);
-      const r = m.getBoundingClientRect();
-      toast(
-        "MODAL disp=" + cs.display + " " + Math.round(r.width) + "x" + Math.round(r.height) + " @" + Math.round(r.left) + "," + Math.round(r.top),
-        3000
-      );
-    } catch (e) {
-      toast("MODAL 诊断失败：" + (e && e.message));
-    }
   }
 
   function closeModal() {
@@ -574,37 +600,45 @@
     capture.editTasks = (result.tasks || []).map((t) => Object.assign({}, t));
     renderEditResult();
     $("#cap-result").hidden = false;
-    toast("解析完成，可手动调整后保存");
+    if (result.warning) toast(result.warning, 4200);
+    else toast("解析完成，可手动调整后保存");
   }
 
   function renderEditResult() {
     const medBox = $("#edit-meds");
-    medBox.innerHTML = capture.editMeds
-      .map(
-        (m, i) => `<div class="edit-row" data-i="${i}">
-          <span class="edit-row__del" data-del-med="${i}">删除</span>
-          <input data-f="name" value="${esc(m.name)}" placeholder="药名" />
-          <div class="edit-row__cols">
-            <input data-f="dose" value="${esc(m.dose)}" placeholder="剂量" />
-            <input data-f="freq" value="${esc(m.freq)}" placeholder="频次" />
-          </div>
-          <div class="edit-row__cols">
-            <input data-f="time" value="${esc(m.time)}" placeholder="时间" />
-            <input data-f="note" value="${esc(m.note)}" placeholder="说明" />
-          </div>
-        </div>`
-      )
-      .join("");
+    medBox.innerHTML = capture.editMeds.length
+      ? `<table class="edit-table">
+          <thead><tr><th>药名</th><th>剂量</th><th>频次</th><th>时间</th><th>说明</th><th></th></tr></thead>
+          <tbody>${capture.editMeds
+            .map(
+              (m, i) => `<tr class="edit-row" data-i="${i}">
+                <td><input data-f="name" value="${esc(m.name)}" placeholder="药名" /></td>
+                <td><input data-f="dose" value="${esc(m.dose)}" placeholder="剂量" /></td>
+                <td><input data-f="freq" value="${esc(m.freq)}" placeholder="频次" /></td>
+                <td><input data-f="time" value="${esc(m.time)}" placeholder="时间" /></td>
+                <td><input data-f="note" value="${esc(m.note)}" placeholder="说明" /></td>
+                <td class="edit-row__act"><span class="edit-row__del" data-del-med="${i}">删除</span></td>
+              </tr>`
+            )
+            .join("")}</tbody>
+        </table>`
+      : '<div class="empty-tip">暂无用药，点「＋ 添加」增加。</div>';
+
     const taskBox = $("#edit-tasks");
-    taskBox.innerHTML = capture.editTasks
-      .map(
-        (t, i) => `<div class="edit-row" data-i="${i}">
-          <span class="edit-row__del" data-del-task="${i}">删除</span>
-          <input data-f="title" value="${esc(t.title)}" placeholder="待办标题" />
-          <input data-f="detail" value="${esc(t.detail)}" placeholder="说明" />
-        </div>`
-      )
-      .join("");
+    taskBox.innerHTML = capture.editTasks.length
+      ? `<table class="edit-table">
+          <thead><tr><th>待办标题</th><th>说明</th><th></th></tr></thead>
+          <tbody>${capture.editTasks
+            .map(
+              (t, i) => `<tr class="edit-row" data-i="${i}">
+                <td><input data-f="title" value="${esc(t.title)}" placeholder="待办标题" /></td>
+                <td><input data-f="detail" value="${esc(t.detail)}" placeholder="说明" /></td>
+                <td class="edit-row__act"><span class="edit-row__del" data-del-task="${i}">删除</span></td>
+              </tr>`
+            )
+            .join("")}</tbody>
+        </table>`
+      : '<div class="empty-tip">暂无待办，点「＋ 添加」增加。</div>';
     bindEditInputs();
   }
   function bindEditInputs() {

@@ -703,34 +703,52 @@ textarea {
   color: var(--primary);
   font-weight: 600;
 }
-.edit-row {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
-  margin-bottom: 8px;
-  background: #fafbfc;
-}
-.edit-row input {
+.edit-table,
+.view-table {
   width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+  background: #fff;
+}
+.edit-table th,
+.view-table th,
+.edit-table td,
+.view-table td {
+  border: 1px solid var(--line);
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: middle;
+}
+.edit-table th,
+.view-table th {
+  background: #f0f4f2;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.edit-table input,
+.view-table input {
+  width: 100%;
+  min-width: 64px;
   border: none;
   border-bottom: 1px solid var(--line);
   background: transparent;
-  padding: 6px 2px;
-  margin-bottom: 6px;
+  padding: 5px 2px;
   outline: none;
+  font-size: 1em;
 }
-.edit-row input:focus {
+.edit-table input:focus,
+.view-table input:focus {
   border-bottom-color: var(--primary);
 }
-.edit-row__cols {
-  display: flex;
-  gap: 6px;
-}
-.edit-row__cols input {
-  flex: 1;
+.edit-row__act {
+  text-align: center;
+  white-space: nowrap;
 }
 .edit-row__del {
-  float: right;
   color: var(--danger);
   font-size: 0.82em;
 }
