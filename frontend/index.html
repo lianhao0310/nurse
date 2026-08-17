@@ -77,7 +77,7 @@
               <button class="home-tab is-active" data-rtab="list">问诊记录</button>
               <button class="home-tab" data-rtab="exam">检查结果</button>
             </div>
-            <button class="rec-add-btn" id="btn-add-record" title="新增问诊记录">＋</button>
+            <button class="rec-add-btn" id="btn-add-record">＋ 新增问诊记录</button>
           </div>
           <div class="page-pad">
             <div id="records-list" class="records-list"></div>
@@ -246,6 +246,15 @@
           <div class="block-head"><h2>🧾 历次明细</h2></div>
           <div id="exam-list-full" class="exam-list"></div>
         </div>
+      </section>
+
+      <!-- ============ 药品详情（整页视图） ============ -->
+      <section class="view" id="cab-view" hidden>
+        <header class="app-header view-header">
+          <button class="view-back" id="cab-view-back">‹ 返回</button>
+          <span id="cab-view-title">药品详情</span>
+        </header>
+        <div class="view-body" id="cab-view-body"></div>
       </section>
 
       <!-- ============ 药品详情 / 编辑 弹层 ============ -->

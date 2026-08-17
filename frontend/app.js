@@ -18,6 +18,7 @@
   let homeExpandedSlot = currentSlot();
   let recDraft = null; // 编辑问诊记录时的草稿
   let currentRecordId = null;
+  let currentCabId = null;
   let aiModalState = null; // { rec, data, type }
 
   // ===================== 工具 =====================
@@ -989,14 +990,14 @@
   function openCabinetDetail(id) {
     const d = (DATA.cabinet || []).find((x) => x.id === id);
     if (!d) return;
-    $("#cab-modal-title").textContent = "药品详情";
-    const body = $("#cab-body");
+    currentCabId = id;
+    const body = $("#cab-view-body");
     const variants = (d.variants || [])
       .map(
         (v) => `<div class="var-row view">
         <div class="var-row__head"><b>${esc(v.manufacturer || "未填厂家")}</b><span class="cab-status ${esc(v.status)}">${statusLabel(v.status)}</span></div>
         <div class="var-row__meta">规格 ${esc(v.spec || "—")}${v.alias && v.alias !== d.name ? " · 别名 " + esc(v.alias) : ""}</div>
-        <div class="var-row__meta">库存 <b>${v.qty}</b> ${esc(v.unit)} · 每日消耗 ${v.dailyDose} · 阈值 ${v.threshold}</div>
+        <div class="var-row__meta">数量 <b>${v.qty}</b> ${esc(v.unit)} · 每日消耗 ${v.dailyDose} · 阈值 ${v.threshold}</div>
       </div>`
       )
       .join("");
@@ -1013,7 +1014,10 @@
         <button class="btn btn-primary" id="cab-var-btn">＋ 新增规格</button>
       </div>
       <button class="btn btn-primary block" id="cab-del-btn" style="background:var(--danger);margin-top:10px">删除药品</button>`;
-    $("#cab-modal").hidden = false;
+    $("#cab-view-title").textContent = "药品详情";
+    $$(".view").forEach((v) => (v.hidden = true));
+    $$(".page").forEach((p) => (p.hidden = true));
+    $("#cab-view").hidden = false;
     $("#cab-edit-btn").onclick = () => openCabinetEdit(id);
     $("#cab-var-btn").onclick = async () => {
       await NurseStorage.upsertVariant(id, { manufacturer: "", spec: "", alias: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7 });
@@ -1026,7 +1030,8 @@
       if (confirm("确定从药箱删除该药品（含所有规格）？")) {
         await NurseStorage.deleteDrug(id);
         DATA = await NurseStorage.load();
-        $("#cab-modal").hidden = true;
+        $("#cab-view").hidden = true;
+        goPage("cabinet");
         renderCabinet();
         toast("已删除");
       }
@@ -1042,20 +1047,16 @@
       .map(
         (v, i) => `<div class="var-row edit" data-vi="${i}">
         <div class="var-row__grid">
-          <input placeholder="厂家" value="${esc(v.manufacturer)}" data-f="manufacturer"/>
-          <input placeholder="规格" value="${esc(v.spec)}" data-f="spec"/>
-          <input placeholder="别名" value="${esc(v.alias)}" data-f="alias"/>
+          <label class="vf"><span>厂家</span><input value="${esc(v.manufacturer)}" data-f="manufacturer"/></label>
+          <label class="vf"><span>规格</span><input value="${esc(v.spec)}" data-f="spec"/></label>
+          <label class="vf"><span>别名</span><input value="${esc(v.alias)}" data-f="alias"/></label>
+          <label class="vf"><span>数量</span><input type="number" value="${Number(v.qty) || 0}" data-f="qty"/></label>
+          <label class="vf"><span>单位</span><input value="${esc(v.unit || "片")}" data-f="unit"/></label>
+          <label class="vf"><span>状态</span><select data-f="status"><option value="active" ${v.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${v.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${v.status === "out" ? "selected" : ""}>缺药</option></select></label>
+          <label class="vf"><span>每日消耗</span><input type="number" value="${Number(v.dailyDose) || 0}" data-f="dailyDose"/></label>
+          <label class="vf"><span>阈值</span><input type="number" value="${Number(v.threshold) || 0}" data-f="threshold"/></label>
         </div>
-        <div class="var-row__grid">
-          <input placeholder="库存" type="number" value="${Number(v.qty) || 0}" data-f="qty"/>
-          <input placeholder="单位" value="${esc(v.unit || "片")}" data-f="unit"/>
-          <select data-f="status"><option value="active" ${v.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${v.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${v.status === "out" ? "selected" : ""}>缺药</option></select>
-        </div>
-        <div class="var-row__grid">
-          <input placeholder="每日消耗" type="number" value="${Number(v.dailyDose) || 0}" data-f="dailyDose"/>
-          <input placeholder="阈值" type="number" value="${Number(v.threshold) || 0}" data-f="threshold"/>
-          <button type="button" class="row-del" data-vi="${i}">✕ 删除规格</button>
-        </div>
+        <button type="button" class="row-del" data-vi="${i}">✕ 删除规格</button>
       </div>`
       )
       .join("");
@@ -1108,9 +1109,17 @@
       const div = document.createElement("div");
       div.className = "var-row edit";
       div.dataset.vi = i;
-      div.innerHTML = `<div class="var-row__grid"><input placeholder="厂家" data-f="manufacturer"/><input placeholder="规格" data-f="spec"/><input placeholder="别名" data-f="alias"/></div>
-        <div class="var-row__grid"><input placeholder="库存" type="number" value="0" data-f="qty"/><input placeholder="单位" value="片" data-f="unit"/><select data-f="status"><option value="active">使用中</option><option value="disabled">停用</option><option value="out">缺药</option></select></div>
-        <div class="var-row__grid"><input placeholder="每日消耗" type="number" value="0" data-f="dailyDose"/><input placeholder="阈值" type="number" value="7" data-f="threshold"/><button type="button" class="row-del" data-vi="${i}">✕ 删除规格</button></div>`;
+      div.innerHTML = `<div class="var-row__grid">
+        <label class="vf"><span>厂家</span><input data-f="manufacturer"/></label>
+        <label class="vf"><span>规格</span><input data-f="spec"/></label>
+        <label class="vf"><span>别名</span><input data-f="alias"/></label>
+        <label class="vf"><span>数量</span><input type="number" value="0" data-f="qty"/></label>
+        <label class="vf"><span>单位</span><input value="片" data-f="unit"/></label>
+        <label class="vf"><span>状态</span><select data-f="status"><option value="active">使用中</option><option value="disabled">停用</option><option value="out">缺药</option></select></label>
+        <label class="vf"><span>每日消耗</span><input type="number" value="0" data-f="dailyDose"/></label>
+        <label class="vf"><span>阈值</span><input type="number" value="7" data-f="threshold"/></label>
+      </div>
+      <button type="button" class="row-del" data-vi="${i}">✕ 删除规格</button>`;
       box.appendChild(div);
       div.querySelector(".row-del").onclick = () => div.remove();
     };
@@ -1149,6 +1158,7 @@
     DATA = await NurseStorage.load();
     $("#cab-modal").hidden = true;
     renderCabinet();
+    if (currentCabId && !$("#cab-view").hidden) openCabinetDetail(currentCabId);
     toast("已保存");
   }
 
@@ -1337,6 +1347,7 @@
     $$(".cab-filter").forEach((b) => (b.onclick = () => { cabinetState.filter = b.dataset.filter; $$(".cab-filter").forEach((x) => x.classList.toggle("is-active", x === b)); renderCabinet(); }));
     $("#btn-add-cab").onclick = () => openCabinetEdit(null);
     $("#cabinet-list").onclick = (e) => { const c = e.target.closest(".cab-item"); if (c) openCabinetDetail(c.dataset.cabId); };
+    $("#cab-view-back").onclick = () => { $("#cab-view").hidden = true; goPage("cabinet"); };
 
     // 设置
     $("#ai-enabled").onchange = saveAISettings;
