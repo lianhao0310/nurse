@@ -1,30 +1,44 @@
 /*
- * 私人护士 · 本地持久化存储（v2）
+ * 私人护士 · 本地持久化存储（v3）
  * ------------------------------------------------------------------
- * 设计目标：
- *   - 个人数据落盘到手机文件系统（iOS 用 Capacitor Filesystem 写入 App 的
- *     Documents 目录；浏览器回退到 localStorage）。
- *   - 方便换机：导出 / 导入 单个 JSON 文件迁移历史问诊与设置。
- *
  * 数据模型（单文件 nurse-data.json）：
  * {
- *   version, updatedAt,
+ *   version, updatedAt, lastDecrement,
  *   settings: {
- *     ai:        { enabled, baseUrl, apiKey, model },   // 智能解析接入
- *     notifications: bool,
- *     largeFont:     bool,
- *     dailyDone: { "2026-08-14": { meds:  {id:true}, tasks: {id:true} } }   // 今日勾选状态
+ *     ai: { enabled, baseUrl, apiKey, model },
+ *     notifications, largeFont,
+ *     dailyDone: { "2026-08-14": { medDoses:{}, tasks:{} } },
+ *     reminders: [ {id,title,type,date,time,advanceDays,enabled,note} ],
+ *     medReminderMinutes
  *   },
- *   records: [ {
- *     id, createdAt, source: "recording"|"upload"|"text",
- *     transcript: "",                       // 录音转写 / 手动文本（可为空）
- *     images: [ { name, type, dataUrl } ],  // 归档的检查报告 / 处方照片
- *     result: { engine, diseases, medications[], tasks[], advice, risks, reminders, disclaimer },
- *     manual: bool                          // 是否用户纯手动录入（无转写）
+ *   records: [ {                          // 问诊记录
+ *     id, createdAt, visitDate, hospital, doctor, source,
+ *     transcript, images[],                // 原始归档（旧结构兼容）
+ *     advice: { text, audio:{name,dataUrl}|null },   // 医嘱（文字/录音）
+ *     examImages: [ {name,type,dataUrl} ],          // 检查结果照片
+ *     examTable: [ {name,value,unit,range,abnormal} ],
+ *     rxImages: [ {name,type,dataUrl} ],            // 处方药照片
+ *     rxTable: [ {name,spec,dose,freq,time,note} ], // 处方药表格
+ *     result: { engine, diseases, medications, tasks, advice, risks, summary } | null, // AI分析转化结果
+ *     aiAdvice: { diet:[], taboo:[], text } | null,  // 医嘱分析生成的生活/饮食医嘱
+ *     status, manual
+ *   } ],
+ *   cabinet: [ {                           // 我的药箱：按"药品（药款）"管理
+ *     id, name, disease,
+ *     doseAmount, doseUnit,                // 单次使用量
+ *     timeSlots: ["morning"|"noon"|"evening"],  // 服用时间段
+ *     meal: "before"|"after"|"any",        // 餐前/餐后
+ *     intro, precautions[], advice, note,
+ *     variants: [ {                        // 不同厂家/规格
+ *       id, manufacturer, spec, alias, qty, unit,
+ *       status: "active"|"disabled"|"out", dailyDose, threshold
+ *     } ]
+ *   } ],
+ *   examResults: [ {                       // 我的检查结果（全局，按时间维度）
+ *     id, recordId, hospital, date,
+ *     indicators: [ {name,value,unit,range,abnormal} ]
  *   } ]
  * }
- *
- * 加载方式：<script src="storage.js"> -> window.NurseStorage（全部为 async）
  */
 (function (root, factory) {
   const api = factory();
@@ -35,9 +49,8 @@
 
   const FILE_NAME = "nurse-data.json";
   const LS_KEY = "nurse-data";
-  const VERSION = 2;
+  const VERSION = 3;
 
-  // 是否运行在 Capacitor 原生壳（iOS/Android）中，且 Filesystem 插件可用
   function fsAvailable() {
     try {
       return !!(
@@ -60,7 +73,7 @@
     return (prefix || "id_") + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
-  // 给 meds / tasks 分配稳定 id（首页勾选、去重用）
+  // 给 meds / tasks / 表格 分配稳定 id（首页勾选、去重用）
   function _withIds(rec) {
     if (rec.result && Array.isArray(rec.result.medications)) {
       rec.result.medications.forEach((m) => {
@@ -79,17 +92,18 @@
     return {
       version: VERSION,
       updatedAt: null,
-      lastDecrement: null, // 上次药箱每日扣减日期（yyyy-mm-dd）
+      lastDecrement: null,
       settings: {
         ai: { enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" },
         notifications: false,
         largeFont: false,
         dailyDone: {},
-        reminders: [], // 通用个人提醒列表（含「下次就诊」等）
-        medReminderMinutes: 10, // 用药提醒提前 N 分钟
+        reminders: [],
+        medReminderMinutes: 10,
       },
       records: [],
-      cabinet: [], // 我的药箱：用户手头现有药品
+      cabinet: [],
+      examResults: [],
     };
   }
 
@@ -111,16 +125,15 @@
     };
   }
 
-  // 通用个人提醒：优先用 reminders 数组；旧数据用 nextVisit 迁移为一条「下次就诊」
   function _normReminder(r) {
     if (!r || typeof r !== "object") return null;
     if (!r.title || !String(r.title).trim()) return null;
     return {
       id: r.id || _uid("rem_"),
       title: String(r.title).trim(),
-      type: r.type || "custom", // visit | custom（控制图标）
-      date: r.date || "", // YYYY-MM-DD
-      time: r.time || "", // HH:MM（可选）
+      type: r.type || "custom",
+      date: r.date || "",
+      time: r.time || "",
       advanceDays: Number(r.advanceDays) >= 0 ? Number(r.advanceDays) : 3,
       enabled: r.enabled !== false,
       note: r.note || "",
@@ -131,14 +144,12 @@
       const list = arr.map(_normReminder).filter(Boolean);
       if (list.length) return list;
     }
-    // 旧数据迁移：若设置了 nextVisit，转成一条就诊提醒
     if (s && s.nextVisit) {
       return [_normReminder({ title: "下次就诊", type: "visit", date: s.nextVisit, advanceDays: Number(s.visitReminderDays) || 3 })];
     }
     return [];
   }
 
-  // 浅+一层对象合并（用于 updateSettings 的嵌套 ai）
   function _mergeSettings(target, patch) {
     const out = Object.assign({}, target);
     if (patch && typeof patch === "object") {
@@ -153,46 +164,151 @@
     return out;
   }
 
-  function _recNormalize(r) {
+  // ---------------- 药箱归一化（药品 + 多厂家规格变体） ----------------
+  const TIME_SLOTS = ["morning", "noon", "evening"];
+  function _normTimeSlots(v) {
+    if (Array.isArray(v)) {
+      const arr = v.filter((x) => TIME_SLOTS.includes(x));
+      if (arr.length) return arr;
+    }
+    return ["morning"];
+  }
+  function _normMeal(v) {
+    return ["before", "after", "any"].includes(v) ? v : "any";
+  }
+
+  function _normVariant(v) {
+    if (!v || typeof v !== "object") return null;
+    const status = ["active", "disabled", "out"].includes(v.status) ? v.status : "active";
+    return {
+      id: v.id || _uid("var_"),
+      manufacturer: v.manufacturer || "",
+      spec: v.spec || "",
+      alias: v.alias || "",
+      qty: Number(v.qty) || 0,
+      unit: v.unit || "片",
+      status: status,
+      dailyDose: Number(v.dailyDose) || 0,
+      threshold: Number(v.threshold) || 0,
+    };
+  }
+
+  function _normDrug(it) {
+    if (!it || typeof it !== "object") return null;
+    if (!it.name || !String(it.name).trim()) return null;
+    // 旧结构兼容：扁平条目 -> 药品 + 单个变体
+    let variants = Array.isArray(it.variants) ? it.variants.map(_normVariant).filter(Boolean) : [];
+    if (!variants.length) {
+      variants = [
+        _normVariant({
+          manufacturer: it.manufacturer || "",
+          spec: it.spec || "",
+          alias: it.alias || it.name || "",
+          qty: Number(it.qty) || 0,
+          unit: it.unit || "片",
+          status: ["active", "disabled", "out"].includes(it.status) ? it.status : "active",
+          dailyDose: Number(it.dailyDose) || 0,
+          threshold: Number(it.threshold) || 0,
+        }),
+      ];
+    }
+    return {
+      id: it.id || _uid("drug_"),
+      name: String(it.name).trim(),
+      disease: it.disease || "",
+      doseAmount: Number(it.doseAmount) || 0,
+      doseUnit: it.doseUnit || "片",
+      timeSlots: _normTimeSlots(it.timeSlots),
+      meal: _normMeal(it.meal),
+      intro: it.intro || "",
+      precautions: Array.isArray(it.precautions) ? it.precautions.filter(Boolean) : [],
+      advice: it.advice || "",
+      note: it.note || "",
+      variants: variants,
+    };
+  }
+
+  // 药品名称（含变体别名）用于检索
+  function drugNames(drug) {
+    const names = [drug.name];
+    (drug.variants || []).forEach((v) => {
+      if (v.alias && v.alias.trim() && !names.includes(v.alias.trim())) names.push(v.alias.trim());
+    });
+    return names;
+  }
+
+  // ---------------- 问诊记录归一化 ----------------
+  function _normExamIndicator(x) {
+    if (!x || typeof x !== "object") return null;
+    if (!x.name || !String(x.name).trim()) return null;
+    return {
+      name: String(x.name).trim(),
+      value: x.value === 0 || x.value ? String(x.value) : "",
+      unit: x.unit || "",
+      range: x.range || "",
+      abnormal: !!x.abnormal,
+    };
+  }
+  function _normRx(x) {
+    if (!x || typeof x !== "object") return null;
+    if (!x.name || !String(x.name).trim()) return null;
+    return {
+      name: String(x.name).trim(),
+      spec: x.spec || "",
+      dose: x.dose || "",
+      freq: x.freq || "",
+      time: x.time || "",
+      note: x.note || "",
+    };
+  }
+  function _normImage(im) {
+    if (!im || !im.dataUrl) return null;
+    return { name: im.name || "image", type: im.type || "image/jpeg", dataUrl: im.dataUrl };
+  }
+
+  function _normRecord(r) {
     if (!r || typeof r !== "object") return null;
-    if (!(r.result || (r.images && r.images.length) || r.transcript)) return null;
+    if (!(r.result || (r.images && r.images.length) || r.transcript || r.advice || r.examTable || r.rxTable)) return null;
     const rec = {
       id: r.id || _uid("rec_"),
       createdAt: r.createdAt || new Date().toISOString(),
+      visitDate: r.visitDate || "",
+      hospital: r.hospital || "",
+      doctor: r.doctor || "",
       source: r.source || (r.transcript ? "text" : "upload"),
       transcript: r.transcript || "",
-      images: Array.isArray(r.images)
-        ? r.images
-            .filter((im) => im && im.dataUrl)
-            .map((im) => ({ name: im.name || "image", type: im.type || "image/jpeg", dataUrl: im.dataUrl }))
-        : [],
+      images: Array.isArray(r.images) ? r.images.map(_normImage).filter(Boolean) : [],
+      // 新版字段
+      advice: r.advice && typeof r.advice === "object" ? { text: r.advice.text || "", audio: _normImage(r.advice.audio) } : { text: r.transcript || "", audio: null },
+      examImages: Array.isArray(r.examImages) ? r.examImages.map(_normImage).filter(Boolean) : [],
+      examTable: Array.isArray(r.examTable) ? r.examTable.map(_normExamIndicator).filter(Boolean) : [],
+      rxImages: Array.isArray(r.rxImages) ? r.rxImages.map(_normImage).filter(Boolean) : [],
+      rxTable: Array.isArray(r.rxTable) ? r.rxTable.map(_normRx).filter(Boolean) : [],
       result: r.result || null,
+      aiAdvice: r.aiAdvice && typeof r.aiAdvice === "object" ? { diet: (r.aiAdvice.diet || []).filter(Boolean), taboo: (r.aiAdvice.taboo || []).filter(Boolean), text: r.aiAdvice.text || "" } : null,
       manual: !!r.manual,
-      // 解析状态：parsing（解析中）/ done（已归档）/ failed（解析失败）；旧数据无 status 默认 done
       status: r.status || "done",
     };
+    // 旧数据：result 里的 medications 同步到 rxTable（去重）
+    if (rec.result && Array.isArray(rec.result.medications) && !rec.rxTable.length) {
+      rec.rxTable = rec.result.medications
+        .map((m) => _normRx({ name: m.name, spec: m.dose, dose: m.dose, freq: m.freq, time: m.time, note: m.note }))
+        .filter(Boolean);
+    }
     return _withIds(rec);
   }
 
-  // 药箱条目归一化（名称必填，其余带默认）
-  function _cabItem(it) {
-    if (!it || typeof it !== "object") return null;
-    if (!it.name || !String(it.name).trim()) return null;
-    const status = ["active", "disabled", "out"].includes(it.status) ? it.status : "active";
+  // 全局检查结果归一化
+  function _normExamEntry(e) {
+    if (!e || typeof e !== "object") return null;
+    const inds = Array.isArray(e.indicators) ? e.indicators.map(_normExamIndicator).filter(Boolean) : [];
+    if (!inds.length) return null;
     return {
-      id: it.id || _uid("cab_"),
-      name: String(it.name).trim(),
-      spec: it.spec || "",
-      qty: Number(it.qty) || 0,
-      unit: it.unit || "片",
-      dailyDose: Number(it.dailyDose) || 0, // 每天消耗量（用于每日自动扣减）
-      threshold: Number(it.threshold) || 0, // 剩余 ≤ 阈值时告警
-      status: status, // active 使用中 / disabled 停用 / out 缺药
-      disease: it.disease || "", // 针对病症（可多个，逗号分隔）
-      intro: it.intro || "", // 药品介绍
-      precautions: Array.isArray(it.precautions) ? it.precautions.filter(Boolean) : [], // 注意事项
-      advice: it.advice || "", // 针对个人用药建议
-      note: it.note || "",
+      id: e.id || _uid("ex_"),
+      recordId: e.recordId || "",
+      hospital: e.hospital || "",
+      date: e.date || "",
+      indicators: inds,
     };
   }
 
@@ -203,10 +319,13 @@
       data.updatedAt = obj.updatedAt || null;
       data.lastDecrement = obj.lastDecrement || null;
       if (Array.isArray(obj.records)) {
-        data.records = obj.records.map(_recNormalize).filter(Boolean);
+        data.records = obj.records.map(_normRecord).filter(Boolean);
       }
       if (Array.isArray(obj.cabinet)) {
-        data.cabinet = obj.cabinet.map(_cabItem).filter(Boolean);
+        data.cabinet = obj.cabinet.map(_normDrug).filter(Boolean);
+      }
+      if (Array.isArray(obj.examResults)) {
+        data.examResults = obj.examResults.map(_normExamEntry).filter(Boolean);
       }
     }
     return data;
@@ -234,12 +353,7 @@
     data = _normalize(data);
     data.updatedAt = new Date().toISOString();
     if (fsAvailable()) {
-      await _fs().writeFile({
-        path: FILE_NAME,
-        data: JSON.stringify(data),
-        directory: "Documents",
-        encoding: "utf8",
-      });
+      await _fs().writeFile({ path: FILE_NAME, data: JSON.stringify(data), directory: "Documents", encoding: "utf8" });
     } else {
       window.localStorage.setItem(LS_KEY, JSON.stringify(data));
     }
@@ -252,26 +366,32 @@
     const rec = _withIds({
       id: _uid("rec_"),
       createdAt: new Date().toISOString(),
+      visitDate: record.visitDate || "",
+      hospital: record.hospital || "",
+      doctor: record.doctor || "",
       source: record.source || "text",
       transcript: record.transcript || "",
       images: record.images || [],
+      advice: record.advice || { text: "", audio: null },
+      examImages: record.examImages || [],
+      examTable: record.examTable || [],
+      rxImages: record.rxImages || [],
+      rxTable: record.rxTable || [],
       result: record.result || null,
+      aiAdvice: record.aiAdvice || null,
       manual: !!record.manual,
-      status: record.status || "done", // 保留解析状态：parsing / done / failed
+      status: record.status || "done",
     });
-    data.records.unshift(rec); // 最新在前
+    data.records.unshift(rec);
     await save(data);
     return rec;
   }
-
   async function getRecords() {
     return (await load()).records;
   }
-
   async function getRecord(id) {
     return (await load()).records.find((r) => r.id === id) || null;
   }
-
   async function updateRecord(id, patch) {
     const data = await load();
     const rec = data.records.find((r) => r.id === id);
@@ -281,50 +401,86 @@
     await save(data);
     return rec;
   }
-
   async function deleteRecord(id) {
     const data = await load();
     data.records = data.records.filter((r) => r.id !== id);
+    // 同步删除该记录产生的全局检查结果
+    data.examResults = data.examResults.filter((e) => e.recordId !== id);
     await save(data);
   }
 
-  // ---------------- 我的药箱（手头现有药品） ----------------
+  // ---------------- 我的药箱（药品 + 变体） ----------------
   async function getCabinet() {
     return (await load()).cabinet;
   }
-  // 新增或更新一条药箱条目（item 含 id 则按 id 更新）
-  async function upsertCabinetItem(item) {
+  async function upsertDrug(item) {
     const data = await load();
-    const it = _cabItem(item);
+    const it = _normDrug(item);
     if (!it) return null;
     const exist = item && item.id ? data.cabinet.find((x) => x.id === item.id) : null;
-    if (exist) {
-      Object.assign(exist, it);
-    } else {
-      data.cabinet.unshift(it);
-    }
+    if (exist) Object.assign(exist, it);
+    else data.cabinet.unshift(it);
     await save(data);
     return it;
   }
-  async function updateCabinetItem(id, patch) {
+  async function updateDrug(id, patch) {
     const data = await load();
     const it = data.cabinet.find((x) => x.id === id);
     if (!it) return null;
-    const merged = _cabItem(Object.assign({}, it, patch));
+    const merged = _normDrug(Object.assign({}, it, patch));
     if (!merged) return null;
     Object.assign(it, merged);
     await save(data);
     return it;
   }
-  async function deleteCabinetItem(id) {
+  async function deleteDrug(id) {
     const data = await load();
     data.cabinet = data.cabinet.filter((x) => x.id !== id);
     await save(data);
   }
-  // 记录“每日扣减”已执行的日期
+  // 变体级操作
+  async function upsertVariant(drugId, variant) {
+    const data = await load();
+    const drug = data.cabinet.find((x) => x.id === drugId);
+    if (!drug) return null;
+    const v = _normVariant(variant);
+    if (!v) return null;
+    const exist = variant && variant.id ? drug.variants.find((x) => x.id === variant.id) : null;
+    if (exist) Object.assign(exist, v);
+    else drug.variants.unshift(v);
+    await save(data);
+    return v;
+  }
+  async function deleteVariant(drugId, variantId) {
+    const data = await load();
+    const drug = data.cabinet.find((x) => x.id === drugId);
+    if (!drug) return null;
+    drug.variants = drug.variants.filter((x) => x.id !== variantId);
+    await save(data);
+  }
   async function setLastDecrement(dateKey) {
     const data = await load();
     data.lastDecrement = dateKey;
+    await save(data);
+  }
+
+  // ---------------- 全局检查结果 ----------------
+  async function getExamResults() {
+    return (await load()).examResults;
+  }
+  async function upsertExamEntry(entry) {
+    const data = await load();
+    const e = _normExamEntry(entry);
+    if (!e) return null;
+    const exist = entry && entry.id ? data.examResults.find((x) => x.id === entry.id) : null;
+    if (exist) Object.assign(exist, e);
+    else data.examResults.unshift(e);
+    await save(data);
+    return e;
+  }
+  async function deleteExamEntry(id) {
+    const data = await load();
+    data.examResults = data.examResults.filter((x) => x.id !== id);
     await save(data);
   }
 
@@ -336,35 +492,27 @@
     return data.settings;
   }
 
-  // ---------------- 今日勾选状态（首页用药/待办 done） ----------------
+  // ---------------- 今日勾选状态 ----------------
   async function getDone(dateKey) {
     const s = (await load()).settings;
     const d = (s.dailyDone && s.dailyDone[dateKey]) || {};
-    return { meds: d.meds || {}, tasks: d.tasks || {} };
+    return { medDoses: d.medDoses || {}, tasks: d.tasks || {} };
   }
-
-  // done=true 写入；done=false 移除
   async function setDone(dateKey, kind, id, done) {
     const data = await load();
-    if (!data.settings.dailyDone[dateKey]) data.settings.dailyDone[dateKey] = { meds: {}, tasks: {} };
+    if (!data.settings.dailyDone[dateKey]) data.settings.dailyDone[dateKey] = { medDoses: {}, tasks: {} };
     const bucket = data.settings.dailyDone[dateKey][kind] || (data.settings.dailyDone[dateKey][kind] = {});
     if (done) bucket[id] = true;
     else delete bucket[id];
-    // 清理过期日期（仅保留最近 7 天），避免无限增长
     const keys = Object.keys(data.settings.dailyDone).sort();
-    while (keys.length > 7) {
-      delete data.settings.dailyDone[keys.shift()];
-    }
+    while (keys.length > 7) delete data.settings.dailyDone[keys.shift()];
     await save(data);
   }
 
-  // ---------------- 导出 / 导入（换机迁移） ----------------
+  // ---------------- 导出 / 导入 ----------------
   async function exportJSON() {
-    const data = await load();
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(await load(), null, 2);
   }
-
-  // 导入：合并记录（按 id 去重，新覆盖旧），合并设置
   async function importJSON(jsonStr) {
     const incoming = _normalize(JSON.parse(jsonStr));
     const cur = await load();
@@ -372,6 +520,8 @@
     cur.records.forEach((r) => (map[r.id] = r));
     incoming.records.forEach((r) => (map[r.id] = r));
     cur.records = Object.values(map).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    cur.cabinet = incoming.cabinet.length ? incoming.cabinet : cur.cabinet;
+    cur.examResults = incoming.examResults.length ? incoming.examResults : cur.examResults;
     cur.settings = _mergeSettings(cur.settings, incoming.settings);
     await save(cur);
     return cur;
@@ -388,14 +538,20 @@
     updateRecord,
     deleteRecord,
     getCabinet,
-    upsertCabinetItem,
-    updateCabinetItem,
-    deleteCabinetItem,
-    setLastDecrement,
+    upsertDrug,
+    updateDrug,
+    deleteDrug,
+    upsertVariant,
+    deleteVariant,
+    getExamResults,
+    upsertExamEntry,
+    deleteExamEntry,
     updateSettings,
     getDone,
     setDone,
+    setLastDecrement,
     exportJSON,
     importJSON,
+    drugNames,
   };
 });

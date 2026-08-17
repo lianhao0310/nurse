@@ -239,5 +239,153 @@
     return result;
   }
 
-  return { parse, isConfigured, SYSTEM_PROMPT };
+  // 通用对话请求：传入 systemPrompt + userParts，返回解析后的 JSON 对象
+  async function _chat(systemPrompt, userParts, settings) {
+    const ai = settings.ai || {};
+    if (!ai.enabled || !ai.apiKey) throw new Error("AI 未启用或未配置 API Key");
+    const baseUrl = (ai.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const model = ai.model || "gpt-4o";
+    const body = {
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userParts },
+      ],
+      temperature: 0.2,
+    };
+    try {
+      body.response_format = { type: "json_object" };
+    } catch (e) {}
+    let resp;
+    try {
+      resp = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + ai.apiKey },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      const msg = String(e && e.message ? e.message : e);
+      if (/Failed to fetch|NetworkError|CORS|cross-origin/i.test(msg)) {
+        throw new Error("网络或跨域(CORS)错误：请确认该接口允许浏览器跨域访问。");
+      }
+      throw new Error("请求失败：" + msg);
+    }
+    if (!resp.ok) {
+      let d = "";
+      try {
+        d = await resp.text();
+      } catch (e) {}
+      if (resp.status === 401) throw new Error("API Key 无效或无权限（401）。");
+      if (resp.status === 404) throw new Error("接口路径不存在（404），请检查 Base URL。");
+      throw new Error("接口返回 " + resp.status + "：" + d.slice(0, 200));
+    }
+    const data = await resp.json();
+    const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    return _extractJSON(content);
+  }
+
+  function _imagesToParts(images, label) {
+    const parts = [];
+    if (images && images.length) {
+      parts.push({ type: "text", text: label });
+      for (const im of images) {
+        if (im && im.dataUrl) parts.push({ type: "image_url", image_url: { url: im.dataUrl } });
+      }
+    }
+    return parts;
+  }
+
+  /**
+   * AI 分析：把本次问诊的医嘱文字 + 检查结果图片 + 处方药图片 整理为结构化结果。
+   * 返回 { advice, examResults[], prescription[] }
+   */
+  const CONSULT_SYSTEM = `你是一名严谨、贴心的"私人护士"健康助手。用户会提供：①本次问诊的医嘱文字（可能来自录音转写），②可选的检查结果照片，③可选的处方药照片。
+请从中整理为结构化 JSON 对象，不要任何额外说明文字：
+{
+  "advice": "归纳后的本次医生医嘱文字（综合用药、复查、生活注意事项）",
+  "examResults": [
+    { "name":"指标名（用标准名，如 收缩压、空腹血糖）", "value":"数值", "unit":"单位", "range":"参考范围(可选)", "abnormal": false }
+  ],
+  "prescription": [
+    { "name":"药品通用名", "spec":"规格/剂量(如 5mg)", "dose":"单次用量(如 1片)", "freq":"频次(如 1次/日)", "time":"服药时间(如 早饭后)", "note":"说明(可选)" }
+  ]
+}
+要求：
+- 指标尽量用标准名；数值、单位从图片提取，缺失则留空字符串；abnormal 依据参考范围或明显异常判断为 true/false。
+- 处方药尽量用通用名；剂量、频次、时间尽量从原文/图片提取。
+- 不编造信息，缺则留空或返回空数组。所有文字使用简体中文。`;
+
+  async function analyzeConsult(opts) {
+    const settings = opts.settings || {};
+    const model = (settings.ai && settings.ai.model) || "";
+    let examImages = (opts.examImages || []).filter((im) => im && im.dataUrl);
+    let rxImages = (opts.rxImages || []).filter((im) => im && im.dataUrl);
+    // 文本模型：跳过图片，避免接口报错
+    if (examImages.length && isTextOnlyModel(model)) examImages = [];
+    if (rxImages.length && isTextOnlyModel(model)) rxImages = [];
+    const adviceText = (opts.adviceText || "").trim();
+    if (!adviceText && !examImages.length && !rxImages.length) {
+      throw new Error("没有提供任何医嘱文字或图片");
+    }
+    const userParts = [];
+    userParts.push({
+      type: "text",
+      text: "【本次医嘱文字】\n" + (adviceText || "（无文字，请根据图片识别）"),
+    });
+    _imagesToParts(examImages, "【检查结果照片】请识别其中的指标名称、数值、单位与参考范围。").forEach((p) => userParts.push(p));
+    _imagesToParts(rxImages, "【处方药照片】请识别药品名称、规格与用法用量。").forEach((p) => userParts.push(p));
+    const parsed = await _chat(CONSULT_SYSTEM, userParts, settings);
+    const arr = (x) => (Array.isArray(x) ? x : []);
+    const result = {
+      advice: String(parsed.advice || adviceText || ""),
+      examResults: arr(parsed.examResults).map((e) => ({
+        name: String(e.name || "").trim(),
+        value: e.value === 0 || e.value ? String(e.value) : "",
+        unit: String(e.unit || ""),
+        range: String(e.range || ""),
+        abnormal: !!e.abnormal,
+      })),
+      prescription: arr(parsed.prescription).map((p) => ({
+        name: String(p.name || "").trim(),
+        spec: String(p.spec || ""),
+        dose: String(p.dose || ""),
+        freq: String(p.freq || ""),
+        time: String(p.time || ""),
+        note: String(p.note || ""),
+      })),
+    };
+    if (!result.advice && !result.examResults.length && !result.prescription.length) {
+      throw new Error("AI 未能从内容中提取有效信息");
+    }
+    return result;
+  }
+
+  /**
+   * 医嘱分析：结合本次医生医嘱 + 历次检查趋势 + 当前用药，生成生活/饮食医嘱。
+   * 返回 { diet[], taboo[], text }
+   */
+  const ADVICE_SYSTEM = `你是一名"私人护士"健康助手。用户会提供：①本次医生医嘱，②历次检查指标趋势，③当前正在服用的药物。
+请综合生成面向患者的生活与饮食医嘱，仅输出 JSON 对象，不要额外说明：
+{
+  "diet": ["饮食/生活建议（结合指标趋势，如血压或血糖偏高应更严格控盐、控糖）"],
+  "taboo": ["禁忌与注意事项"],
+  "text": "一句话生活医嘱总结"
+}
+要求：建议具体、可执行；结合指标趋势给出针对性提示；简体中文。`;
+
+  async function analyzeAdvice(opts) {
+    const settings = opts.settings || {};
+    const ctx = (opts.context || "").trim();
+    if (!ctx) throw new Error("没有提供分析所需的医嘱与检查信息");
+    const userParts = [{ type: "text", text: ctx }];
+    const parsed = await _chat(ADVICE_SYSTEM, userParts, settings);
+    const arr = (x) => (Array.isArray(x) ? x : []);
+    return {
+      diet: arr(parsed.diet).map((x) => String(x)),
+      taboo: arr(parsed.taboo).map((x) => String(x)),
+      text: String(parsed.text || ""),
+    };
+  }
+
+  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice };
 });

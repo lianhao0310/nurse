@@ -1499,3 +1499,230 @@ textarea {
   border-color: var(--primary);
   background: #fff;
 }
+
+/* ===================== 用药提醒：早/中/晚 分块 ===================== */
+.med-blocks { display: flex; flex-direction: column; gap: 12px; }
+.med-block {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.med-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  font-weight: 600;
+  font-size: 1.02em;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--primary-soft), #f3fbf7);
+  border-bottom: 1px solid var(--line);
+}
+.med-block__head.is-open { color: var(--primary-dark); }
+.med-block__count { font-size: 0.82em; color: var(--ink-3); font-weight: 500; }
+.med-block__body { padding: 6px 12px 10px; }
+.med-block__body.empty-tip { padding: 14px 16px; }
+
+/* 适老化大字体：放大用药提醒 */
+.large-font .med-block__head { font-size: 1.15em; }
+.large-font .med__name { font-size: 1.12em; }
+
+/* ===================== AI 医嘱页签 ===================== */
+.aidvice-box { display: flex; flex-direction: column; gap: 4px; }
+.aidvice__summary {
+  background: var(--primary-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  color: var(--primary-dark);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.aidvice__sec { margin-top: 8px; }
+.aidvice__sec h4 { margin: 6px 0 4px; font-size: 0.95em; color: var(--ink-2); }
+.aidvice__sec ul { margin: 0; padding-left: 18px; }
+.aidvice__sec li { margin: 3px 0; line-height: 1.5; }
+
+/* ===================== 问诊记录列表 ===================== */
+.rec-card__summary {
+  padding: 8px 2px 2px;
+  color: var(--ink-2);
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+.records-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 5;
+}
+.records-subtabs { flex: 1; }
+.records-subtabs .home-tab { flex: 1; text-align: center; }
+.rec-add-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  font-size: 1.5em;
+  line-height: 1;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.rec-add-btn:active { transform: scale(0.94); }
+
+/* ===================== 整页视图（记录详情/编辑、检查结果） ===================== */
+.view {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+.view[hidden] {
+  display: none;
+}
+.view-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+.view-back {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.05em;
+  cursor: pointer;
+  padding: 8px 4px;
+}
+.view-header__sub { color: rgba(255,255,255,0.85); font-size: 0.85em; font-weight: 400; margin-left: auto; }
+.view-body { flex: 1; overflow-y: auto; padding: 12px 14px 30px; -webkit-overflow-scrolling: touch; }
+
+.rec-detail__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #fff;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  box-shadow: var(--shadow);
+  margin-bottom: 10px;
+}
+.rec-detail__bar { display: flex; gap: 8px; margin-bottom: 10px; }
+.rec-detail__meta > div { display: flex; flex-direction: column; gap: 2px; min-width: 80px; }
+.rec-detail__meta span { font-size: 0.78em; color: var(--ink-3); }
+.rec-detail__meta b { font-size: 0.98em; }
+.detail-transcript { white-space: pre-wrap; line-height: 1.6; color: var(--ink-2); background: #fafbfc; border-radius: var(--radius-sm); padding: 10px; }
+.detail-img { width: 100%; border-radius: var(--radius-sm); margin: 6px 0; border: 1px solid var(--line); }
+.detail-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
+/* 记录编辑表单 */
+.rec-edit .field { margin-bottom: 10px; }
+.rec-edit__row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.textarea-wrap { position: relative; }
+.textarea-wrap textarea { width: 100%; }
+
+/* 可编辑表格内删除按钮 */
+.row-del {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 1em;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.audio-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f3fbf7;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+.audio-card .thumb__del { position: absolute; top: 4px; right: 4px; }
+
+/* 医嘱分析编辑行 */
+.adv-row { display: flex; margin-bottom: 6px; }
+.adv-row input {
+  flex: 1;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 0.95em;
+}
+
+/* ===================== 检查结果趋势 ===================== */
+.exam-trend { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+.trend-card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 12px 4px;
+}
+.trend-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.trend-card__head b { font-size: 1em; }
+.trend-card__head span { color: var(--primary-dark); font-weight: 600; font-size: 0.9em; }
+.trend-single { padding: 8px 2px; color: var(--ink-3); font-size: 0.9em; }
+.trend-card svg { display: block; }
+
+.exam-list { display: flex; flex-direction: column; gap: 10px; }
+.exam-entry { background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px 12px; }
+.exam-entry__head { font-weight: 600; margin-bottom: 6px; }
+.exam-entry__inds { display: flex; flex-wrap: wrap; gap: 6px; }
+.exam-chip {
+  font-size: 0.82em;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  padding: 3px 8px;
+  border-radius: 20px;
+}
+.exam-chip.is-bad { background: #fdecea; color: var(--danger); }
+
+/* ===================== 药箱：药品 + 变体 ===================== */
+.cab-item__disease { font-size: 0.8em; color: var(--primary-dark); margin-top: 2px; }
+.cab-item__spec { font-size: 0.82em; color: var(--ink-2); margin-top: 3px; }
+.cab-item__variants {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 0.82em;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.cab-detail__head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.cab-detail__title { font-size: 1.15em; font-weight: 700; }
+.cab-detail__spec { font-size: 0.85em; color: var(--primary-dark); margin-top: 2px; }
+
+/* 变体（厂家/规格） */
+.var-row { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; background: #fafbfc; }
+.var-row.view .var-row__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.var-row.view .var-row__meta { font-size: 0.85em; color: var(--ink-2); line-height: 1.5; }
+.var-row.edit .var-row__grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.var-row.edit .var-row__grid input,
+.var-row.edit .var-row__grid select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.88em;
+}
+.chk-row { display: flex; gap: 14px; flex-wrap: wrap; padding: 4px 0; }
+.chk-row label { display: flex; align-items: center; gap: 5px; font-size: 0.92em; }
+
