@@ -62,13 +62,40 @@ setTimeout(() => {
   console.log("=== init errors:", errors.length, "===");
   errors.slice(0, 10).forEach((e) => console.log("  • " + e.slice(0, 200)));
 
-  // Bug1: 新增按钮在子页签下方（同 .records-bar 内，且在 .records-subtabs 之后）
+  const rtab = (name) => [...document.querySelectorAll(".records-subtabs .home-tab")].find((b) => b.dataset.rtab === name);
+
+  // --- 子页签隔离：检查结果趋势/历史 只在「检查结果」子页签；新增按钮只在「问诊记录」子页签 ---
+  assert("问诊子页签: 列表可见", $("#records-list") && !$("#records-list").hidden);
+  assert("问诊子页签: 检查结果面板隐藏", $("#exam-pane") && $("#exam-pane").hidden);
+  assert("问诊子页签: 新增按钮可见", $("#btn-add-record") && !$("#btn-add-record").hidden);
+
+  click(rtab("exam"));
+  assert("检查子页签: 列表隐藏", $("#records-list") && $("#records-list").hidden);
+  assert("检查子页签: 检查结果面板可见", $("#exam-pane") && !$("#exam-pane").hidden);
+  assert("检查子页签: 新增按钮隐藏", $("#btn-add-record") && $("#btn-add-record").hidden);
+
+  click(rtab("list"));
+  assert("切回问诊: 列表可见", $("#records-list") && !$("#records-list").hidden);
+  assert("切回问诊: 检查结果面板隐藏", $("#exam-pane") && $("#exam-pane").hidden);
+  assert("切回问诊: 新增按钮可见", $("#btn-add-record") && !$("#btn-add-record").hidden);
+
+  // Bug1(本次): 新增按钮在子页签下方（同 .records-bar 内，且在 .records-subtabs 之后）
   const addBtn = $("#btn-add-record");
   const bar = addBtn && addBtn.parentElement;
   const subtabs = $(".records-subtabs");
   const orderOk = bar && bar.classList.contains("records-bar") && subtabs && bar.contains(subtabs) && bar.contains(addBtn) &&
     Array.from(bar.children).indexOf(subtabs) < Array.from(bar.children).indexOf(addBtn);
   assert("Bug1 新增按钮在子页签下方", !!orderOk, addBtn && addBtn.textContent.trim());
+
+  // --- 问诊记录「返回」按钮（本次修复：之前无法返回） ---
+  const recCard = $(".rec-card");
+  assert("问诊记录列表已渲染", !!recCard);
+  click(recCard);
+  const recView = $("#record-view");
+  assert("点击后问诊详情视图显示", recView && !recView.hidden);
+  click($("#record-back"));
+  assert("返回后详情视图隐藏(修复无法返回)", recView && recView.hidden);
+  assert("返回后问诊页可见", $("#page-records") && !$("#page-records").hidden);
 
   // Bug4: 点击药箱条目 -> #cab-view 显示且内容含厂家；返回后隐藏
   const cabItem = $(".cab-item");
@@ -81,13 +108,6 @@ setTimeout(() => {
   click($("#cab-view-back"));
   assert("Bug4 返回后详情视图隐藏", cabView && cabView.hidden);
   assert("Bug4 返回后药箱页可见", $("#page-cabinet") && !$("#page-cabinet").hidden);
-
-  // Bug2: 点击问诊记录 -> #record-view 显示
-  const recCard = $(".rec-card");
-  assert("Bug2 问诊记录列表已渲染", !!recCard);
-  click(recCard);
-  const recView = $("#record-view");
-  assert("Bug2 点击后问诊详情视图显示", recView && !recView.hidden, recView && recView.querySelector("#record-view-title") && recView.querySelector("#record-view-title").textContent);
 
   // Bug3: 打开药品编辑 -> 规格表单为带标签的清晰布局
   click($("#cab-edit-btn"));

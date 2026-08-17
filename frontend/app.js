@@ -307,38 +307,44 @@
   function renderRecords() {
     const list = $("#records-list");
     const empty = $("#records-empty");
-    const examPane = $("#exam-pane");
     const examEmpty = $("#exam-empty");
     if (!DATA.records.length) {
       list.innerHTML = "";
       empty.hidden = false;
-      examPane.hidden = false;
-      $("#exam-trend").innerHTML = "";
-      $("#exam-list").innerHTML = "";
-      examEmpty.hidden = false;
-      return;
+    } else {
+      empty.hidden = true;
+      list.innerHTML = DATA.records
+        .map((rec) => {
+          const summary = rec.advice && rec.advice.text ? rec.advice.text : rec.result && rec.result.summary ? rec.result.summary : rec.transcript || "（无医嘱文字）";
+          const title = (rec.hospital || "未填医院") + (rec.visitDate ? " · " + rec.visitDate : "");
+          const hasImg = (rec.examImages && rec.examImages.length) || (rec.rxImages && rec.rxImages.length) || (rec.images && rec.images.length);
+          return `<div class="rec-card" data-rec-id="${esc(rec.id)}">
+            <div class="rec-card__top">
+              <span class="rec-card__date">${esc(title)}</span>
+              <span>${hasImg ? '<span class="rec-card__badge badge-img">📷</span>' : ""}</span>
+            </div>
+            <div class="rec-card__summary">👨‍⚕️ ${esc((rec.doctor || "未知医生") + "：" + summary)}</div>
+          </div>`;
+        })
+        .join("");
     }
-    empty.hidden = true;
-    list.innerHTML = DATA.records
-      .map((rec) => {
-        const summary = rec.advice && rec.advice.text ? rec.advice.text : rec.result && rec.result.summary ? rec.result.summary : rec.transcript || "（无医嘱文字）";
-        const title = (rec.hospital || "未填医院") + (rec.visitDate ? " · " + rec.visitDate : "");
-        const hasImg = (rec.examImages && rec.examImages.length) || (rec.rxImages && rec.rxImages.length) || (rec.images && rec.images.length);
-        return `<div class="rec-card" data-rec-id="${esc(rec.id)}">
-          <div class="rec-card__top">
-            <span class="rec-card__date">${esc(title)}</span>
-            <span>${hasImg ? '<span class="rec-card__badge badge-img">📷</span>' : ""}</span>
-          </div>
-          <div class="rec-card__summary">👨‍⚕️ ${esc((rec.doctor || "未知医生") + "：" + summary)}</div>
-        </div>`;
-      })
-      .join("");
 
     // 检查结果子页签
     renderExamTrend($("#exam-trend"));
     renderExamList($("#exam-list"));
-    examPane.hidden = false;
     examEmpty.hidden = (DATA.examResults || []).length > 0;
+    applyRecordsTab();
+  }
+
+  // 跟随当前激活的子页签，统一控制「列表 / 检查结果面板 / 新增按钮」的显隐
+  function applyRecordsTab() {
+    const active = document.querySelector(".records-subtabs .home-tab.is-active");
+    const isExam = !!(active && active.dataset.rtab === "exam");
+    $("#records-list").hidden = isExam;
+    $("#exam-pane").hidden = !isExam;
+    $("#btn-add-record").hidden = isExam;
+    const empty = $("#records-empty");
+    if (empty) empty.hidden = isExam || (DATA.records || []).length > 0;
   }
 
   function openRecord(id) {
@@ -1334,13 +1340,10 @@
     $("#btn-add-record").onclick = () => openRecord(null);
     $$(".records-subtabs .home-tab").forEach((b) => (b.onclick = () => {
       $$(".records-subtabs .home-tab").forEach((x) => x.classList.toggle("is-active", x === b));
-      const list = b.dataset.rtab === "list";
-      $("#records-list").hidden = !list;
-      $("#records-empty").hidden = !list || DATA.records.length > 0;
-      $("#exam-pane").hidden = list;
+      renderRecords();
     }));
     $("#records-list").onclick = (e) => { const c = e.target.closest(".rec-card"); if (c) openRecord(c.dataset.recId); };
-    $("#record-back").onclick = () => { if (currentRecordId) { const rec = DATA.records.find((r) => r.id === currentRecordId); if (rec) { showRecordView(rec, "detail"); return; } } closeView(); };
+    $("#record-back").onclick = () => closeView();
     $("#exam-back").onclick = () => { $$(".view").forEach((v) => (v.hidden = true)); goPage("records"); };
 
     // 药箱
