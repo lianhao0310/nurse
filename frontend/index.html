@@ -88,6 +88,8 @@
               <div id="exam-trend" class="exam-trend swipe"></div>
               <div class="block-head"><h2>⭐ 关注指标</h2></div>
               <div id="exam-follow" class="exam-follow"></div>
+              <div class="block-head"><h2>🧾 检查结果明细</h2></div>
+              <div id="exam-list" class="exam-list"></div>
               <div id="exam-empty" class="empty-tip big" hidden>还没有检查结果数据。<br />在「问诊记录」详情中做 AI 分析即可自动归档。</div>
             </div>
           </div>
@@ -266,6 +268,28 @@
             <button class="modal__close" data-close="cab">✕</button>
           </div>
           <div class="modal__body" id="cab-body"></div>
+        </div>
+      </div>
+
+      <!-- ============ 历史药品 弹层 ============ -->
+      <div class="modal" id="hist-modal" hidden>
+        <div class="modal__mask" data-close="hist"></div>
+        <div class="modal__panel">
+          <div class="modal__head">
+            <span>添加历史药品</span>
+            <button class="modal__close" data-close="hist">✕</button>
+          </div>
+          <div class="modal__body">
+            <label class="field"><span>厂家</span><input type="text" id="hist-f-manufacturer" placeholder="如：辉瑞" /></label>
+            <label class="field"><span>规格</span><input type="text" id="hist-f-spec" placeholder="如：5mg*7片" /></label>
+            <label class="field"><span>别名 / 俗称</span><input type="text" id="hist-f-alias" placeholder="如：络活喜" /></label>
+            <label class="field"><span>单位剂量</span><input type="text" id="hist-f-doseunit" value="片" /></label>
+            <label class="field"><span>备注</span><input type="text" id="hist-f-note" placeholder="如：之前用过" /></label>
+            <div class="capture-actions">
+              <button class="btn btn-primary" id="hist-save" type="button">保存</button>
+              <button class="btn btn-ghost" id="hist-cancel" type="button">取消</button>
+            </div>
+          </div>
         </div>
       </div>
 

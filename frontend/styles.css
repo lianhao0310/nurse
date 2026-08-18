@@ -94,6 +94,29 @@ textarea {
   padding: 4px 2px;
 }
 
+/* 全局：hidden 属性强制隐藏（修复子页签残留问诊记录） */
+[hidden] { display: none !important; }
+
+/* ===================== 滑动删除（左滑确认删除） ===================== */
+.swipe-item { position: relative; }
+.swipe-content { position: relative; z-index: 1; transition: transform .18s ease; }
+.swipe-del {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 76px;
+  border: none; background: var(--danger); color: #fff;
+  font-size: 0.95em; display: flex; align-items: center; justify-content: center;
+  z-index: 0;
+}
+.swipe-item.is-swiped .swipe-content { transform: translateX(-76px); }
+/* 桌面端（鼠标）悬停即露出删除，便于预览 / 测试 */
+@media (hover: hover) and (pointer: fine) {
+  .swipe-item:hover .swipe-content { transform: translateX(-76px); }
+}
+
+/* 历史药品 chips */
+.cab-history-chips { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.cab-history-chip { display: flex; align-items: center; justify-content: space-between; background: #f3f6f9; border-radius: var(--radius-sm); padding: 6px 10px; font-size: 0.82em; }
+.cab-history-chip__del { background: none; border: none; color: var(--danger); font-size: 1em; cursor: pointer; }
+
 /* ===================== 首页 ===================== */
 .home-greet {
   padding: 6px 4px 12px;
@@ -466,6 +489,11 @@ textarea {
   gap: 12px;
 }
 .rec-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+.rec-card .swipe-content {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -921,6 +949,11 @@ textarea {
   gap: 12px;
 }
 .cab-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+.cab-item .swipe-content {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -930,11 +963,11 @@ textarea {
   gap: 10px;
   border-left: 4px solid var(--primary);
 }
-.cab-item.disabled {
+.cab-item.disabled .swipe-content {
   border-left-color: var(--ink-3);
   opacity: 0.85;
 }
-.cab-item.out {
+.cab-item.out .swipe-content {
   border-left-color: var(--danger);
 }
 .cab-item__top {
@@ -1691,7 +1724,8 @@ textarea {
 .trend-card svg { display: block; }
 
 .exam-list { display: flex; flex-direction: column; gap: 10px; }
-.exam-entry { background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px 12px; }
+.exam-entry { position: relative; overflow: hidden; border-radius: var(--radius-sm); }
+.exam-entry .swipe-content { background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px 12px; }
 .exam-entry__head { font-weight: 600; margin-bottom: 6px; }
 .exam-entry__inds { display: flex; flex-wrap: wrap; gap: 6px; }
 .exam-chip {
@@ -1717,7 +1751,8 @@ textarea {
 .follow-chip__date { font-size: 0.78em; color: var(--ink-3); }
 
 /* 首页 AI 医嘱卡片（每条问诊记录一张） */
-.aidvice-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+.aidvice-card { position: relative; overflow: hidden; border-radius: var(--radius); margin-bottom: 8px; cursor: pointer; }
+.aidvice-card .swipe-content { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px; }
 .aidvice-card__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 8px; }
 .aidvice-card__head b { font-size: 0.95em; }
 .aidvice-card__date { font-size: 0.78em; color: var(--ink-3); white-space: nowrap; }

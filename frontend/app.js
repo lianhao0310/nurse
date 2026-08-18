@@ -258,10 +258,13 @@
           .concat((a.diet || []).map((x) => `<span class="tag">${esc(x)}</span>`))
           .concat((a.taboo || []).map((x) => `<span class="tag tag--bad">${esc(x)}</span>`))
           .join("");
-        return `<div class="aidvice-card" data-rec-id="${esc(rec.id)}">
-          <div class="aidvice-card__head"><b>${esc(head)}</b>${a.createdAt ? `<span class="aidvice-card__date">${esc(a.createdAt.slice(0, 10))}</span>` : ""}</div>
-          ${a.text ? `<div class="aidvice-card__summary">${esc(a.text)}</div>` : ""}
-          ${tags ? `<div class="aidvice-card__tags">${tags}</div>` : ""}
+        return `<div class="aidvice-card swipe-item" data-rec-id="${esc(rec.id)}" data-swipe>
+          <div class="swipe-content">
+            <div class="aidvice-card__head"><b>${esc(head)}</b>${a.createdAt ? `<span class="aidvice-card__date">${esc(a.createdAt.slice(0, 10))}</span>` : ""}</div>
+            ${a.text ? `<div class="aidvice-card__summary">${esc(a.text)}</div>` : ""}
+            ${tags ? `<div class="aidvice-card__tags">${tags}</div>` : ""}
+          </div>
+          <button class="swipe-del" data-swipe-del>删除</button>
         </div>`;
       })
       .join("");
@@ -316,12 +319,15 @@
           const summary = rec.advice && rec.advice.text ? rec.advice.text : rec.result && rec.result.summary ? rec.result.summary : rec.transcript || "（无医嘱文字）";
           const title = (rec.hospital || "未填医院") + (rec.visitDate ? " · " + rec.visitDate : "");
           const hasImg = (rec.examImages && rec.examImages.length) || (rec.rxImages && rec.rxImages.length) || (rec.images && rec.images.length);
-          return `<div class="rec-card" data-rec-id="${esc(rec.id)}">
-            <div class="rec-card__top">
-              <span class="rec-card__date">${esc(title)}</span>
-              <span>${hasImg ? '<span class="rec-card__badge badge-img">📷</span>' : ""}</span>
+          return `<div class="rec-card swipe-item" data-rec-id="${esc(rec.id)}" data-swipe>
+            <div class="swipe-content">
+              <div class="rec-card__top">
+                <span class="rec-card__date">${esc(title)}</span>
+                <span>${hasImg ? '<span class="rec-card__badge badge-img">📷</span>' : ""}</span>
+              </div>
+              <div class="rec-card__summary">👨‍⚕️ ${esc((rec.doctor || "未知医生") + "：" + summary)}</div>
             </div>
-            <div class="rec-card__summary">👨‍⚕️ ${esc((rec.doctor || "未知医生") + "：" + summary)}</div>
+            <button class="swipe-del" data-swipe-del>删除</button>
           </div>`;
         })
         .join("");
@@ -330,6 +336,7 @@
     // 检查结果子页签
     renderExamTrend($("#exam-trend"));
     renderExamFollow($("#exam-follow"));
+    renderExamList($("#exam-list"));
     examEmpty.hidden = (DATA.examResults || []).length > 0;
     applyRecordsTab();
   }
@@ -370,7 +377,6 @@
     let h = "";
     h += `<div class="rec-detail__bar">
       <button class="btn btn-ghost btn-sm" id="rec-edit-btn">✎ 编辑</button>
-      <button class="btn btn-ghost btn-sm" id="rec-del-btn" style="color:var(--danger)">🗑 删除</button>
     </div>`;
     h += `<div class="rec-detail__meta">
       <div><span>医院</span><b>${esc(rec.hospital || "—")}</b></div>
@@ -434,18 +440,7 @@
     // 详情模式：编辑 / 删除入口 + AI 按钮
     const editBtn = $("#rec-edit-btn");
     if (editBtn) editBtn.onclick = () => showRecordView(rec, "edit");
-    const delBtn = $("#rec-del-btn");
-    if (delBtn)
-      delBtn.onclick = async () => {
-        if (confirm("确定删除这条问诊记录？此操作不可恢复。")) {
-          await NurseStorage.deleteRecord(rec.id);
-          DATA = await NurseStorage.load();
-          closeView();
-          renderRecords();
-          renderHome();
-          toast("已删除");
-        }
-      };
+    // 删除走列表左滑确认
     const aiBtn = $("#rec-ai-analyze");
     if (aiBtn) aiBtn.onclick = () => runAIAnalyze(rec);
     const advBtn = $("#rec-advice-analyze");
@@ -986,6 +981,20 @@
       })
       .join("");
   }
+  function renderExamList(el) {
+    if (!el) return;
+    const entries = (DATA.examResults || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (!entries.length) { el.innerHTML = ""; return; }
+    el.innerHTML = entries
+      .map((e) => `<div class="exam-entry swipe-item" data-exam-id="${esc(e.id)}" data-swipe>
+        <div class="swipe-content">
+          <div class="exam-entry__head"><b>${esc(e.date || "")}</b>${e.hospital ? " · " + esc(e.hospital) : ""}</div>
+          <div class="exam-entry__inds">${(e.indicators || []).map((i) => `<span class="exam-chip ${i.abnormal ? "is-bad" : ""}">${esc(i.name)} ${esc(i.value)}${esc(i.unit || "")}</span>`).join("")}</div>
+        </div>
+        <button class="swipe-del" data-swipe-del>删除</button>
+      </div>`)
+      .join("");
+  }
 
   // ===================== 我的药箱 =====================
   function drugStatus(d) {
@@ -1017,17 +1026,20 @@
           "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
           "阈值 " + (Number(d.threshold) || 0),
         ].filter(Boolean).join(" · ");
-        return `<div class="cab-item ${esc(drugStatus(d))}" data-cab-id="${esc(d.id)}">
-          <div class="cab-item__top">
-            <div>
-              <div class="cab-item__name">${esc(d.name)}</div>
-              ${d.disease ? `<div class="cab-item__disease">🩺 ${esc(d.disease)}</div>` : ""}
-              <div class="cab-item__spec">单次 ${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "—")} · ${slotLabels(d.timeSlots)} · ${mealLabel(d.meal)}</div>
-              <div class="cab-item__meta2">${esc(meta)}</div>
+        return `<div class="cab-item ${esc(drugStatus(d))} swipe-item" data-cab-id="${esc(d.id)}" data-swipe>
+          <div class="swipe-content">
+            <div class="cab-item__top">
+              <div>
+                <div class="cab-item__name">${esc(d.name)}</div>
+                ${d.disease ? `<div class="cab-item__disease">🩺 ${esc(d.disease)}</div>` : ""}
+                <div class="cab-item__spec">单次 ${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "—")} · ${slotLabels(d.timeSlots)} · ${mealLabel(d.meal)}</div>
+                <div class="cab-item__meta2">${esc(meta)}</div>
+              </div>
+              <span class="cab-status ${esc(drugStatus(d))}">${statusLabel(drugStatus(d))}</span>
             </div>
-            <span class="cab-status ${esc(drugStatus(d))}">${statusLabel(drugStatus(d))}</span>
+            ${(d.history && d.history.length) ? `<div class="cab-item__history">📚 历史 ${d.history.length} 条（曾用其他厂家）</div>` : ""}
           </div>
-          ${(d.history && d.history.length) ? `<div class="cab-item__history">📚 历史 ${d.history.length} 条（曾用其他厂家）</div>` : ""}
+          <button class="swipe-del" data-swipe-del>删除</button>
         </div>`;
       })
       .join("");
@@ -1043,7 +1055,7 @@
           .map(
             (h) => `<div class="history-row">
           <div class="history-row__head"><b>${esc(h.manufacturer || "未填厂家")}</b>${h.spec ? `<span>规格 ${esc(h.spec)}</span>` : ""}${h.alias && h.alias !== d.name ? `<span>别名 ${esc(h.alias)}</span>` : ""}</div>
-          <div class="history-row__meta">数量 ${Number(h.qty) || 0} ${esc(h.unit || "片")} · 状态 ${statusLabel(h.status)} · 阈值 ${Number(h.threshold) || 0}${h.note ? " · " + esc(h.note) : ""}</div>
+          <div class="history-row__meta">${h.doseUnit ? "单位剂量 " + esc(h.doseUnit) : ""}${h.note ? (h.doseUnit ? " · " : "") + esc(h.note) : ""}</div>
         </div>`
           )
           .join("")}</div>`
@@ -1060,48 +1072,23 @@
       ${historyHtml}
       <div class="cab-detail__actions">
         <button class="btn btn-primary" id="cab-edit-btn">编辑</button>
-      </div>
-      <button class="btn btn-primary block" id="cab-del-btn" style="background:var(--danger);margin-top:10px">删除药品</button>`;
+      </div>`;
     $("#cab-view-title").textContent = "药品详情";
     $$(".view").forEach((v) => (v.hidden = true));
     $$(".page").forEach((p) => (p.hidden = true));
     $("#cab-view").hidden = false;
     $("#cab-edit-btn").onclick = () => openCabinetEdit(id);
-    $("#cab-del-btn").onclick = async () => {
-      if (confirm("确定从药箱删除该药品（含所有历史药品）？")) {
-        await NurseStorage.deleteDrug(id);
-        DATA = await NurseStorage.load();
-        $("#cab-view").hidden = true;
-        goPage("cabinet");
-        renderCabinet();
-        toast("已删除");
-      }
-    };
+    // 删除统一走列表左滑确认
   }
 
   function openCabinetEdit(id) {
     const isNew = !id;
     editingDrugId = id || null;
     const d = isNew ? { name: "", disease: "", doseAmount: 0, doseUnit: "片", timeSlots: ["morning"], meal: "any", manufacturer: "", alias: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7, intro: "", precautions: [], advice: "", note: "", history: [] } : (DATA.cabinet || []).find((x) => x.id === id) || {};
+    formHistory = (d.history || []).map((h) => ({ manufacturer: (h.manufacturer || ""), spec: (h.spec || ""), alias: (h.alias || ""), doseUnit: (h.doseUnit || "片"), note: (h.note || "") }));
     $("#cab-modal-title").textContent = isNew ? "添加药品" : "编辑药品";
     const precautions = (d.precautions || []).map((p, i) => `<span class="cab-edit__tag">${esc(p)} <button type="button" data-rm-prec="${i}">✕</button></span>`).join("");
-    const historyRows = (d.history || [])
-      .map(
-        (h, i) => `<div class="history-edit" data-hi="${i}">
-        <div class="var-row__grid">
-          <label class="vf"><span>厂家</span><input value="${esc(h.manufacturer)}" data-f="manufacturer"/></label>
-          <label class="vf"><span>规格</span><input value="${esc(h.spec)}" data-f="spec"/></label>
-          <label class="vf"><span>别名</span><input value="${esc(h.alias)}" data-f="alias"/></label>
-          <label class="vf"><span>数量</span><input type="number" value="${Number(h.qty) || 0}" data-f="qty"/></label>
-          <label class="vf"><span>单位</span><input value="${esc(h.unit || "片")}" data-f="unit"/></label>
-          <label class="vf"><span>状态</span><select data-f="status"><option value="active" ${h.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${h.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${h.status === "out" ? "selected" : ""}>缺药</option></select></label>
-          <label class="vf"><span>阈值</span><input type="number" value="${Number(h.threshold) || 0}" data-f="threshold"/></label>
-          <label class="vf"><span>备注</span><input value="${esc(h.note)}" data-f="note"/></label>
-        </div>
-        <button type="button" class="row-del" data-hi="${i}">✕ 删除历史</button>
-      </div>`
-      )
-      .join("");
+    // 历史药品改为弹窗录入（见 formHistory / hist-modal）
     $("#cab-body").innerHTML = `
       <div class="cab-edit__field"><span>药品名称 *</span><input type="text" id="cab-f-name" value="${esc(d.name)}" placeholder="如：苯磺酸氨氯地平片"/></div>
       <div class="cab-edit__field"><span>针对病症</span><input type="text" id="cab-f-disease" placeholder="如：高血压、糖尿病（逗号分隔）" value="${esc(d.disease)}"/></div>
@@ -1123,7 +1110,7 @@
       <div class="cab-edit__field"><span>别名 / 俗称</span><input type="text" id="cab-f-alias" value="${esc(d.alias)}" placeholder="如：络活喜"/></div>
       <div class="cab-edit__row">
         <div class="cab-edit__field"><span>当前库存</span><input type="number" id="cab-f-qty" value="${Number(d.qty) || 0}"/></div>
-        <div class="cab-edit__field"><span>库存单位</span><input type="text" id="cab-f-unit" value="${esc(d.unit || "片")}"/></div>
+        <div class="cab-edit__field"><span>单位剂量</span><input type="text" id="cab-f-unit" value="${esc(d.unit || "片")}"/></div>
       </div>
       <div class="cab-edit__field"><span>状态</span>
         <select id="cab-f-status"><option value="active" ${d.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${d.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${d.status === "out" ? "selected" : ""}>缺药</option></select>
@@ -1140,15 +1127,17 @@
       <div class="cab-edit__field"><span>针对个人用药建议</span><textarea id="cab-f-advice" placeholder="结合个人病情给出用药建议">${esc(d.advice)}</textarea></div>
       <div class="cab-edit__field"><span>备注</span><input type="text" id="cab-f-note" value="${esc(d.note)}" placeholder="其他备注"/></div>
       <div class="cab-edit__field"><span>历史药品（曾用其他厂家，可选）</span>
-        <div id="cab-history">${historyRows}</div>
+        <div id="cab-history" class="cab-history-chips"></div>
         <button type="button" class="btn btn-ghost btn-sm" id="cab-history-add">＋ 添加历史药品</button>
       </div>
       <button class="btn btn-primary block" id="cab-f-save">${isNew ? "添加" : "保存"}</button>`;
     $("#cab-modal").hidden = false;
+    renderHistoryChips();
     bindCabinetForm();
   }
 
   let formPrecautions = [];
+  let formHistory = [];
   function bindCabinetForm() {
     formPrecautions = [];
     $$("#cab-f-prec-tags .cab-edit__tag").forEach((t) => { const x = t.textContent.replace(/✕\s*$/, "").trim(); if (x) formPrecautions.push(x); });
@@ -1158,27 +1147,19 @@
     };
     renderTags();
     $("#cab-f-prec-add").onclick = () => { const i = $("#cab-f-prec-input"); if (i.value.trim()) { formPrecautions.push(i.value.trim()); i.value = ""; renderTags(); } };
-    $("#cab-history-add").onclick = () => {
-      const box = $("#cab-history");
-      const i = box.children.length;
-      const div = document.createElement("div");
-      div.className = "history-edit";
-      div.dataset.hi = i;
-      div.innerHTML = `<div class="var-row__grid">
-        <label class="vf"><span>厂家</span><input data-f="manufacturer"/></label>
-        <label class="vf"><span>规格</span><input data-f="spec"/></label>
-        <label class="vf"><span>别名</span><input data-f="alias"/></label>
-        <label class="vf"><span>数量</span><input type="number" value="0" data-f="qty"/></label>
-        <label class="vf"><span>单位</span><input value="片" data-f="unit"/></label>
-        <label class="vf"><span>状态</span><select data-f="status"><option value="active">使用中</option><option value="disabled">停用</option><option value="out">缺药</option></select></label>
-        <label class="vf"><span>阈值</span><input type="number" value="7" data-f="threshold"/></label>
-        <label class="vf"><span>备注</span><input data-f="note"/></label>
-      </div>
-      <button type="button" class="row-del" data-hi="${i}">✕ 删除历史</button>`;
-      box.appendChild(div);
-      div.querySelector(".row-del").onclick = () => div.remove();
+    $("#cab-history-add").onclick = () => openHistModal();
+    $("#hist-save").onclick = () => {
+      formHistory.push({
+        manufacturer: $("#hist-f-manufacturer").value.trim(),
+        spec: $("#hist-f-spec").value.trim(),
+        alias: $("#hist-f-alias").value.trim(),
+        doseUnit: $("#hist-f-doseunit").value.trim() || "片",
+        note: $("#hist-f-note").value.trim(),
+      });
+      renderHistoryChips();
+      closeHistModal();
     };
-    $$("#cab-history .row-del").forEach((b) => (b.onclick = () => b.closest(".history-edit").remove()));
+    $("#hist-cancel").onclick = closeHistModal;
     $("#cab-f-save").onclick = saveCabinetDrug;
   }
 
@@ -1187,15 +1168,12 @@
     if (!name) { toast("请填写药品名称"); return; }
     const prev = editingDrugId ? (DATA.cabinet || []).find((x) => x.id === editingDrugId) : null;
     const newManufacturer = $("#cab-f-manufacturer").value.trim();
-    const history = $$("#cab-history .history-edit").map((row) => ({
-      manufacturer: row.querySelector('[data-f="manufacturer"]').value.trim(),
-      spec: row.querySelector('[data-f="spec"]').value.trim(),
-      alias: row.querySelector('[data-f="alias"]').value.trim(),
-      qty: Number(row.querySelector('[data-f="qty"]').value) || 0,
-      unit: row.querySelector('[data-f="unit"]').value.trim() || "片",
-      status: row.querySelector('[data-f="status"]').value,
-      threshold: Number(row.querySelector('[data-f="threshold"]').value) || 0,
-      note: row.querySelector('[data-f="note"]').value.trim(),
+    const history = formHistory.map((h) => ({
+      manufacturer: h.manufacturer,
+      spec: h.spec,
+      alias: h.alias,
+      doseUnit: h.doseUnit,
+      note: h.note,
     }));
     // 编辑时若更换厂家，将原厂家自动归入历史药品
     if (prev) {
@@ -1205,10 +1183,7 @@
           manufacturer: oldM,
           spec: prev.spec || "",
           alias: prev.alias || "",
-          qty: Number(prev.qty) || 0,
-          unit: prev.unit || "片",
-          status: prev.status || "disabled",
-          threshold: Number(prev.threshold) || 0,
+          doseUnit: prev.unit || "片",
           note: "由编辑更换厂家自动归档",
         });
       }
@@ -1242,6 +1217,26 @@
     toast(editingDrugId ? "已保存" : "已添加");
     editingDrugId = null;
   }
+
+  function renderHistoryChips() {
+    const box = $("#cab-history");
+    if (!box) return;
+    if (!formHistory.length) { box.innerHTML = '<div class="empty-tip" style="padding:4px 0">暂无历史药品</div>'; return; }
+    box.innerHTML = formHistory
+      .map((h, i) => `<div class="cab-history-chip"><span>${esc((h.manufacturer || "未填厂家") + (h.alias && h.alias !== h.manufacturer ? "（" + h.alias + "）" : "") + (h.doseUnit ? " · " + h.doseUnit : ""))}</span><button type="button" class="cab-history-chip__del" data-hi="${i}">✕</button></div>`)
+      .join("");
+    $$("#cab-history .cab-history-chip__del").forEach((b) => (b.onclick = () => { formHistory.splice(+b.dataset.hi, 1); renderHistoryChips(); }));
+  }
+  function openHistModal() {
+    $("#hist-f-manufacturer").value = "";
+    $("#hist-f-spec").value = "";
+    $("#hist-f-alias").value = "";
+    $("#hist-f-doseunit").value = "片";
+    $("#hist-f-note").value = "";
+    $("#hist-modal").hidden = false;
+    $("#hist-f-manufacturer").focus();
+  }
+  function closeHistModal() { $("#hist-modal").hidden = true; }
 
   // ===================== 每日扣减 =====================
   async function runDailyDecrement() {
@@ -1388,6 +1383,97 @@
     } catch (e) { toast("导入失败：文件格式不正确"); }
   }
 
+  // ===================== 滑动删除（通用） =====================
+  function attachSwipe(listEl, onDelete) {
+    if (!listEl) return;
+    const W = 76;
+    let openItem = null;
+    listEl.addEventListener("touchstart", (e) => {
+      const item = e.target.closest("[data-swipe]");
+      if (openItem && openItem !== item) { openItem.classList.remove("is-swiped"); openItem = null; }
+      if (!item) return;
+      item._sx = e.touches[0].clientX;
+      item._sy = e.touches[0].clientY;
+      item._dragging = false;
+      item._swiped = item.classList.contains("is-swiped");
+    }, { passive: true });
+    listEl.addEventListener("touchmove", (e) => {
+      const item = e.target.closest("[data-swipe]");
+      if (!item) return;
+      const x = e.touches[0].clientX, y = e.touches[0].clientY;
+      const dx = x - item._sx, dy = y - item._sy;
+      if (!item._dragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) item._dragging = true;
+      if (item._dragging) {
+        if (e.cancelable) e.preventDefault();
+        const cur = item._swiped ? -W + dx : dx;
+        const t = Math.max(-W, Math.min(0, cur));
+        const c = item.querySelector(".swipe-content");
+        if (c) c.style.transform = "translateX(" + t + "px)";
+      }
+    }, { passive: false });
+    listEl.addEventListener("touchend", (e) => {
+      const item = e.target.closest("[data-swipe]");
+      if (!item || !item._dragging) return;
+      const dx = e.changedTouches ? e.changedTouches[0].clientX - item._sx : 0;
+      if (dx <= -W / 2) { item.classList.add("is-swiped"); openItem = item; }
+      else { item.classList.remove("is-swiped"); openItem = null; }
+      const c = item.querySelector(".swipe-content");
+      if (c) c.style.transform = "";
+      item._dragging = false;
+      item._suppress = true;
+      setTimeout(() => { item._suppress = false; }, 350);
+    });
+    listEl.addEventListener("click", (e) => {
+      const del = e.target.closest("[data-swipe-del]");
+      const item = e.target.closest("[data-swipe]");
+      if (del && item) { e.stopPropagation(); e.preventDefault(); onDelete(item); return; }
+      if (item && item._suppress) { item._suppress = false; e.stopPropagation(); return; }
+      if (item && item.classList.contains("is-swiped")) { item.classList.remove("is-swiped"); if (openItem === item) openItem = null; e.stopPropagation(); return; }
+    }, true);
+  }
+  async function deleteCabinetSwipe(item) {
+    const id = item.dataset.cabId;
+    if (!id) return;
+    if (confirm("确定删除该药品（含历史药品）？")) {
+      await NurseStorage.deleteDrug(id);
+      DATA = await NurseStorage.load();
+      renderCabinet();
+      toast("已删除");
+    }
+  }
+  async function deleteRecordSwipe(item) {
+    const id = item.dataset.recId;
+    if (!id) return;
+    if (confirm("确定删除这条问诊记录？此操作不可恢复。")) {
+      await NurseStorage.deleteRecord(id);
+      DATA = await NurseStorage.load();
+      renderRecords();
+      renderHome();
+      toast("已删除");
+    }
+  }
+  async function deleteAdviceSwipe(item) {
+    const id = item.dataset.recId;
+    if (!id) return;
+    if (confirm("确定删除该 AI 医嘱？")) {
+      const rec = (DATA.records || []).find((r) => r.id === id);
+      if (rec) { rec.aiAdvice = null; await NurseStorage.updateRecord(id, { aiAdvice: null }); }
+      DATA = await NurseStorage.load();
+      renderHome();
+      toast("已删除 AI 医嘱");
+    }
+  }
+  async function deleteExamSwipe(item) {
+    const id = item.dataset.examId;
+    if (!id) return;
+    if (confirm("确定删除这条检查结果？")) {
+      await NurseStorage.deleteExamEntry(id);
+      DATA = await NurseStorage.load();
+      renderRecords();
+      toast("已删除");
+    }
+  }
+
   // ===================== 事件绑定 =====================
   function bindEvents() {
     $$(".tabbar__btn").forEach((b) => (b.onclick = () => goPage(b.dataset.page)));
@@ -1438,7 +1524,11 @@
     // 药箱
     $$(".cab-filter").forEach((b) => (b.onclick = () => { cabinetState.filter = b.dataset.filter; $$(".cab-filter").forEach((x) => x.classList.toggle("is-active", x === b)); renderCabinet(); }));
     $("#btn-add-cab").onclick = () => openCabinetEdit(null);
-    $("#cabinet-list").onclick = (e) => { const c = e.target.closest(".cab-item"); if (c) openCabinetDetail(c.dataset.cabId); };
+    $("#cabinet-list").onclick = (e) => { const c = e.target.closest(".cab-item"); if (c) openCabinetEdit(c.dataset.cabId); };
+    attachSwipe($("#cabinet-list"), deleteCabinetSwipe);
+    attachSwipe($("#records-list"), deleteRecordSwipe);
+    attachSwipe($("#home-aidvice"), deleteAdviceSwipe);
+    attachSwipe($("#exam-list"), deleteExamSwipe);
     $("#cab-view-back").onclick = () => { $("#cab-view").hidden = true; goPage("cabinet"); };
 
     // 设置

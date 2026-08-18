@@ -34,7 +34,7 @@
  *     status: "active"|"disabled"|"out",    // 状态
  *     dailyDose, threshold,                // 每日消耗 / 库存阈值
  *     history: [ {                         // 历史药品（曾用其他厂家）
- *       id, manufacturer, spec, alias, qty, unit, status, threshold, note, addedAt
+ *       id, manufacturer, spec, alias, doseUnit, note, addedAt
  *     } ]
  *   } ],
  *   followedIndicators: ["血糖","血压"],    // 关注的检查指标（按名称）
@@ -253,7 +253,7 @@
     return names;
   }
 
-  // 历史药品（曾用其他厂家）
+  // 历史药品（曾用其他厂家）：厂家 / 规格 / 别名 / 单位剂量 / 备注
   function _normHistoryItem(h) {
     if (!h || typeof h !== "object") return null;
     return {
@@ -261,10 +261,7 @@
       manufacturer: h.manufacturer || "",
       spec: h.spec || "",
       alias: h.alias || "",
-      qty: Number(h.qty) || 0,
-      unit: h.unit || "片",
-      status: ["active", "disabled", "out"].includes(h.status) ? h.status : "disabled",
-      threshold: Number(h.threshold) || 0,
+      doseUnit: h.doseUnit || h.unit || "片",
       note: h.note || "",
       addedAt: h.addedAt || "",
     };
@@ -275,10 +272,7 @@
       manufacturer: v.manufacturer || "",
       spec: v.spec || "",
       alias: v.alias || "",
-      qty: Number(v.qty) || 0,
-      unit: v.unit || "片",
-      status: ["active", "disabled", "out"].includes(v.status) ? v.status : "disabled",
-      threshold: Number(v.threshold) || 0,
+      doseUnit: v.unit || "片",
       note: "",
       addedAt: "",
     };
