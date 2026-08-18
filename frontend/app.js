@@ -15,7 +15,8 @@
 
   const cabinetState = { filter: "all" };
   let homeTab = "remind";
-  let homeExpandedSlot = currentSlot();
+  let homeExpandedSlots = new Set([currentSlot()]);
+  let editingDrugId = null;
   let recDraft = null; // 编辑问诊记录时的草稿
   let currentRecordId = null;
   let currentCabId = null;
@@ -152,14 +153,12 @@
     if (!box) return;
     const items = [];
     for (const d of DATA.cabinet || []) {
-      (d.variants || []).forEach((v) => {
-        if (v.status === "out" || (v.status === "active" && v.threshold > 0 && v.qty <= v.threshold)) {
-          items.push({
-            out: v.status === "out",
-            text: "💊 " + d.name + (v.manufacturer ? "（" + v.manufacturer + "）" : "") + (v.status === "out" ? "：已缺药" : "：库存不足（剩 " + v.qty + " " + v.unit + "）"),
-          });
-        }
-      });
+      if (d.status === "out" || (d.status === "active" && d.threshold > 0 && Number(d.qty) <= d.threshold)) {
+        items.push({
+          out: d.status === "out",
+          text: "💊 " + d.name + (d.manufacturer ? "（" + d.manufacturer + "）" : "") + (d.status === "out" ? "：已缺药" : "：库存不足（剩 " + d.qty + " " + d.unit + "）"),
+        });
+      }
     }
     if (!items.length) {
       box.hidden = true;
@@ -170,20 +169,20 @@
     box.hidden = false;
   }
 
-  // 用药提醒：按 早/中/晚 分组，当前时段展开，其余折叠显示数量
+  // 用药提醒：按 早/中/晚 分组，各时段可独立点击展开/收起
   function renderMedBlocks(done) {
     const box = $("#home-meds-blocks");
     if (!box) return;
-    const drugs = (DATA.cabinet || []).filter((d) => (d.variants || []).some((v) => v.status === "active"));
+    const drugs = (DATA.cabinet || []).filter((d) => d.status === "active");
     let total = 0;
     const html = SLOT_DEFS.map((slot) => {
       const inSlot = drugs.filter((d) => (d.timeSlots || []).includes(slot.key));
-      const expanded = homeExpandedSlot === slot.key;
+      const expanded = homeExpandedSlots.has(slot.key);
       const count = inSlot.length;
       total += count;
       const head = `<div class="med-block__head ${expanded ? "is-open" : ""}" data-slot="${slot.key}">
         <span>${slot.label}</span>
-        <span class="med-block__count">${expanded ? "收起" : count + " 项 ▾"}</span>
+        <span class="med-block__count">${expanded ? "收起 ▴" : count + " 项 ▾"}</span>
       </div>`;
       if (!expanded) return `<div class="med-block">${head}</div>`;
       if (!count) {
@@ -209,9 +208,7 @@
     $("#home-meds-count").textContent = total + " 项";
   }
   function sumStock(d) {
-    return (d.variants || []).length
-      ? (d.variants || []).reduce((s, v) => s + (v.status === "active" ? Number(v.qty) || 0 : 0), 0)
-      : 0;
+    return Number(d.qty) || 0;
   }
 
   // 个人提醒（来自 settings.reminders）
@@ -243,30 +240,31 @@
     $("#home-reminders-count").textContent = rems.length + " 项";
   }
 
-  // 首页 AI 医嘱页签
+  // 首页 AI 医嘱页签：一次问诊记录对应一次医嘱分析（按记录展示，可点击打开）
   function renderAISummaryHome() {
     const box = $("#home-aidvice");
     if (!box) return;
-    const diet = [], taboo = [], texts = [];
-    for (const r of DATA.records || []) {
-      if (r.aiAdvice) {
-        (r.aiAdvice.diet || []).forEach((x) => diet.push(x));
-        (r.aiAdvice.taboo || []).forEach((x) => taboo.push(x));
-        if (r.aiAdvice.text) texts.push(r.aiAdvice.text);
-      } else if (r.result && r.result.advice) {
-        (r.result.advice.diet || []).forEach((x) => diet.push(x));
-        (r.result.advice.taboo || []).forEach((x) => taboo.push(x));
-      }
-    }
-    if (!diet.length && !taboo.length && !texts.length) {
-      box.innerHTML = '<div class="empty-tip">还没有 AI 医嘱建议。在「问诊记录」详情中做「医嘱分析」后，这里会汇总生活 / 饮食医嘱。</div>';
+    const advices = (DATA.records || [])
+      .filter((r) => r.aiAdvice && ((r.aiAdvice.diet && r.aiAdvice.diet.length) || (r.aiAdvice.taboo && r.aiAdvice.taboo.length) || r.aiAdvice.text))
+      .map((r) => ({ rec: r, a: r.aiAdvice }));
+    if (!advices.length) {
+      box.innerHTML = '<div class="empty-tip">还没有 AI 医嘱建议。在「问诊记录」详情中做「医嘱分析」后，这里会按每次问诊生成一条生活 / 饮食医嘱。</div>';
       return;
     }
-    let h = "";
-    if (texts.length) h += `<div class="aidvice__summary">${esc(texts[texts.length - 1])}</div>`;
-    if (diet.length) h += `<div class="aidvice__sec"><h4>🥗 饮食 / 生活建议</h4><ul>${diet.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
-    if (taboo.length) h += `<div class="aidvice__sec"><h4>⛔ 禁忌</h4><ul>${taboo.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
-    box.innerHTML = h;
+    box.innerHTML = advices
+      .map(({ rec, a }) => {
+        const head = (rec.hospital || "问诊记录") + (rec.visitDate ? " · " + rec.visitDate : "");
+        const tags = []
+          .concat((a.diet || []).map((x) => `<span class="tag">${esc(x)}</span>`))
+          .concat((a.taboo || []).map((x) => `<span class="tag tag--bad">${esc(x)}</span>`))
+          .join("");
+        return `<div class="aidvice-card" data-rec-id="${esc(rec.id)}">
+          <div class="aidvice-card__head"><b>${esc(head)}</b>${a.createdAt ? `<span class="aidvice-card__date">${esc(a.createdAt.slice(0, 10))}</span>` : ""}</div>
+          ${a.text ? `<div class="aidvice-card__summary">${esc(a.text)}</div>` : ""}
+          ${tags ? `<div class="aidvice-card__tags">${tags}</div>` : ""}
+        </div>`;
+      })
+      .join("");
   }
 
   async function toggleMed(id, slot) {
@@ -283,7 +281,7 @@
     const 提前 = Number(DATA.settings.medReminderMinutes) || 0;
     const now = Date.now();
     for (const d of DATA.cabinet || []) {
-      if (!(d.variants || []).some((v) => v.status === "active")) continue;
+      if (d.status !== "active") continue;
       for (const slot of d.timeSlots || []) {
         const key = d.id + "@" + slot;
         if (done.medDoses[key]) continue;
@@ -331,7 +329,7 @@
 
     // 检查结果子页签
     renderExamTrend($("#exam-trend"));
-    renderExamList($("#exam-list"));
+    renderExamFollow($("#exam-follow"));
     examEmpty.hidden = (DATA.examResults || []).length > 0;
     applyRecordsTab();
   }
@@ -539,6 +537,14 @@
       </tr>`
       )
       .join("");
+    $$("#rec-exam-table tbody tr").forEach((tr) => {
+      const i = +tr.dataset.i;
+      $$('[data-f]', tr).forEach((inp) => {
+        const f = inp.dataset.f;
+        if (inp.type === "checkbox") inp.onchange = () => (recDraft.examTable[i][f] = inp.checked);
+        else inp.oninput = () => (recDraft.examTable[i][f] = inp.value);
+      });
+    });
     $$("#rec-exam-table .row-del").forEach((b) => (b.onclick = () => { recDraft.examTable.splice(+b.dataset.i, 1); renderExamRows(); }));
   }
   function renderRxRows() {
@@ -556,6 +562,14 @@
       </tr>`
       )
       .join("");
+    $$("#rec-rx-table tbody tr").forEach((tr) => {
+      const i = +tr.dataset.i;
+      $$('[data-f]', tr).forEach((inp) => {
+        const f = inp.dataset.f;
+        if (inp.type === "checkbox") inp.onchange = () => (recDraft.rxTable[i][f] = inp.checked);
+        else inp.oninput = () => (recDraft.rxTable[i][f] = inp.value);
+      });
+    });
     $$("#rec-rx-table .row-del").forEach((b) => (b.onclick = () => { recDraft.rxTable.splice(+b.dataset.i, 1); renderRxRows(); }));
   }
 
@@ -767,18 +781,13 @@
       const found = names.find((x) => x.ns.some((n) => n === m.name));
       const doseNum = parseFloat(m.dose);
       if (found) {
-        await NurseStorage.upsertVariant(found.d.id, {
-          id: found.d.variants[0] ? found.d.variants[0].id : undefined,
-          manufacturer: found.d.variants[0] ? found.d.variants[0].manufacturer : "",
-          spec: m.spec || (found.d.variants[0] ? found.d.variants[0].spec : ""),
-          alias: found.d.variants[0] ? found.d.variants[0].alias : "",
-          qty: found.d.variants[0] ? found.d.variants[0].qty : 0,
-          unit: found.d.variants[0] ? found.d.variants[0].unit : "片",
+        // 仅更新用法，不影响厂家 / 库存 / 状态等直接属性
+        await NurseStorage.updateDrug(found.d.id, {
+          doseAmount: doseNum > 0 ? doseNum : found.d.doseAmount,
+          doseUnit: m.dose.replace(/^[0-9.]+/, "").trim() || found.d.doseUnit || "片",
+          timeSlots: found.d.timeSlots && found.d.timeSlots.length ? found.d.timeSlots : ["morning"],
           status: "active",
-          dailyDose: found.d.variants[0] ? found.d.variants[0].dailyDose : 0,
-          threshold: found.d.variants[0] ? found.d.variants[0].threshold : 7,
         });
-        if (doseNum > 0) await NurseStorage.updateDrug(found.d.id, { doseAmount: doseNum, doseUnit: m.dose.replace(/^[0-9.]+/, "").trim() || found.d.doseUnit || "片", timeSlots: found.d.timeSlots && found.d.timeSlots.length ? found.d.timeSlots : ["morning"] });
       } else {
         await NurseStorage.upsertDrug({
           name: m.name,
@@ -787,11 +796,18 @@
           doseUnit: m.dose.replace(/^[0-9.]+/, "").trim() || "片",
           timeSlots: ["morning"],
           meal: "any",
+          manufacturer: "",
+          alias: "",
+          qty: 0,
+          unit: "片",
+          status: "active",
+          dailyDose: 0,
+          threshold: 7,
           intro: "",
           precautions: [],
           advice: "",
           note: rec && rec.hospital ? "来源：" + rec.hospital : "",
-          variants: [{ manufacturer: "", spec: m.spec || "", alias: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7 }],
+          history: [],
         });
       }
     }
@@ -825,7 +841,7 @@
         s += k + "：" + pts.map((p) => p.date + " " + p.value + (p.abnormal ? "↑" : "")).join(" → ") + "\n";
       });
     s += "\n【当前用药】\n";
-    const active = (DATA.cabinet || []).filter((d) => (d.variants || []).some((v) => v.status === "active"));
+    const active = (DATA.cabinet || []).filter((d) => d.status === "active");
     if (!active.length) s += "（暂无在用药品）\n";
     else s += active.map((d) => d.name + (d.doseAmount ? " " + d.doseAmount + d.doseUnit : "") + " " + slotLabels(d.timeSlots) + " " + mealLabel(d.meal)).join("；") + "\n";
     return s;
@@ -861,7 +877,7 @@
     const diet = $$("#adv-diet input").map((i) => i.value.trim()).filter(Boolean);
     const taboo = $$("#adv-taboo input").map((i) => i.value.trim()).filter(Boolean);
     const text = $("#adv-text").value.trim();
-    rec.aiAdvice = { diet, taboo, text };
+    rec.aiAdvice = { diet, taboo, text, createdAt: new Date().toISOString() };
     await NurseStorage.updateRecord(rec.id, { aiAdvice: rec.aiAdvice });
     DATA = await NurseStorage.load();
     aiModalState = null;
@@ -900,12 +916,23 @@
       el.innerHTML = '<div class="empty-tip">暂无趋势数据。</div>';
       return;
     }
+    const followed = DATA.followedIndicators || [];
+    // 关注指标排前面
+    series.sort((a, b) => {
+      const fa = followed.includes(a.name) ? 0 : 1;
+      const fb = followed.includes(b.name) ? 0 : 1;
+      return fa - fb;
+    });
     el.innerHTML = series
       .map((s) => {
+        const isF = followed.includes(s.name);
         const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
         const latest = s.points[s.points.length - 1];
-        return `<div class="trend-card">
-          <div class="trend-card__head"><b>${esc(s.name)}</b><span>${esc(latest.value + " " + (s.unit || ""))}${latest.abnormal ? " ⚠️" : ""}</span></div>
+        return `<div class="trend-card ${isF ? "is-followed" : ""}">
+          <div class="trend-card__head"><b>${esc(s.name)}</b>
+            <button class="trend-follow ${isF ? "is-on" : ""}" data-ind="${esc(s.name)}">${isF ? "★ 已关注" : "☆ 关注"}</button>
+          </div>
+          <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
           ${chart}
         </div>`;
       })
@@ -936,26 +963,34 @@
       ${dots}${xlabels}
     </svg>`;
   }
-  function renderExamList(el) {
+  function renderExamFollow(el) {
     if (!el) return;
-    const entries = (DATA.examResults || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
-    if (!entries.length) { el.innerHTML = ""; return; }
-    el.innerHTML = entries
-      .map(
-        (e) => `<div class="exam-entry">
-        <div class="exam-entry__head"><b>${esc(e.date || "")}</b>${e.hospital ? " · " + esc(e.hospital) : ""}</div>
-        <div class="exam-entry__inds">${(e.indicators || []).map((i) => `<span class="exam-chip ${i.abnormal ? "is-bad" : ""}">${esc(i.name)} ${esc(i.value)}${esc(i.unit || "")}</span>`).join("")}</div>
-      </div>`
-      )
+    const followed = DATA.followedIndicators || [];
+    if (!followed.length) {
+      el.innerHTML = '<div class="empty-tip">还没有关注指标。在上方趋势图中点击「☆ 关注」即可将指标置顶，并显示其最新检查结果。</div>';
+      return;
+    }
+    const series = collectSeries();
+    const byName = {};
+    series.forEach((s) => (byName[s.name] = s));
+    el.innerHTML = followed
+      .map((name) => {
+        const s = byName[name];
+        if (!s) return `<div class="follow-chip"><span class="follow-chip__name">${esc(name)}</span><span class="follow-chip__val">暂无数据</span></div>`;
+        const latest = s.points[s.points.length - 1];
+        return `<div class="follow-chip">
+          <span class="follow-chip__name">${esc(name)}</span>
+          <span class="follow-chip__val"><b>${esc(latest.value + " " + (s.unit || ""))}</b>${latest.abnormal ? " ⚠️" : ""}</span>
+          <span class="follow-chip__date">${esc(latest.date || "")}</span>
+        </div>`;
+      })
       .join("");
   }
 
   // ===================== 我的药箱 =====================
   function drugStatus(d) {
-    const vs = d.variants || [];
-    if (!vs.length) return "disabled";
-    if (vs.every((v) => v.status === "disabled")) return "disabled";
-    if (!vs.some((v) => v.status === "active" && v.qty > 0)) return "out";
+    if (d.status === "disabled") return "disabled";
+    if (d.status === "out" || Number(d.qty) <= 0) return "out";
     return "active";
   }
   function statusLabel(s) {
@@ -976,18 +1011,23 @@
     empty.hidden = true;
     listBox.innerHTML = filtered
       .map((d) => {
-        const stock = sumStock(d);
-        const variants = (d.variants || []).map((v) => `${esc(v.manufacturer || "未填厂家")}${v.spec ? " · " + esc(v.spec) : ""}${v.alias && v.alias !== d.name ? "（别名 " + esc(v.alias) + "）" : ""}：余 ${v.qty}${esc(v.unit)}`).join("；");
+        const meta = [
+          d.manufacturer ? "厂家 " + d.manufacturer : "",
+          d.alias && d.alias !== d.name ? "别名 " + d.alias : "",
+          "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
+          "阈值 " + (Number(d.threshold) || 0),
+        ].filter(Boolean).join(" · ");
         return `<div class="cab-item ${esc(drugStatus(d))}" data-cab-id="${esc(d.id)}">
           <div class="cab-item__top">
             <div>
               <div class="cab-item__name">${esc(d.name)}</div>
               ${d.disease ? `<div class="cab-item__disease">🩺 ${esc(d.disease)}</div>` : ""}
               <div class="cab-item__spec">单次 ${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "—")} · ${slotLabels(d.timeSlots)} · ${mealLabel(d.meal)}</div>
+              <div class="cab-item__meta2">${esc(meta)}</div>
             </div>
             <span class="cab-status ${esc(drugStatus(d))}">${statusLabel(drugStatus(d))}</span>
           </div>
-          <div class="cab-item__variants">${esc(variants)}</div>
+          ${(d.history && d.history.length) ? `<div class="cab-item__history">📚 历史 ${d.history.length} 条（曾用其他厂家）</div>` : ""}
         </div>`;
       })
       .join("");
@@ -998,26 +1038,28 @@
     if (!d) return;
     currentCabId = id;
     const body = $("#cab-view-body");
-    const variants = (d.variants || [])
-      .map(
-        (v) => `<div class="var-row view">
-        <div class="var-row__head"><b>${esc(v.manufacturer || "未填厂家")}</b><span class="cab-status ${esc(v.status)}">${statusLabel(v.status)}</span></div>
-        <div class="var-row__meta">规格 ${esc(v.spec || "—")}${v.alias && v.alias !== d.name ? " · 别名 " + esc(v.alias) : ""}</div>
-        <div class="var-row__meta">数量 <b>${v.qty}</b> ${esc(v.unit)} · 每日消耗 ${v.dailyDose} · 阈值 ${v.threshold}</div>
-      </div>`
-      )
-      .join("");
+    const historyHtml = d.history && d.history.length
+      ? `<div class="cab-detail__sec"><h4>📚 历史药品（曾用其他厂家）</h4>${d.history
+          .map(
+            (h) => `<div class="history-row">
+          <div class="history-row__head"><b>${esc(h.manufacturer || "未填厂家")}</b>${h.spec ? `<span>规格 ${esc(h.spec)}</span>` : ""}${h.alias && h.alias !== d.name ? `<span>别名 ${esc(h.alias)}</span>` : ""}</div>
+          <div class="history-row__meta">数量 ${Number(h.qty) || 0} ${esc(h.unit || "片")} · 状态 ${statusLabel(h.status)} · 阈值 ${Number(h.threshold) || 0}${h.note ? " · " + esc(h.note) : ""}</div>
+        </div>`
+          )
+          .join("")}</div>`
+      : "";
     body.innerHTML = `
       <div class="cab-detail__head"><div><div class="cab-detail__title">${esc(d.name)}</div>${d.disease ? `<div class="cab-detail__spec">🩺 ${esc(d.disease)}</div>` : ""}</div></div>
       <div class="cab-detail__sec"><h4>💊 用法</h4><p>单次 <b>${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "—")}</b> · 时段 ${slotLabels(d.timeSlots)} · ${mealLabel(d.meal)}</p></div>
-      <div class="cab-detail__sec"><h4>🏭 厂家 / 规格（${d.variants.length}）</h4>${variants}</div>
+      <div class="cab-detail__sec"><h4>🏭 厂家 / 别名</h4><p>${esc(d.manufacturer || "未填厂家")}${d.alias && d.alias !== d.name ? " · 别名 " + esc(d.alias) : ""}</p></div>
+      <div class="cab-detail__sec"><h4>📦 库存 / 状态</h4><p>库存 <b>${esc((Number(d.qty) || 0) + " " + (d.unit || "片"))}</b> · 状态 ${statusLabel(d.status)} · 每日消耗 ${Number(d.dailyDose) || 0} · 阈值 ${Number(d.threshold) || 0}</p></div>
       ${d.intro ? `<div class="cab-detail__sec"><h4>📖 药品介绍</h4><p>${esc(d.intro)}</p></div>` : ""}
       ${d.precautions && d.precautions.length ? `<div class="cab-detail__sec"><h4>⚠️ 注意事项</h4><ul>${d.precautions.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
       ${d.advice ? `<div class="cab-detail__sec"><h4>💡 个人用药建议</h4><p>${esc(d.advice)}</p></div>` : ""}
       ${d.note ? `<div class="cab-detail__sec"><h4>📝 备注</h4><p>${esc(d.note)}</p></div>` : ""}
+      ${historyHtml}
       <div class="cab-detail__actions">
         <button class="btn btn-primary" id="cab-edit-btn">编辑</button>
-        <button class="btn btn-primary" id="cab-var-btn">＋ 新增规格</button>
       </div>
       <button class="btn btn-primary block" id="cab-del-btn" style="background:var(--danger);margin-top:10px">删除药品</button>`;
     $("#cab-view-title").textContent = "药品详情";
@@ -1025,15 +1067,8 @@
     $$(".page").forEach((p) => (p.hidden = true));
     $("#cab-view").hidden = false;
     $("#cab-edit-btn").onclick = () => openCabinetEdit(id);
-    $("#cab-var-btn").onclick = async () => {
-      await NurseStorage.upsertVariant(id, { manufacturer: "", spec: "", alias: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7 });
-      DATA = await NurseStorage.load();
-      openCabinetDetail(id);
-      renderCabinet();
-      toast("已新增一个空规格，点「编辑」填写");
-    };
     $("#cab-del-btn").onclick = async () => {
-      if (confirm("确定从药箱删除该药品（含所有规格）？")) {
+      if (confirm("确定从药箱删除该药品（含所有历史药品）？")) {
         await NurseStorage.deleteDrug(id);
         DATA = await NurseStorage.load();
         $("#cab-view").hidden = true;
@@ -1046,23 +1081,24 @@
 
   function openCabinetEdit(id) {
     const isNew = !id;
-    const d = isNew ? { name: "", disease: "", doseAmount: 0, doseUnit: "片", timeSlots: ["morning"], meal: "any", intro: "", precautions: [], advice: "", note: "", variants: [] } : (DATA.cabinet || []).find((x) => x.id === id) || {};
+    editingDrugId = id || null;
+    const d = isNew ? { name: "", disease: "", doseAmount: 0, doseUnit: "片", timeSlots: ["morning"], meal: "any", manufacturer: "", alias: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7, intro: "", precautions: [], advice: "", note: "", history: [] } : (DATA.cabinet || []).find((x) => x.id === id) || {};
     $("#cab-modal-title").textContent = isNew ? "添加药品" : "编辑药品";
     const precautions = (d.precautions || []).map((p, i) => `<span class="cab-edit__tag">${esc(p)} <button type="button" data-rm-prec="${i}">✕</button></span>`).join("");
-    const variantRows = (d.variants || [])
+    const historyRows = (d.history || [])
       .map(
-        (v, i) => `<div class="var-row edit" data-vi="${i}">
+        (h, i) => `<div class="history-edit" data-hi="${i}">
         <div class="var-row__grid">
-          <label class="vf"><span>厂家</span><input value="${esc(v.manufacturer)}" data-f="manufacturer"/></label>
-          <label class="vf"><span>规格</span><input value="${esc(v.spec)}" data-f="spec"/></label>
-          <label class="vf"><span>别名</span><input value="${esc(v.alias)}" data-f="alias"/></label>
-          <label class="vf"><span>数量</span><input type="number" value="${Number(v.qty) || 0}" data-f="qty"/></label>
-          <label class="vf"><span>单位</span><input value="${esc(v.unit || "片")}" data-f="unit"/></label>
-          <label class="vf"><span>状态</span><select data-f="status"><option value="active" ${v.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${v.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${v.status === "out" ? "selected" : ""}>缺药</option></select></label>
-          <label class="vf"><span>每日消耗</span><input type="number" value="${Number(v.dailyDose) || 0}" data-f="dailyDose"/></label>
-          <label class="vf"><span>阈值</span><input type="number" value="${Number(v.threshold) || 0}" data-f="threshold"/></label>
+          <label class="vf"><span>厂家</span><input value="${esc(h.manufacturer)}" data-f="manufacturer"/></label>
+          <label class="vf"><span>规格</span><input value="${esc(h.spec)}" data-f="spec"/></label>
+          <label class="vf"><span>别名</span><input value="${esc(h.alias)}" data-f="alias"/></label>
+          <label class="vf"><span>数量</span><input type="number" value="${Number(h.qty) || 0}" data-f="qty"/></label>
+          <label class="vf"><span>单位</span><input value="${esc(h.unit || "片")}" data-f="unit"/></label>
+          <label class="vf"><span>状态</span><select data-f="status"><option value="active" ${h.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${h.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${h.status === "out" ? "selected" : ""}>缺药</option></select></label>
+          <label class="vf"><span>阈值</span><input type="number" value="${Number(h.threshold) || 0}" data-f="threshold"/></label>
+          <label class="vf"><span>备注</span><input value="${esc(h.note)}" data-f="note"/></label>
         </div>
-        <button type="button" class="row-del" data-vi="${i}">✕ 删除规格</button>
+        <button type="button" class="row-del" data-hi="${i}">✕ 删除历史</button>
       </div>`
       )
       .join("");
@@ -1083,6 +1119,19 @@
       <div class="cab-edit__field"><span>餐次</span>
         <select id="cab-f-meal"><option value="any" ${d.meal === "any" ? "selected" : ""}>不限</option><option value="before" ${d.meal === "before" ? "selected" : ""}>餐前</option><option value="after" ${d.meal === "after" ? "selected" : ""}>餐后</option></select>
       </div>
+      <div class="cab-edit__field"><span>厂家</span><input type="text" id="cab-f-manufacturer" value="${esc(d.manufacturer)}" placeholder="如：辉瑞"/></div>
+      <div class="cab-edit__field"><span>别名 / 俗称</span><input type="text" id="cab-f-alias" value="${esc(d.alias)}" placeholder="如：络活喜"/></div>
+      <div class="cab-edit__row">
+        <div class="cab-edit__field"><span>当前库存</span><input type="number" id="cab-f-qty" value="${Number(d.qty) || 0}"/></div>
+        <div class="cab-edit__field"><span>库存单位</span><input type="text" id="cab-f-unit" value="${esc(d.unit || "片")}"/></div>
+      </div>
+      <div class="cab-edit__field"><span>状态</span>
+        <select id="cab-f-status"><option value="active" ${d.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${d.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${d.status === "out" ? "selected" : ""}>缺药</option></select>
+      </div>
+      <div class="cab-edit__row">
+        <div class="cab-edit__field"><span>每日消耗</span><input type="number" id="cab-f-dailydose" value="${Number(d.dailyDose) || 0}" step="0.5"/></div>
+        <div class="cab-edit__field"><span>库存阈值</span><input type="number" id="cab-f-threshold" value="${Number(d.threshold) || 0}"/></div>
+      </div>
       <div class="cab-edit__field"><span>药品介绍</span><textarea id="cab-f-intro" placeholder="简单介绍该药品作用">${esc(d.intro)}</textarea></div>
       <div class="cab-edit__field"><span>注意事项</span>
         <div class="cab-edit__tags" id="cab-f-prec-tags">${precautions}</div>
@@ -1090,9 +1139,9 @@
       </div>
       <div class="cab-edit__field"><span>针对个人用药建议</span><textarea id="cab-f-advice" placeholder="结合个人病情给出用药建议">${esc(d.advice)}</textarea></div>
       <div class="cab-edit__field"><span>备注</span><input type="text" id="cab-f-note" value="${esc(d.note)}" placeholder="其他备注"/></div>
-      <div class="cab-edit__field"><span>厂家 / 规格（不同厂家不同库存）</span>
-        <div id="cab-variants">${variantRows}</div>
-        <button type="button" class="btn btn-ghost btn-sm" id="cab-var-add">＋ 添加规格</button>
+      <div class="cab-edit__field"><span>历史药品（曾用其他厂家，可选）</span>
+        <div id="cab-history">${historyRows}</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="cab-history-add">＋ 添加历史药品</button>
       </div>
       <button class="btn btn-primary block" id="cab-f-save">${isNew ? "添加" : "保存"}</button>`;
     $("#cab-modal").hidden = false;
@@ -1109,12 +1158,12 @@
     };
     renderTags();
     $("#cab-f-prec-add").onclick = () => { const i = $("#cab-f-prec-input"); if (i.value.trim()) { formPrecautions.push(i.value.trim()); i.value = ""; renderTags(); } };
-    $("#cab-var-add").onclick = () => {
-      const box = $("#cab-variants");
+    $("#cab-history-add").onclick = () => {
+      const box = $("#cab-history");
       const i = box.children.length;
       const div = document.createElement("div");
-      div.className = "var-row edit";
-      div.dataset.vi = i;
+      div.className = "history-edit";
+      div.dataset.hi = i;
       div.innerHTML = `<div class="var-row__grid">
         <label class="vf"><span>厂家</span><input data-f="manufacturer"/></label>
         <label class="vf"><span>规格</span><input data-f="spec"/></label>
@@ -1122,50 +1171,76 @@
         <label class="vf"><span>数量</span><input type="number" value="0" data-f="qty"/></label>
         <label class="vf"><span>单位</span><input value="片" data-f="unit"/></label>
         <label class="vf"><span>状态</span><select data-f="status"><option value="active">使用中</option><option value="disabled">停用</option><option value="out">缺药</option></select></label>
-        <label class="vf"><span>每日消耗</span><input type="number" value="0" data-f="dailyDose"/></label>
         <label class="vf"><span>阈值</span><input type="number" value="7" data-f="threshold"/></label>
+        <label class="vf"><span>备注</span><input data-f="note"/></label>
       </div>
-      <button type="button" class="row-del" data-vi="${i}">✕ 删除规格</button>`;
+      <button type="button" class="row-del" data-hi="${i}">✕ 删除历史</button>`;
       box.appendChild(div);
       div.querySelector(".row-del").onclick = () => div.remove();
     };
-    $$("#cab-variants .row-del").forEach((b) => (b.onclick = () => b.closest(".var-row").remove()));
+    $$("#cab-history .row-del").forEach((b) => (b.onclick = () => b.closest(".history-edit").remove()));
     $("#cab-f-save").onclick = saveCabinetDrug;
   }
 
   async function saveCabinetDrug() {
     const name = $("#cab-f-name").value.trim();
     if (!name) { toast("请填写药品名称"); return; }
-    const variants = $$("#cab-variants .var-row").map((row) => ({
+    const prev = editingDrugId ? (DATA.cabinet || []).find((x) => x.id === editingDrugId) : null;
+    const newManufacturer = $("#cab-f-manufacturer").value.trim();
+    const history = $$("#cab-history .history-edit").map((row) => ({
       manufacturer: row.querySelector('[data-f="manufacturer"]').value.trim(),
       spec: row.querySelector('[data-f="spec"]').value.trim(),
       alias: row.querySelector('[data-f="alias"]').value.trim(),
       qty: Number(row.querySelector('[data-f="qty"]').value) || 0,
       unit: row.querySelector('[data-f="unit"]').value.trim() || "片",
       status: row.querySelector('[data-f="status"]').value,
-      dailyDose: Number(row.querySelector('[data-f="dailyDose"]').value) || 0,
       threshold: Number(row.querySelector('[data-f="threshold"]').value) || 0,
+      note: row.querySelector('[data-f="note"]').value.trim(),
     }));
-    if (!variants.length) { toast("请至少添加一个厂家规格"); return; }
+    // 编辑时若更换厂家，将原厂家自动归入历史药品
+    if (prev) {
+      const oldM = (prev.manufacturer || "").trim();
+      if (oldM && oldM !== newManufacturer) {
+        history.unshift({
+          manufacturer: oldM,
+          spec: prev.spec || "",
+          alias: prev.alias || "",
+          qty: Number(prev.qty) || 0,
+          unit: prev.unit || "片",
+          status: prev.status || "disabled",
+          threshold: Number(prev.threshold) || 0,
+          note: "由编辑更换厂家自动归档",
+        });
+      }
+    }
     const item = {
+      id: editingDrugId || undefined,
       name,
       disease: $("#cab-f-disease").value.trim(),
       doseAmount: Number($("#cab-f-dose").value) || 0,
       doseUnit: $("#cab-f-doseunit").value.trim() || "片",
       timeSlots: $$(".cab-f-slot").filter((c) => c.checked).map((c) => c.value),
       meal: $("#cab-f-meal").value,
+      manufacturer: newManufacturer,
+      alias: $("#cab-f-alias").value.trim(),
+      qty: Number($("#cab-f-qty").value) || 0,
+      unit: $("#cab-f-unit").value.trim() || "片",
+      status: $("#cab-f-status").value,
+      dailyDose: Number($("#cab-f-dailydose").value) || 0,
+      threshold: Number($("#cab-f-threshold").value) || 0,
       intro: $("#cab-f-intro").value.trim(),
       precautions: formPrecautions,
       advice: $("#cab-f-advice").value.trim(),
       note: $("#cab-f-note").value.trim(),
-      variants,
+      history,
     };
     await NurseStorage.upsertDrug(item);
     DATA = await NurseStorage.load();
     $("#cab-modal").hidden = true;
     renderCabinet();
     if (currentCabId && !$("#cab-view").hidden) openCabinetDetail(currentCabId);
-    toast("已保存");
+    toast(editingDrugId ? "已保存" : "已添加");
+    editingDrugId = null;
   }
 
   // ===================== 每日扣减 =====================
@@ -1175,13 +1250,11 @@
     if (data.lastDecrement === today) { DATA.lastDecrement = today; return; }
     let changed = false;
     for (const d of data.cabinet) {
-      for (const v of d.variants || []) {
-        if (v.status !== "active") continue;
-        if (v.dailyDose > 0 && v.qty > 0) {
-          v.qty = Math.max(0, Math.round((v.qty - v.dailyDose) * 100) / 100);
-          if (v.qty <= 0) v.status = "out";
-          changed = true;
-        }
+      if (d.status !== "active") continue;
+      if (d.dailyDose > 0 && Number(d.qty) > 0) {
+        d.qty = Math.max(0, Math.round((Number(d.qty) - d.dailyDose) * 100) / 100);
+        if (Number(d.qty) <= 0) d.status = "out";
+        changed = true;
       }
     }
     if (changed) { data.lastDecrement = today; await NurseStorage.save(data); DATA = data; }
@@ -1322,12 +1395,15 @@
 
     // 首页页签
     $$(".home-tab").forEach((b) => (b.onclick = () => switchHomeTab(b.dataset.htab)));
-    // 用药提醒时段折叠
+    // 首页 AI 医嘱卡片 -> 打开对应问诊记录
+    $("#home-aidvice").onclick = (e) => { const c = e.target.closest(".aidvice-card"); if (c) openRecord(c.dataset.recId); };
+    // 用药提醒时段折叠（各时段独立展开/收起）
     $("#home-meds-blocks").onclick = async (e) => {
-      const head = e.target.closest(".med-block");
+      const head = e.target.closest(".med-block__head");
       if (head && head.dataset.slot) {
         const slot = head.dataset.slot;
-        homeExpandedSlot = homeExpandedSlot === slot ? null : slot;
+        if (homeExpandedSlots.has(slot)) homeExpandedSlots.delete(slot);
+        else homeExpandedSlots.add(slot);
         const done = await NurseStorage.getDone(TODAY);
         renderMedBlocks(done);
         return;
@@ -1345,6 +1421,19 @@
     $("#records-list").onclick = (e) => { const c = e.target.closest(".rec-card"); if (c) openRecord(c.dataset.recId); };
     $("#record-back").onclick = () => closeView();
     $("#exam-back").onclick = () => { $$(".view").forEach((v) => (v.hidden = true)); goPage("records"); };
+    // 检查结果趋势：关注 / 取消关注
+    $("#exam-trend").addEventListener("click", async (e) => {
+      const btn = e.target.closest(".trend-follow");
+      if (!btn) return;
+      const name = btn.dataset.ind;
+      const set = new Set(DATA.followedIndicators || []);
+      if (set.has(name)) set.delete(name);
+      else set.add(name);
+      DATA.followedIndicators = Array.from(set);
+      await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
+      renderExamTrend($("#exam-trend"));
+      renderExamFollow($("#exam-follow"));
+    });
 
     // 药箱
     $$(".cab-filter").forEach((b) => (b.onclick = () => { cabinetState.filter = b.dataset.filter; $$(".cab-filter").forEach((x) => x.classList.toggle("is-active", x === b)); renderCabinet(); }));

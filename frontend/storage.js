@@ -23,17 +23,21 @@
  *     aiAdvice: { diet:[], taboo:[], text } | null,  // 医嘱分析生成的生活/饮食医嘱
  *     status, manual
  *   } ],
- *   cabinet: [ {                           // 我的药箱：按"药品（药款）"管理
+ *   cabinet: [ {                           // 我的药箱：每种药品一条记录
  *     id, name, disease,
  *     doseAmount, doseUnit,                // 单次使用量
  *     timeSlots: ["morning"|"noon"|"evening"],  // 服用时间段
  *     meal: "before"|"after"|"any",        // 餐前/餐后
  *     intro, precautions[], advice, note,
- *     variants: [ {                        // 不同厂家/规格
- *       id, manufacturer, spec, alias, qty, unit,
- *       status: "active"|"disabled"|"out", dailyDose, threshold
+ *     manufacturer, alias,                 // 厂家 / 别名（直接属性）
+ *     qty, unit,                           // 当前库存 / 单位
+ *     status: "active"|"disabled"|"out",    // 状态
+ *     dailyDose, threshold,                // 每日消耗 / 库存阈值
+ *     history: [ {                         // 历史药品（曾用其他厂家）
+ *       id, manufacturer, spec, alias, qty, unit, status, threshold, note, addedAt
  *     } ]
  *   } ],
+ *   followedIndicators: ["血糖","血压"],    // 关注的检查指标（按名称）
  *   examResults: [ {                       // 我的检查结果（全局，按时间维度）
  *     id, recordId, hospital, date,
  *     indicators: [ {name,value,unit,range,abnormal} ]
@@ -104,6 +108,7 @@
       records: [],
       cabinet: [],
       examResults: [],
+      followedIndicators: [],
     };
   }
 
@@ -196,21 +201,27 @@
   function _normDrug(it) {
     if (!it || typeof it !== "object") return null;
     if (!it.name || !String(it.name).trim()) return null;
-    // 旧结构兼容：扁平条目 -> 药品 + 单个变体
+    // 迁移：旧「多厂家规格变体」 -> 当前厂家直接属性 + 其余厂家转入历史药品
     let variants = Array.isArray(it.variants) ? it.variants.map(_normVariant).filter(Boolean) : [];
-    if (!variants.length) {
-      variants = [
-        _normVariant({
-          manufacturer: it.manufacturer || "",
-          spec: it.spec || "",
-          alias: it.alias || it.name || "",
-          qty: Number(it.qty) || 0,
-          unit: it.unit || "片",
-          status: ["active", "disabled", "out"].includes(it.status) ? it.status : "active",
-          dailyDose: Number(it.dailyDose) || 0,
-          threshold: Number(it.threshold) || 0,
-        }),
-      ];
+    let history = Array.isArray(it.history) ? it.history.map(_normHistoryItem).filter(Boolean) : [];
+    let manufacturer = it.manufacturer || "";
+    let alias = it.alias || "";
+    let qty = Number(it.qty) || 0;
+    let unit = it.unit || "片";
+    let status = ["active", "disabled", "out"].includes(it.status) ? it.status : "active";
+    let dailyDose = Number(it.dailyDose) || 0;
+    let threshold = Number(it.threshold) || 0;
+    if (variants.length) {
+      const primary = variants.find((v) => v.status === "active") || variants[0];
+      manufacturer = primary.manufacturer;
+      alias = primary.alias && primary.alias !== it.name ? primary.alias : it.alias || "";
+      qty = primary.qty;
+      unit = primary.unit;
+      status = primary.status;
+      dailyDose = primary.dailyDose;
+      threshold = primary.threshold;
+      // 其余变体（曾用厂家）转入历史药品
+      variants.filter((v) => v !== primary).forEach((v) => history.unshift(_varToHistory(v)));
     }
     return {
       id: it.id || _uid("drug_"),
@@ -224,17 +235,53 @@
       precautions: Array.isArray(it.precautions) ? it.precautions.filter(Boolean) : [],
       advice: it.advice || "",
       note: it.note || "",
-      variants: variants,
+      manufacturer,
+      alias,
+      qty,
+      unit,
+      status,
+      dailyDose,
+      threshold,
+      history,
     };
   }
 
-  // 药品名称（含变体别名）用于检索
+  // 药品名称（含别名）用于检索
   function drugNames(drug) {
     const names = [drug.name];
-    (drug.variants || []).forEach((v) => {
-      if (v.alias && v.alias.trim() && !names.includes(v.alias.trim())) names.push(v.alias.trim());
-    });
+    if (drug.alias && String(drug.alias).trim() && !names.includes(String(drug.alias).trim())) names.push(String(drug.alias).trim());
     return names;
+  }
+
+  // 历史药品（曾用其他厂家）
+  function _normHistoryItem(h) {
+    if (!h || typeof h !== "object") return null;
+    return {
+      id: h.id || _uid("his_"),
+      manufacturer: h.manufacturer || "",
+      spec: h.spec || "",
+      alias: h.alias || "",
+      qty: Number(h.qty) || 0,
+      unit: h.unit || "片",
+      status: ["active", "disabled", "out"].includes(h.status) ? h.status : "disabled",
+      threshold: Number(h.threshold) || 0,
+      note: h.note || "",
+      addedAt: h.addedAt || "",
+    };
+  }
+  function _varToHistory(v) {
+    return {
+      id: _uid("his_"),
+      manufacturer: v.manufacturer || "",
+      spec: v.spec || "",
+      alias: v.alias || "",
+      qty: Number(v.qty) || 0,
+      unit: v.unit || "片",
+      status: ["active", "disabled", "out"].includes(v.status) ? v.status : "disabled",
+      threshold: Number(v.threshold) || 0,
+      note: "",
+      addedAt: "",
+    };
   }
 
   // ---------------- 问诊记录归一化 ----------------
@@ -285,7 +332,7 @@
       rxImages: Array.isArray(r.rxImages) ? r.rxImages.map(_normImage).filter(Boolean) : [],
       rxTable: Array.isArray(r.rxTable) ? r.rxTable.map(_normRx).filter(Boolean) : [],
       result: r.result || null,
-      aiAdvice: r.aiAdvice && typeof r.aiAdvice === "object" ? { diet: (r.aiAdvice.diet || []).filter(Boolean), taboo: (r.aiAdvice.taboo || []).filter(Boolean), text: r.aiAdvice.text || "" } : null,
+      aiAdvice: r.aiAdvice && typeof r.aiAdvice === "object" ? { diet: (r.aiAdvice.diet || []).filter(Boolean), taboo: (r.aiAdvice.taboo || []).filter(Boolean), text: r.aiAdvice.text || "", createdAt: r.aiAdvice.createdAt || "" } : null,
       manual: !!r.manual,
       status: r.status || "done",
     };
@@ -326,6 +373,9 @@
       }
       if (Array.isArray(obj.examResults)) {
         data.examResults = obj.examResults.map(_normExamEntry).filter(Boolean);
+      }
+      if (Array.isArray(obj.followedIndicators)) {
+        data.followedIndicators = obj.followedIndicators.filter((x) => x && typeof x === "string" && x.trim());
       }
     }
     return data;
@@ -458,6 +508,24 @@
     drug.variants = drug.variants.filter((x) => x.id !== variantId);
     await save(data);
   }
+  // 历史药品（曾用其他厂家）
+  async function addDrugHistory(drugId, item) {
+    const data = await load();
+    const drug = data.cabinet.find((x) => x.id === drugId);
+    if (!drug) return null;
+    drug.history = drug.history || [];
+    drug.history.unshift(_normHistoryItem(item));
+    await save(data);
+    return drug;
+  }
+  async function deleteDrugHistory(drugId, historyId) {
+    const data = await load();
+    const drug = data.cabinet.find((x) => x.id === drugId);
+    if (!drug) return null;
+    drug.history = (drug.history || []).filter((x) => x.id !== historyId);
+    await save(data);
+    return drug;
+  }
   async function setLastDecrement(dateKey) {
     const data = await load();
     data.lastDecrement = dateKey;
@@ -482,6 +550,13 @@
     const data = await load();
     data.examResults = data.examResults.filter((x) => x.id !== id);
     await save(data);
+  }
+  // 关注指标（按指标名称）
+  async function setFollowedIndicators(arr) {
+    const data = await load();
+    data.followedIndicators = Array.isArray(arr) ? arr.filter((x) => x && typeof x === "string" && x.trim()) : [];
+    await save(data);
+    return data.followedIndicators;
   }
 
   // ---------------- 设置 ----------------
@@ -543,9 +618,12 @@
     deleteDrug,
     upsertVariant,
     deleteVariant,
+    addDrugHistory,
+    deleteDrugHistory,
     getExamResults,
     upsertExamEntry,
     deleteExamEntry,
+    setFollowedIndicators,
     updateSettings,
     getDone,
     setDone,

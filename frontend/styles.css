@@ -1664,6 +1664,15 @@ textarea {
 
 /* ===================== 检查结果趋势 ===================== */
 .exam-trend { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+.exam-trend.swipe {
+  flex-direction: row;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.exam-trend.swipe .trend-card { flex: 0 0 82%; max-width: 320px; scroll-snap-align: start; }
 .trend-card {
   background: #fff;
   border-radius: var(--radius);
@@ -1693,6 +1702,46 @@ textarea {
   border-radius: 20px;
 }
 .exam-chip.is-bad { background: #fdecea; color: var(--danger); }
+
+/* 趋势卡内「关注」按钮 */
+.trend-follow { border: none; background: transparent; font-size: 0.82em; font-weight: 600; cursor: pointer; padding: 2px 8px; border-radius: 12px; }
+.trend-follow.is-on { color: #e6901a; background: #fff3e0; }
+.trend-follow:not(.is-on) { color: var(--primary-dark); background: var(--primary-soft); }
+
+/* 关注指标模块 */
+.exam-follow { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.follow-chip { background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; border-left: 3px solid var(--primary); }
+.follow-chip__name { font-weight: 600; }
+.follow-chip__val { color: var(--ink-2); }
+.follow-chip__val b { color: var(--primary-dark); font-size: 1.05em; }
+.follow-chip__date { font-size: 0.78em; color: var(--ink-3); }
+
+/* 首页 AI 医嘱卡片（每条问诊记录一张） */
+.aidvice-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+.aidvice-card__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 8px; }
+.aidvice-card__head b { font-size: 0.95em; }
+.aidvice-card__date { font-size: 0.78em; color: var(--ink-3); white-space: nowrap; }
+.aidvice-card__summary { color: var(--ink-2); font-size: 0.9em; line-height: 1.5; }
+.aidvice-card__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.aidvice-card__tags .tag { display: inline-block; font-size: 0.8em; padding: 2px 8px; border-radius: 12px; background: var(--primary-soft); color: var(--primary-dark); }
+.aidvice-card__tags .tag--bad { background: #fdecea; color: var(--danger); }
+
+/* 药箱列表：直接属性元信息 + 历史药品标记 */
+.cab-item__meta2 { font-size: 0.8em; color: var(--ink-2); margin-top: 3px; line-height: 1.5; }
+.cab-item__history { font-size: 0.78em; color: var(--ink-3); margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
+
+/* 药品详情：历史药品 */
+.history-row { border: 1px dashed var(--line); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; background: #fafbfc; }
+.history-row__head { display: flex; gap: 10px; align-items: baseline; font-weight: 600; flex-wrap: wrap; }
+.history-row__head span { font-size: 0.82em; font-weight: 500; color: var(--ink-2); }
+.history-row__meta { font-size: 0.82em; color: var(--ink-2); margin-top: 3px; }
+
+/* 编辑表单：历史药品条目（复用 var-row 栅格样式） */
+.history-edit { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; background: #fafbfc; }
+.history-edit .vf { display: flex; flex-direction: column; }
+.history-edit .vf > span { font-size: 0.74em; color: var(--ink-3); margin-bottom: 2px; }
+.history-edit .var-row__grid input,
+.history-edit .var-row__grid select { width: 100%; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.88em; }
 
 /* ===================== 药箱：药品 + 变体 ===================== */
 .cab-item__disease { font-size: 0.8em; color: var(--primary-dark); margin-top: 2px; }
