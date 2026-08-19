@@ -1,20 +1,20 @@
-# nurse — 私人护士 App（Web 原型 + iOS 移动端 v1.0）
+# nurse — 私人护士 App（Web 原型 + iOS 移动端）
 
-> 项目目录：`/workspace/nurse/`
+> 项目目录：`/workspace/nurse-code/`
 
-基于《私人护士：多病种医嘱解析引擎（v1.0）》设计稿实现的端到端可演示项目。
-患者用 App 开启录音记录医患对话 → 自动转写 → 解析引擎生成**医嘱 / 用药提醒 / 护理任务 / 饮食禁忌 / 风险预警**。
+基于《私人护士：多病种医嘱解析引擎》设计稿实现的端到端可演示项目。
+患者用 App 开启录音记录医患对话 → 自动转写 → 解析引擎生成**医嘱 / 用药提醒 / 护理任务 / 饮食禁忌 / 风险预警**；并可沉淀**药单 / 检查报告**两大健康档案实体。
 
 - **Web 原型**：浏览器直接打开，同源后端 `/api/parse` 可选（演示用）。
 - **iOS / 移动端**：用 Capacitor 把同一套前端封装成原生 App，解析引擎在手机本地运行（离线、零后端），个人数据存手机文件系统。
 
 ## 功能
-- 🎙️ **录音转写**：Web Speech API（中文 zh-CN）实时转写，医生-患者对话一键记录
-- 💊 **药物清单**：从对话抽取药名（含同音纠错）、剂量、频次、时间、病种；「加量/减量/停药」高亮
-- 🔔 **用药提醒**：由药物自动生成定时提醒，可开启系统通知
-- 📋 **护理任务**：监测项 / 复诊（自动算日期）/ 生活任务，可打卡
-- 🥗 **护士叮嘱**：按病种匹配权威饮食宜忌
-- ⚠️ **风险预警**：分级（绿/黄/红）异常处理建议
+- 🎙️ **录音转写**：Web Speech API（中文 zh-CN）实时转写，医生-患者对话一键记录；支持粘贴文本 / 上传录音
+- 🤖 **AI 智能解析**：集成智谱 GLM（`glm-4.7-flash`，纯文本）等 OpenAI 兼容模型，自动整理医嘱 / 检查结果 / 处方药；未配置密钥时回退本地规则引擎
+- 💊 **药箱 / 药单**：药单（自建 / 医院）承载完整药品字段（药名 / 厂家 / 别名 / 单位规格 / 数量 / 单次用量 / 时段 / 餐次 / 每日消耗 / 阈值 / 状态）；**药箱页按药名合并汇总**所有药单药品，支持使用中 / 缺药 / 停用筛选
+- 🔔 **用药提醒**：汇总所有药单在用药品，按早 / 中 / 晚自动排程并推送系统通知；每日自动按「每日消耗」扣减库存、低于阈值自动标记缺药
+- 🧪 **检查报告**：自测 / 医院检查报告实体（标题 / 日期 / 多项指标含参考范围与异常标记）；**关注指标**可增删并置顶显示最新值，趋势图支持左右滑动切换
+- 📋 **问诊记录**：关联「医院 + 就诊日期 + 医生 + 医嘱」，可**关联药单与检查报告**并跳转编辑；支持 AI 分析与医嘱分析
 - 📁 **健康档案**：**落盘到手机文件系统**（Capacitor Filesystem 写入 App 的 Documents 目录），非电容环境回退 localStorage；支持**导出 / 导入单个 JSON**，换机可完整迁移历史
 
 ## 架构
@@ -24,6 +24,7 @@
 │   · engine.js   本地规则解析引擎（离线，零后端）          │
 │   · storage.js  持久化：手机文件系统 JSON（Documents）     │
 │   · app.js      交互 / 渲染 / 提醒 / 档案                  │
+│   · ai.js       OpenAI 兼容模型调用（GLM 等）             │
 └───────────────────────────────────────────────────────────┘
         ↑ 同一套 frontend/ 也由后端静态托管（Web 演示）
 ┌─ Web 演示（可选，FastAPI）───────────────────────────────┐
@@ -31,9 +32,16 @@
 └───────────────────────────────────────────────────────────┘
 ```
 
+### 数据模型（`frontend/storage.js`，单文件 `nurse-data.json`）
+- **records**（问诊记录）：医院 / 就诊日期 / 医生 / 医嘱 / 录音 / 资料照片；`orderId`、`reportId` 关联下方两大实体
+- **orders**（药单）：来源 / 日期 / 属性（`custom` 自建 / `hospital` 医院）；`medicines[]` 为完整药品条目
+- **reports**（检查报告）：标题 / 日期 / 属性（`self` 自测 / `hospital` 医院）；`indicators[]` 含指标名 / 数值 / 单位 / 参考范围 / 异常标记
+- **followedIndicators**（关注指标）：按指标名记录，用于置顶与最新值展示
+- 药箱页数据由 `summarizeMedicines(orders)` 按药名合并所有药单生成
+
 ## 本地 Web 演示运行
 ```bash
-cd /workspace/nurse/backend
+cd /workspace/nurse-code/backend
 ../.venv/bin/python main.py        # 已内置虚拟环境，免安装
 # 浏览器打开 http://localhost:8000  （Chrome/Edge 支持语音识别）
 ```
@@ -54,14 +62,14 @@ App 用 [Capacitor](https://capacitorjs.com/) 封装，解析与存储全部在�
 
 ```bash
 # 前置：Node 20+ ，macOS + Xcode（仅构建 .ipa 时需要）
-cd /workspace/nurse
+cd /workspace/nurse-code
 npm install                 # 安装 Capacitor 依赖
 npx cap sync ios           # 复制前端资源 + pod install（需 CocoaPods）
 npx cap open ios           # 用 Xcode 打开，连接真机/模拟器运行
 ```
 - 数据：每次解析自动写入手机 `Documents/nurse-data.json`（iOS「文件」App 可见）；
   在 App 内点「导出」可生成 JSON 用 AirDrop / 网盘迁移，点「导入」合并历史。
-- 解析：完全本地 `engine.js`，无网络依赖，保护隐私。
+- 解析：完全本地 `engine.js`，无网络依赖，保护隐私；配置 AI Key 后可调用大模型提升解析准确度。
 
 ### 用 GitHub Actions 自动出包（推荐）
 本仓库已配置两条 GitHub Actions（见 `.github/workflows/`）：
@@ -88,9 +96,9 @@ npx cap open ios           # 用 Xcode 打开，连接真机/模拟器运行
 
 ## 目录
 ```
-nurse/
+nurse-code/
 ├── backend/        FastAPI 演示后端（可选）
-├── frontend/       Web 静态前端 + 本地引擎（engine.js）+ 存储（storage.js）
+├── frontend/       Web 静态前端 + 本地引擎（engine.js）+ 存储（storage.js）+ AI 调用（ai.js）
 ├── ios/            Capacitor 生成的 iOS 原生工程（cap add ios）
 ├── .github/        GitHub Actions 工作流（build-ios / sync-from-gitee）
 ├── package.json    Capacitor 配置与依赖
@@ -101,4 +109,5 @@ nurse/
 - 本原型为演示用途，**不替代医生诊断**，所有结果仅供患者执行参考。
 - Web Speech API 依赖浏览器与网络，建议在 Chrome/Edge、localhost 或 HTTPS 下使用；
   不支持时可改用「粘贴文本」入口。
+- AI 解析使用 OpenAI 兼容接口（如智谱 GLM `glm-4.7-flash`），密钥仅保存在本机；未配置时自动回退本地规则引擎。
 - 后续可增强：端侧录音上传、云端 ASR（角色分离）、用药冲突检测、家属协同后端、医疗合规与加密、本地 SQLite 索引。
