@@ -108,9 +108,6 @@
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
     document.body.classList.toggle("large-font", !!s.largeFont);
-    const rt = s.reminderTimes || {};
-    const bt = $("#btn-times");
-    if (bt) bt.textContent = "早 " + (rt.morning || "08:00") + " · 中 " + (rt.noon || "12:30") + " · 晚 " + (rt.evening || "19:00");
     renderAISummary();
     renderRemindersList();
   }
@@ -427,7 +424,7 @@
         </div>
 
         <div class="detail-sec"><h3>🧪 检查结果</h3>
-          <button type="button" class="btn btn-ghost" id="rec-exam-img">📷 导入图片</button>
+          <button type="button" class="btn btn-ghost" id="rec-exam-img">📷 导入图片（可多选/多次添加）</button>
           <input type="file" id="rec-exam-input" accept="image/*" multiple hidden />
           <div id="rec-exam-thumbs" class="thumb-grid"></div>
           <div class="table-wrap" style="margin-top:8px"><table class="edit-table" id="rec-exam-table">
@@ -438,7 +435,7 @@
         </div>
 
         <div class="detail-sec"><h3>💊 处方药</h3>
-          <button type="button" class="btn btn-ghost" id="rec-rx-img">📷 导入图片</button>
+          <button type="button" class="btn btn-ghost" id="rec-rx-img">📷 导入图片（可多选/多次添加）</button>
           <input type="file" id="rec-rx-input" accept="image/*" multiple hidden />
           <div id="rec-rx-thumbs" class="thumb-grid"></div>
           <div id="rec-rx-list" class="rx-list"></div>
@@ -587,9 +584,12 @@
     });
   }
   async function addImagesToDraft(files, kind) {
+    // 逐个处理所有选中的文件，确保多张都能加入（部分 iOS 环境选择多张时仅返回单张，
+    // 属系统限制；此处保证每次选择都能正确追加，可多次点「导入图片」补齐）
     for (const f of files) {
       if (!f.type.startsWith("image/")) continue;
       const d = await downscaleImage(f, 1280, 0.82);
+      if (!d) continue;
       (kind === "exam" ? recDraft.examImages : recDraft.rxImages).push({ name: f.name, type: "image/jpeg", dataUrl: d });
     }
     renderDraftThumbs();
@@ -810,6 +810,7 @@
           meal: "any",
           manufacturer: m.manufacturer || "",
           alias: m.alias || "",
+          spec: m.spec || "",
           qty: 0,
           unit: "片",
           status: "active",
@@ -1042,6 +1043,7 @@
         const meta = [
           d.manufacturer ? "厂家 " + d.manufacturer : "",
           d.alias && d.alias !== d.name ? "别名 " + d.alias : "",
+          d.spec ? "规格 " + d.spec : "",
           "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
           "阈值 " + (Number(d.threshold) || 0),
         ].filter(Boolean).join(" · ");
@@ -1074,14 +1076,14 @@
           .map(
             (h) => `<div class="history-row">
           <div class="history-row__head"><b>${esc(h.manufacturer || "未填厂家")}</b>${h.spec ? `<span>规格 ${esc(h.spec)}</span>` : ""}${h.alias && h.alias !== d.name ? `<span>别名 ${esc(h.alias)}</span>` : ""}</div>
-          <div class="history-row__meta">${h.doseUnit ? "单位剂量 " + esc(h.doseUnit) : ""}${h.note ? (h.doseUnit ? " · " : "") + esc(h.note) : ""}</div>
+          <div class="history-row__meta">${h.doseUnit ? "单位规格 " + esc(h.doseUnit) : ""}${h.note ? (h.doseUnit ? " · " : "") + esc(h.note) : ""}</div>
         </div>`
           )
           .join("")}</div>`
       : "";
     body.innerHTML = `
       <div class="cab-detail__head"><div><div class="cab-detail__title">${esc(d.name)}</div>${d.disease ? `<div class="cab-detail__spec">🩺 ${esc(d.disease)}</div>` : ""}</div></div>
-      <div class="cab-detail__sec"><h4>💊 用法</h4><p>单次 <b>${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "—")}</b> · 时段 ${slotLabels(d.timeSlots)} · ${mealLabel(d.meal)}</p></div>
+      <div class="cab-detail__sec"><h4>💊 用法</h4><p>单次 <b>${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "—")}</b> · 时段 ${slotLabels(d.timeSlots)} · ${mealLabel(d.meal)}${d.spec ? `<br/>单位规格：<b>${esc(d.spec)}</b>` : ""}</p></div>
       <div class="cab-detail__sec"><h4>🏭 厂家 / 别名</h4><p>${esc(d.manufacturer || "未填厂家")}${d.alias && d.alias !== d.name ? " · 别名 " + esc(d.alias) : ""}</p></div>
       <div class="cab-detail__sec"><h4>📦 库存 / 状态</h4><p>库存 <b>${esc((Number(d.qty) || 0) + " " + (d.unit || "片"))}</b> · 状态 ${statusLabel(d.status)} · 每日消耗 ${Number(d.dailyDose) || 0} · 阈值 ${Number(d.threshold) || 0}</p></div>
       ${d.intro ? `<div class="cab-detail__sec"><h4>📖 药品介绍</h4><p>${esc(d.intro)}</p></div>` : ""}
@@ -1103,7 +1105,7 @@
   function openCabinetEdit(id) {
     const isNew = !id;
     editingDrugId = id || null;
-    const d = isNew ? { name: "", disease: "", doseAmount: 0, doseUnit: "片", timeSlots: ["morning"], meal: "any", manufacturer: "", alias: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7, intro: "", precautions: [], advice: "", note: "", history: [] } : (DATA.cabinet || []).find((x) => x.id === id) || {};
+    const d = isNew ? { name: "", disease: "", doseAmount: 0, doseUnit: "片", timeSlots: ["morning"], meal: "any", manufacturer: "", alias: "", spec: "", qty: 0, unit: "片", status: "active", dailyDose: 0, threshold: 7, intro: "", precautions: [], advice: "", note: "", history: [] } : (DATA.cabinet || []).find((x) => x.id === id) || {};
     formHistory = (d.history || []).map((h) => ({ manufacturer: (h.manufacturer || ""), spec: (h.spec || ""), alias: (h.alias || ""), doseUnit: (h.doseUnit || "片"), note: (h.note || "") }));
     $("#cab-modal-title").textContent = isNew ? "添加药品" : "编辑药品";
     const precautions = (d.precautions || []).map((p, i) => `<span class="cab-edit__tag">${esc(p)} <button type="button" data-rm-prec="${i}">✕</button></span>`).join("");
@@ -1115,6 +1117,7 @@
         <div class="cab-edit__field"><span>单次用量</span><input type="number" id="cab-f-dose" value="${Number(d.doseAmount) || 0}" step="0.5"/></div>
         <div class="cab-edit__field"><span>单位</span><input type="text" id="cab-f-doseunit" value="${esc(d.doseUnit || "片")}"/></div>
       </div>
+      <div class="cab-edit__field"><span>单位规格</span><input type="text" id="cab-f-spec" value="${esc(d.spec || "")}" placeholder="每单位药品规格大小，如：30mg"/></div>
       <div class="cab-edit__field"><span>服用时段</span>
         <div class="chk-row">
           <label><input type="checkbox" class="cab-f-slot" value="morning" ${(d.timeSlots || []).includes("morning") ? "checked" : ""}/> 早</label>
@@ -1129,7 +1132,7 @@
       <div class="cab-edit__field"><span>别名 / 俗称</span><input type="text" id="cab-f-alias" value="${esc(d.alias)}" placeholder="如：络活喜"/></div>
       <div class="cab-edit__row">
         <div class="cab-edit__field"><span>当前库存</span><input type="number" id="cab-f-qty" value="${Number(d.qty) || 0}"/></div>
-        <div class="cab-edit__field"><span>单位剂量</span><input type="text" id="cab-f-unit" value="${esc(d.unit || "片")}"/></div>
+        <div class="cab-edit__field"><span>单位</span><input type="text" id="cab-f-unit" value="${esc(d.unit || "片")}"/></div>
       </div>
       <div class="cab-edit__field"><span>状态</span>
         <select id="cab-f-status"><option value="active" ${d.status === "active" ? "selected" : ""}>使用中</option><option value="disabled" ${d.status === "disabled" ? "selected" : ""}>停用</option><option value="out" ${d.status === "out" ? "selected" : ""}>缺药</option></select>
@@ -1217,6 +1220,7 @@
       meal: $("#cab-f-meal").value,
       manufacturer: newManufacturer,
       alias: $("#cab-f-alias").value.trim(),
+      spec: $("#cab-f-spec").value.trim(),
       qty: Number($("#cab-f-qty").value) || 0,
       unit: $("#cab-f-unit").value.trim() || "片",
       status: $("#cab-f-status").value,
@@ -1644,7 +1648,6 @@
     ["#ai-baseurl", "#ai-model", "#ai-key"].forEach((s) => ($(s).onchange = saveAISettings));
     $("#opt-notify").onchange = toggleNotify;
     $("#opt-large").onchange = toggleLarge;
-    $("#btn-times").onclick = () => openTimesModal(false);
     $("#times-save").onclick = saveTimesModal;
     $("#times-cancel").onclick = closeTimesModal;
     $$("#times-modal [data-close-times]").forEach((el) => (el.onclick = closeTimesModal));

@@ -31,6 +31,7 @@
  *     meal: "before"|"after"|"any",        // 餐前/餐后
  *     intro, precautions[], advice, note,
  *     manufacturer, alias,                 // 厂家 / 别名（直接属性）
+ *     spec,                                // 单位规格：每单位药品规格大小（如 30mg）
  *     qty, unit,                           // 当前库存 / 单位
  *     status: "active"|"disabled"|"out",    // 状态
  *     dailyDose, threshold,                // 每日消耗 / 库存阈值
@@ -213,6 +214,7 @@
     let history = Array.isArray(it.history) ? it.history.map(_normHistoryItem).filter(Boolean) : [];
     let manufacturer = it.manufacturer || "";
     let alias = it.alias || "";
+    let spec = it.spec || "";
     let qty = Number(it.qty) || 0;
     let unit = it.unit || "片";
     let status = ["active", "disabled", "out"].includes(it.status) ? it.status : "active";
@@ -222,6 +224,7 @@
       const primary = variants.find((v) => v.status === "active") || variants[0];
       manufacturer = primary.manufacturer;
       alias = primary.alias && primary.alias !== it.name ? primary.alias : it.alias || "";
+      spec = primary.spec || it.spec || "";
       qty = primary.qty;
       unit = primary.unit;
       status = primary.status;
@@ -244,6 +247,7 @@
       note: it.note || "",
       manufacturer,
       alias,
+      spec,
       qty,
       unit,
       status,
@@ -260,7 +264,7 @@
     return names;
   }
 
-  // 历史药品（曾用其他厂家）：厂家 / 规格 / 别名 / 单位剂量 / 备注
+  // 历史药品（曾用其他厂家）：厂家 / 规格 / 别名 / 单位规格 / 备注
   function _normHistoryItem(h) {
     if (!h || typeof h !== "object") return null;
     return {
