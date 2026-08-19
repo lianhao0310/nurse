@@ -84,15 +84,9 @@
 
   // ===================== 数据聚合工具 =====================
   // 汇总所有药单在用药品（首页用药提醒数据源）
+  // 在用药品（数据源=药箱 cabinet 主档）
   function activeMedicines() {
-    const out = [];
-    (DATA.orders || []).forEach((o) => {
-      (o.medicines || []).forEach((m) => {
-        if (m.status === "disabled" || m.status === "out") return;
-        out.push(Object.assign({}, m, { orderId: o.id, orderSource: o.source }));
-      });
-    });
-    return out;
+    return (DATA.cabinet || []).filter((m) => m.status !== "disabled" && m.status !== "out");
   }
 
   // ===================== 初始化 =====================
@@ -410,34 +404,35 @@
     bindRecordEdit(rec);
   }
 
-  // 关联药单/报告 摘要渲染
+  // 关联药单/报告 摘要渲染（与药箱/检查明细卡片同构：点击进编辑，左滑删除）
   function renderRelatedOrder(rec) {
     if (!rec || !rec.orderId) return "";
     const o = (DATA.orders || []).find((x) => x.id === rec.orderId);
     if (!o) return "";
     const count = (o.medicines || []).length;
-    return `<div class="rec-link" data-rel="order" data-id="${esc(o.id)}">
-      <div class="rec-link__icon">💊</div>
-      <div class="rec-link__main">
-        <div class="rec-link__title">药单 · ${esc(o.source || "未填来源")}</div>
-        <div class="rec-link__meta">${esc(o.date || "无日期")} · ${count} 种药品</div>
+    const kindTag = o.kind === "hospital" ? `<span class="order-tag">医院</span>` : `<span class="order-tag order-tag--self">自建</span>`;
+    return `<div class="order-card swipe-item" data-rel="order" data-id="${esc(o.id)}" data-swipe>
+      <div class="swipe-content">
+        <div class="order-card__head">
+          <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}</div>
+          <span class="order-card__date">${esc(o.date || "无日期")}</span>
+        </div>
+        <div class="order-card__meta">共 ${count} 种药品</div>
+        ${count ? `<div class="order-card__meds">${o.medicines.slice(0, 3).map((m) => `<span class="order-chip">${esc(m.name)}</span>`).join("")}${count > 3 ? `<span class="order-chip">+${count - 3}</span>` : ""}</div>` : ""}
       </div>
-      <span class="rec-link__go">编辑 ›</span>
+      <button class="swipe-del" data-swipe-del>删除</button>
     </div>`;
   }
   function renderRelatedReport(rec) {
     if (!rec || !rec.reportId) return "";
     const rp = (DATA.reports || []).find((x) => x.id === rec.reportId);
     if (!rp) return "";
-    const inds = (rp.indicators || []).map((i) => i.name).filter(Boolean).join("、");
-    const count = (rp.indicators || []).length;
-    return `<div class="rec-link" data-rel="report" data-id="${esc(rp.id)}">
-      <div class="rec-link__icon">🧪</div>
-      <div class="rec-link__main">
-        <div class="rec-link__title">检查报告 · ${esc(rp.title || "未填标题")}</div>
-        <div class="rec-link__meta">${esc(rp.date || "无日期")}${inds ? " · " + esc(inds) : " · " + count + " 项指标"}</div>
+    return `<div class="exam-entry swipe-item" data-rel="report" data-id="${esc(rp.id)}" data-swipe>
+      <div class="swipe-content">
+        <div class="exam-entry__head"><b>${esc(rp.date || "")}</b>${rp.title ? " · " + esc(rp.title) : ""}<span class="exam-entry__tag">${rp.kind === "self" ? "自测" : "医院"}</span></div>
+        <div class="exam-entry__inds">${(rp.indicators || []).map((i) => `<span class="exam-chip ${i.abnormal ? "is-bad" : ""}">${esc(i.name)} ${esc(i.value)}${esc(i.unit || "")}</span>`).join("")}</div>
       </div>
-      <span class="rec-link__go">编辑 ›</span>
+      <button class="swipe-del" data-swipe-del>删除</button>
     </div>`;
   }
 
@@ -474,7 +469,7 @@
         <div class="detail-sec"><h3>💊 药单</h3>
           <div id="rec-order-link">${renderRelatedOrder(rec)}</div>
           <div class="rec-edit__row">
-            <button type="button" class="btn btn-ghost" id="rec-order-add">${rec && rec.orderId ? "＋ 更换药单" : "＋ 添加药单"}</button>
+            ${!(rec && rec.orderId) ? `<button type="button" class="btn btn-ghost" id="rec-order-add">＋ 添加药单</button>` : ""}
             <button type="button" class="btn btn-ghost" id="rec-order-img">📷 导入药单图片</button>
             <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
           </div>
@@ -484,7 +479,7 @@
         <div class="detail-sec"><h3>🧪 检查报告</h3>
           <div id="rec-report-link">${renderRelatedReport(rec)}</div>
           <div class="rec-edit__row">
-            <button type="button" class="btn btn-ghost" id="rec-report-add">${rec && rec.reportId ? "＋ 更换检查报告" : "＋ 添加检查报告"}</button>
+            ${!(rec && rec.reportId) ? `<button type="button" class="btn btn-ghost" id="rec-report-add">＋ 添加检查报告</button>` : ""}
             <button type="button" class="btn btn-ghost" id="rec-report-img">📷 导入报告图片</button>
             <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
           </div>
@@ -526,12 +521,16 @@
     $("#rec-report-img-input").onchange = (e) => { if (e.target.files) addImagesToDraft(e.target.files, "report"); e.target.value = ""; };
     $("#rec-save").onclick = () => saveRecordEdit(rec);
     $("#rec-cancel").onclick = () => closeView();
-    // 关联药单 / 检查报告
-    $("#rec-order-link").onclick = (e) => { const c = e.target.closest("[data-rel='order']"); if (c) openOrderModal(c.dataset.id, true); };
-    $("#rec-report-link").onclick = (e) => { const c = e.target.closest("[data-rel='report']"); if (c) openReportModal(c.dataset.id, true); };
+    // 关联药单 / 检查报告：点卡片进编辑，左滑删除
+    $("#rec-order-link").onclick = (e) => { const c = e.target.closest("[data-rel='order']"); if (c) openOrderModal(c.dataset.id); };
+    $("#rec-report-link").onclick = (e) => { const c = e.target.closest("[data-rel='report']"); if (c) openReportModal(c.dataset.id); };
+    attachSwipe($("#rec-order-link"), deleteOrderSwipe);
+    attachSwipe($("#rec-report-link"), deleteReportSwipe);
     // 「添加药单 / 添加检查报告」：直接打开新建编辑弹窗，保存后自动关联
-    $("#rec-order-add").onclick = () => addOrderForRecord(rec);
-    $("#rec-report-add").onclick = () => addReportForRecord(rec);
+    const addOrderBtn = $("#rec-order-add");
+    if (addOrderBtn) addOrderBtn.onclick = () => addOrderForRecord(rec);
+    const addReportBtn = $("#rec-report-add");
+    if (addReportBtn) addReportBtn.onclick = () => addReportForRecord(rec);
     // AI 分析 / 医嘱分析：先静默保存当前编辑，再基于最新数据分析
     const aiBtn = $("#rec-ai-analyze");
     if (aiBtn) aiBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAIAnalyze(saved); };
@@ -613,8 +612,20 @@
       currentRecordId = saved.id;
     }
     // 同步药单 / 检查报告的图片到关联实体（空数组也写入以覆盖删除）
-    if (saved.orderId) await NurseStorage.updateOrder(saved.orderId, { images: recDraft.orderImages });
-    if (saved.reportId) await NurseStorage.updateReport(saved.reportId, { images: recDraft.reportImages });
+    if (saved.orderId) {
+      const o = (DATA.orders || []).find((x) => x.id === saved.orderId);
+      const oPatch = { images: recDraft.orderImages };
+      // 医院药单：来源/日期随问诊记录同步
+      if (o && o.kind === "hospital") { oPatch.source = payload.hospital || o.source; oPatch.date = payload.visitDate || o.date; }
+      await NurseStorage.updateOrder(saved.orderId, oPatch);
+    }
+    if (saved.reportId) {
+      const rp = (DATA.reports || []).find((x) => x.id === saved.reportId);
+      const rPatch = { images: recDraft.reportImages };
+      // 医院报告：标题/日期随问诊记录同步
+      if (rp && rp.kind === "hospital") { rPatch.title = payload.hospital || rp.title; rPatch.date = payload.visitDate || rp.date; }
+      await NurseStorage.updateReport(saved.reportId, rPatch);
+    }
     DATA = await NurseStorage.load();
     if (!opts.silent) {
       closeView();
@@ -731,23 +742,32 @@
         await NurseStorage.updateRecord(latest0.id, { reportId: rp.id });
       }
     }
-    // 3. 药单：已关联则覆盖药品，否则新建并关联
+    // 3. 药单：已关联则覆盖药品，否则新建并关联（同名药继承原条目 id/qty，库存不受影响）
     if (prescription.length) {
+      const existOrder = latest0.orderId ? (DATA.orders || []).find((o) => o.id === latest0.orderId) : null;
+      const oldMeds = existOrder ? (existOrder.medicines || []) : [];
+      const full = {};
       const medicines = prescription.map((m) => {
         const doseNum = parseFloat(m.dose);
+        const same = oldMeds.find((om) => om.name === m.name);
+        const fullData = {
+          spec: m.spec || "",
+          doseAmount: doseNum > 0 ? doseNum : 0,
+          doseUnit: "片",
+          timeSlots: ["morning"],
+          meal: "any",
+        };
+        if (!same) full[m.name] = fullData; // 新药 → 建档药箱（主属性取 AI 解析结果）
         return {
+          id: same ? same.id : undefined,
           name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "",
-          unit: "片", spec: m.spec || "",
-          qty: 0, doseAmount: doseNum > 0 ? doseNum : 0, doseUnit: "片",
-          timeSlots: ["morning"], meal: "any",
-          dailyDose: 0, threshold: 7, status: "active", note: m.note || "",
+          qty: same ? same.qty : 0,
         };
       });
-      if (latest0.orderId) {
-        const exist = (DATA.orders || []).find((o) => o.id === latest0.orderId);
-        await NurseStorage.updateOrder(latest0.orderId, { medicines, source: (exist && exist.source) || latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital" });
+      if (existOrder) {
+        await NurseStorage.updateOrder(latest0.orderId, { medicines, _full: full, source: existOrder.source || latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital" });
       } else {
-        const o = await NurseStorage.upsertOrder({ source: latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, medicines });
+        const o = await NurseStorage.upsertOrder({ source: latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, medicines, _full: full });
         await NurseStorage.updateRecord(latest0.id, { orderId: o.id });
       }
     }
@@ -779,10 +799,14 @@
   function buildAdviceContext(rec) {
     let s = "【本次医生医嘱】\n";
     s += rec.advice && rec.advice.text ? rec.advice.text + "\n" : "（无文字医嘱）\n";
-    // 关联药单药品
+    // 关联药单药品（主属性从药箱 cabinet 取）
     const order = (DATA.orders || []).find((o) => o.id === rec.orderId);
     if (order && order.medicines && order.medicines.length) {
-      s += "本次处方药：" + order.medicines.map((m) => m.name + (m.doseAmount ? " " + m.doseAmount + (m.doseUnit || "") : "") + (m.timeSlots ? " " + slotLabels(m.timeSlots) : "")).join("；") + "\n";
+      const cabOf = (name) => (DATA.cabinet || []).find((c) => c.name === name) || null;
+      s += "本次处方药：" + order.medicines.map((m) => {
+        const cab = cabOf(m.name);
+        return m.name + (cab && cab.doseAmount ? " " + cab.doseAmount + (cab.doseUnit || "") : "") + (cab ? " " + slotLabels(cab.timeSlots) : "");
+      }).join("；") + "\n";
     }
     // 关联检查报告
     const report = (DATA.reports || []).find((rp) => rp.id === rec.reportId);
@@ -849,6 +873,7 @@
   }
 
   function closeView() {
+    currentRecordId = null; // 离开详情页清空，避免污染后续新建（药单/报告）的关联判断
     $$(".view").forEach((v) => (v.hidden = true));
     goPage("records");
   }
@@ -922,9 +947,7 @@
         const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
         const latest = s.points[s.points.length - 1];
         return `<div class="trend-card ${isF ? "is-followed" : ""}">
-          <div class="trend-card__head"><b>${esc(s.name)}</b>
-            <button class="trend-follow ${isF ? "is-on" : ""}" data-ind="${esc(s.name)}">${isF ? "★ 已关注" : "☆ 关注"}</button>
-          </div>
+          <div class="trend-card__head"><b>${esc(s.name)}</b>${isF ? '<span class="trend-star">⭐</span>' : ""}</div>
           <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
           ${chart}
         </div>`;
@@ -957,12 +980,12 @@
     </svg>`;
   }
 
-  // 关注指标区（顶部可增删）：显示最新值
+  // 关注指标区（顶部可增删）：显示最新值（管理入口=标题右侧齿轮）
   function renderExamFollow(el) {
     if (!el) return;
     const followed = DATA.followedIndicators || [];
     if (!followed.length) {
-      el.innerHTML = '<div class="exam-follow__empty"><span>还没有关注指标。</span><button class="btn btn-ghost btn-sm" id="follow-manage-btn">＋ 管理关注指标</button></div>';
+      el.innerHTML = '<div class="exam-follow__empty"><span>还没有关注指标，点标题右侧 ⚙ 添加。</span></div>';
       return;
     }
     const series = collectSeries();
@@ -982,10 +1005,7 @@
           </div>`;
         })
         .join("")}
-        <button class="btn btn-ghost btn-sm" id="follow-manage-btn">＋ 管理</button>
       </div>`;
-    const mBtn = $("#follow-manage-btn");
-    if (mBtn) mBtn.onclick = () => openFollowModal();
     $$("[data-unfollow]").forEach((b) => (b.onclick = async () => {
       const set = new Set(DATA.followedIndicators || []);
       set.delete(b.dataset.unfollow);
@@ -1061,11 +1081,11 @@
     renderOrders();
   }
 
-  // 药箱页签：按药名合并所有药单药品，只读
+  // 药箱页签：药箱药品主档（cabinet），点击进编辑，左滑删除
   function renderCabinetSummary() {
     const listBox = $("#cabinet-list");
     const empty = $("#cabinet-empty");
-    const items = NurseStorage.summarizeMedicines(DATA.orders || []);
+    const items = DATA.cabinet || [];
     const counts = { active: 0, disabled: 0, out: 0 };
     items.forEach((d) => { const s = drugStatus(d); if (counts[s] !== undefined) counts[s]++; });
     $("#cab-active-count").textContent = counts.active;
@@ -1076,15 +1096,16 @@
     empty.hidden = true;
     listBox.innerHTML = filtered
       .map((d) => {
+        const orderCnt = (DATA.orders || []).filter((o) => (o.medicines || []).some((m) => m.name === d.name)).length;
         const meta = [
           d.manufacturer ? "厂家 " + d.manufacturer : "",
           d.alias && d.alias !== d.name ? "别名 " + d.alias : "",
           d.spec ? "规格 " + d.spec : "",
           "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
           "阈值 " + (Number(d.threshold) || 0),
-          "来自 " + d.orderIds.length + " 个药单",
+          orderCnt ? "来自 " + orderCnt + " 个药单" : "",
         ].filter(Boolean).join(" · ");
-        return `<div class="cab-item ${esc(drugStatus(d))}">
+        return `<div class="cab-item swipe-item ${esc(drugStatus(d))}" data-cab-id="${esc(d.id)}" data-swipe>
           <div class="swipe-content">
             <div class="cab-item__top">
               <div>
@@ -1095,12 +1116,13 @@
               <span class="cab-status ${esc(drugStatus(d))}">${statusLabel(drugStatus(d))}</span>
             </div>
           </div>
+          <button class="swipe-del" data-swipe-del>删除</button>
         </div>`;
       })
       .join("");
   }
 
-  // 药单页签：药单列表（点卡片编辑）
+  // 药单页签：药单列表（点卡片进编辑，左滑删除）
   function renderOrders() {
     const listBox = $("#orders-list");
     const empty = $("#orders-empty");
@@ -1111,18 +1133,70 @@
       .map((o) => {
         const kindTag = o.kind === "hospital" ? `<span class="order-tag">医院</span>` : `<span class="order-tag order-tag--self">自建</span>`;
         const count = (o.medicines || []).length;
-        const activeCount = (o.medicines || []).filter((m) => m.status === "active").length;
-        return `<div class="order-card" data-order-id="${esc(o.id)}">
-          <div class="order-card__head">
-            <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}</div>
-            <span class="order-card__date">${esc(o.date || "无日期")}</span>
+        return `<div class="order-card swipe-item" data-order-id="${esc(o.id)}" data-swipe>
+          <div class="swipe-content">
+            <div class="order-card__head">
+              <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}</div>
+              <span class="order-card__date">${esc(o.date || "无日期")}</span>
+            </div>
+            <div class="order-card__meta">共 ${count} 种药品</div>
+            ${count ? `<div class="order-card__meds">${o.medicines.slice(0, 3).map((m) => `<span class="order-chip">${esc(m.name)}</span>`).join("")}${count > 3 ? `<span class="order-chip">+${count - 3}</span>` : ""}</div>` : ""}
           </div>
-          <div class="order-card__meta">共 ${count} 种药品 · ${activeCount} 种使用中</div>
-          ${count ? `<div class="order-card__meds">${o.medicines.slice(0, 3).map((m) => `<span class="order-chip">${esc(m.name)}${m.spec ? " " + esc(m.spec) : ""}</span>`).join("")}${count > 3 ? `<span class="order-chip">+${count - 3}</span>` : ""}</div>` : ""}
-          <div class="order-card__foot"><button class="btn btn-ghost btn-sm" data-order-edit="${esc(o.id)}">编辑</button><button class="btn btn-ghost btn-sm btn-danger-ghost" data-order-del="${esc(o.id)}">删除</button></div>
+          <button class="swipe-del" data-swipe-del>删除</button>
         </div>`;
       })
       .join("");
+  }
+
+  // ===================== 药箱药品 编辑弹窗（全属性，药名只读） =====================
+  let editingCabId = null;
+  function openCabinetModal(id) {
+    const c = (DATA.cabinet || []).find((x) => x.id === id);
+    if (!c) return;
+    editingCabId = id;
+    $("#cabitem-title").textContent = "编辑药箱药品";
+    $("#cabitem-f-name").value = c.name;
+    $("#cabitem-f-name").disabled = true; // 药名是药单关联键，创建后不可修改
+    $("#cabitem-f-manufacturer").value = c.manufacturer || "";
+    $("#cabitem-f-alias").value = c.alias || "";
+    $("#cabitem-f-unit").value = c.unit || "片";
+    $("#cabitem-f-spec").value = c.spec || "";
+    $("#cabitem-f-qty").value = Number(c.qty) || 0;
+    $("#cabitem-f-dose").value = Number(c.doseAmount) || 0;
+    $("#cabitem-f-doseunit").value = c.doseUnit || "片";
+    $$(".cabitem-f-slot").forEach((ch) => (ch.checked = (c.timeSlots || ["morning"]).includes(ch.value)));
+    $("#cabitem-f-meal").value = c.meal || "any";
+    $("#cabitem-f-status").value = c.status || "active";
+    $("#cabitem-f-dailydose").value = Number(c.dailyDose) || 0;
+    $("#cabitem-f-threshold").value = Number(c.threshold) || 0;
+    $("#cabitem-f-note").value = c.note || "";
+    $("#cabinet-modal").hidden = false;
+  }
+  async function saveCabinetDrug() {
+    if (!editingCabId) return;
+    const slots = $$(".cabitem-f-slot").filter((ch) => ch.checked).map((ch) => ch.value);
+    const patch = {
+      manufacturer: $("#cabitem-f-manufacturer").value.trim(),
+      alias: $("#cabitem-f-alias").value.trim(),
+      unit: $("#cabitem-f-unit").value.trim() || "片",
+      spec: $("#cabitem-f-spec").value.trim(),
+      qty: Number($("#cabitem-f-qty").value) || 0,
+      doseAmount: Number($("#cabitem-f-dose").value) || 0,
+      doseUnit: $("#cabitem-f-doseunit").value.trim() || "片",
+      timeSlots: slots.length ? slots : ["morning"],
+      meal: $("#cabitem-f-meal").value,
+      status: $("#cabitem-f-status").value,
+      dailyDose: Number($("#cabitem-f-dailydose").value) || 0,
+      threshold: Number($("#cabitem-f-threshold").value) || 0,
+      note: $("#cabitem-f-note").value.trim(),
+    };
+    await NurseStorage.updateCabinetDrug(editingCabId, patch);
+    DATA = await NurseStorage.load();
+    $("#cabinet-modal").hidden = true;
+    editingCabId = null;
+    renderCabinet();
+    renderHome();
+    toast("已保存药箱药品");
   }
 
   // ===================== 药单 弹窗 =====================
@@ -1131,25 +1205,35 @@
     if (id) {
       const o = (DATA.orders || []).find((x) => x.id === id);
       if (!o) return;
-      orderDraft = { source: o.source, date: o.date, kind: o.kind, medicines: (o.medicines || []).map((m) => Object.assign({}, m)) };
+      orderDraft = {
+        source: o.source, date: o.date, kind: o.kind, recordId: o.recordId || "",
+        fromRecord: !!fromRecord,
+        medicines: (o.medicines || []).map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty, _full: null })),
+      };
     } else {
       // 自建药单：若从问诊记录进入，自动关联
       orderDraft = {
         source: fromRecord && currentRecordId ? (findRecord(currentRecordId) || {}).hospital || "" : "",
         date: fromRecord && currentRecordId ? (findRecord(currentRecordId) || {}).visitDate || TODAY : TODAY,
         kind: fromRecord ? "hospital" : "custom",
+        recordId: "",
+        fromRecord: !!fromRecord,
         medicines: [],
       };
     }
     $("#order-modal-title").textContent = editingOrderId ? "编辑药单" : (fromRecord ? "添加药单（关联问诊）" : "自建药单");
     $("#order-f-source").value = orderDraft.source;
     $("#order-f-date").value = orderDraft.date;
-    $("#order-hint").innerHTML = fromRecord && currentRecordId
-      ? `<span class="hint">属性：来源 <b>${esc((findRecord(currentRecordId) || {}).hospital || "未填医院")}</b> · 日期 ${esc((findRecord(currentRecordId) || {}).visitDate || TODAY)}（已关联，保存后不可直接修改属性）</span>`
+    // 医院药单：来源与日期锁定（随问诊记录同步）；自建可改
+    const locked = orderDraft.kind === "hospital";
+    $("#order-f-source").disabled = locked;
+    $("#order-f-date").disabled = locked;
+    $("#order-hint").innerHTML = locked
+      ? `<span class="hint">属性：来源 <b>${esc(orderDraft.source || "未填医院")}</b> · 日期 ${esc(orderDraft.date || TODAY)}（医院药单，随问诊记录自动同步）</span>`
       : "";
     renderOrderMeds();
     $("#order-modal").hidden = false;
-    setTimeout(() => $("#order-f-source").focus(), 50);
+    if (!locked) setTimeout(() => $("#order-f-source").focus(), 50);
   }
   function findRecord(id) {
     return (DATA.records || []).find((r) => r.id === id) || null;
@@ -1161,17 +1245,19 @@
       box.innerHTML = '<div class="empty-tip" style="padding:4px 0">暂无药品，点下方「＋ 添加药品」录入</div>';
       return;
     }
+    const cabOf = (name) => (DATA.cabinet || []).find((c) => c.name === name) || null;
     box.innerHTML = orderDraft.medicines
       .map((m, i) => {
+        const cab = cabOf(m.name);
         const meta = [
           m.manufacturer ? "厂家 " + m.manufacturer : "",
           m.alias && m.alias !== m.name ? "别名 " + m.alias : "",
-          m.spec ? "规格 " + m.spec : "",
-          "数量 " + (Number(m.qty) || 0) + (m.unit ? " " + m.unit : ""),
-          m.doseAmount ? "单次 " + m.doseAmount + (m.doseUnit || "") : "",
-          slotLabels(m.timeSlots),
+          "数量 " + (Number(m.qty) || 0),
+          cab && cab.spec ? "规格 " + cab.spec : "",
+          cab && cab.doseAmount ? "单次 " + cab.doseAmount + " " + (cab.doseUnit || "") : "",
+          cab ? slotLabels(cab.timeSlots) : "",
         ].filter(Boolean).join(" · ");
-        const st = drugStatus(m);
+        const st = cab ? drugStatus(cab) : "active";
         return `<div class="order-med" data-med-idx="${i}">
           <div class="order-med__main">
             <div class="order-med__name">${esc(m.name)} <span class="cab-status ${esc(st)}">${statusLabel(st)}</span></div>
@@ -1191,15 +1277,18 @@
     const source = $("#order-f-source").value.trim();
     if (!source) { toast("请填写药单来源"); return; }
     const date = $("#order-f-date").value;
-    const medicines = orderDraft.medicines;
-    // 从问诊记录关联：自动用记录属性，且不可改
-    let recordId = "";
+    const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty }));
+    // 新药全属性（药箱主档建档用），剥离后不进入药单条目
+    const full = {};
+    orderDraft.medicines.forEach((m) => { if (m._full) full[m.name] = m._full; });
+    // 关联与属性：编辑保留原 recordId；新建时仅「从问诊记录进入」才关联
+    let recordId = orderDraft.recordId || "";
     let kind = orderDraft.kind;
-    if (currentRecordId && !editingOrderId) {
+    if (!editingOrderId && orderDraft.fromRecord && currentRecordId) {
       recordId = currentRecordId;
       kind = "hospital";
     }
-    const item = { id: editingOrderId || undefined, source, date, kind, recordId, medicines };
+    const item = { id: editingOrderId || undefined, source, date, kind, recordId, medicines, _full: full };
     const wasEdit = !!editingOrderId;
     const savedOrder = await NurseStorage.upsertOrder(item);
     DATA = await NurseStorage.load();
@@ -1217,55 +1306,72 @@
     toast(wasEdit ? "已保存药单" : "已添加药单并关联到问诊记录");
   }
 
-  // 药单内 药品条目 弹窗（完整字段，可下拉选药箱已有药品自动填充）
+  // 药单内 药品条目 弹窗（药单只记 药名/厂家/别名/数量；新药可填全属性建档药箱）
+  const MED_PICK_NEW = "__new__";
   function medPickOptions() {
-    const seen = new Set();
-    const opts = [];
-    (DATA.orders || []).forEach((o) => (o.medicines || []).forEach((m) => {
-      const key = (m.name || "").trim();
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      opts.push({ name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "", unit: m.unit || "片", spec: m.spec || "", status: m.status, doseUnit: m.doseUnit || "片" });
-    }));
-    return opts;
+    return (DATA.cabinet || []).map((c) => ({ name: c.name, spec: c.spec || "", manufacturer: c.manufacturer || "", alias: c.alias || "" }));
+  }
+  let medItemMode = "pick"; // pick=选择/输入（4 字段） new=新药全属性 edit=编辑条目
+  function setMedItemFull(visible) {
+    const box = $("#meditem-full");
+    if (box) box.hidden = !visible;
   }
   function openMedItemModal(idx) {
     editingMedIdx = idx;
     const m = idx >= 0 ? orderDraft.medicines[idx] || {} : {};
     const mIsNew = idx < 0;
+    medItemMode = mIsNew ? "pick" : "edit";
     const opts = medPickOptions();
     $("#meditem-title").textContent = mIsNew ? "添加药品" : "编辑药品";
-    $("#meditem-pick").innerHTML = `<option value="">${mIsNew ? "— 选择已有药品（自动填充）—" : "— 保持当前内容 —"}</option>` + opts.map((o) => `<option value="${esc(o.name)}">${esc(o.name)}${o.spec ? " " + esc(o.spec) : ""}</option>`).join("");
+    $("#meditem-pick").hidden = !mIsNew;
+    $("#meditem-pick").innerHTML =
+      `<option value="">— 选择药箱已有药品 —</option>` +
+      (mIsNew ? `<option value="${MED_PICK_NEW}">＋ 新药（完善药箱信息）</option>` : "") +
+      opts.map((o) => `<option value="${esc(o.name)}">${esc(o.name)}${o.spec ? " " + esc(o.spec) : ""}</option>`).join("");
     $("#meditem-f-name").value = m.name || "";
+    $("#meditem-f-name").disabled = !mIsNew; // 药名创建后不可修改
     $("#meditem-f-manufacturer").value = m.manufacturer || "";
     $("#meditem-f-alias").value = m.alias || "";
-    $("#meditem-f-unit").value = m.unit || "片";
-    $("#meditem-f-spec").value = m.spec || "";
     $("#meditem-f-qty").value = Number(m.qty) || 0;
-    $("#meditem-f-dose").value = Number(m.doseAmount) || 0;
-    $("#meditem-f-doseunit").value = m.doseUnit || "片";
-    $$(".meditem-f-slot").forEach((c) => (c.checked = (m.timeSlots || ["morning"]).includes(c.value)));
-    $("#meditem-f-meal").value = m.meal || "any";
-    $("#meditem-f-status").value = m.status || "active";
-    $("#meditem-f-dailydose").value = Number(m.dailyDose) || 0;
-    $("#meditem-f-threshold").value = Number(m.threshold) || 7;
-    $("#meditem-f-note").value = m.note || "";
+    // 全属性区（仅新药展开）
+    if (mIsNew) {
+      $("#meditem-f-unit").value = "片";
+      $("#meditem-f-spec").value = "";
+      $("#meditem-f-dose").value = 0;
+      $("#meditem-f-doseunit").value = "片";
+      $$(".meditem-f-slot").forEach((c) => (c.checked = c.value === "morning"));
+      $("#meditem-f-meal").value = "any";
+      $("#meditem-f-status").value = "active";
+      $("#meditem-f-dailydose").value = 0;
+      $("#meditem-f-threshold").value = 7;
+      $("#meditem-f-note").value = "";
+    }
+    setMedItemFull(mIsNew && $("#meditem-pick").value === MED_PICK_NEW);
     $("#med-item-modal").hidden = false;
-    // 选择已有药品自动填充
+    // 选择药品：已有药 → 4 字段引用；新药 → 展开全属性
     $("#meditem-pick").onchange = () => {
-      const name = $("#meditem-pick").value;
-      if (!name) return;
-      const found = medPickOptions().find((o) => o.name === name);
+      const v = $("#meditem-pick").value;
+      if (v === MED_PICK_NEW) {
+        medItemMode = "new";
+        $("#meditem-f-name").value = "";
+        $("#meditem-f-name").disabled = false;
+        $("#meditem-f-manufacturer").value = "";
+        $("#meditem-f-alias").value = "";
+        setMedItemFull(true);
+        setTimeout(() => $("#meditem-f-name").focus(), 50);
+        return;
+      }
+      medItemMode = "pick";
+      setMedItemFull(false);
+      if (!v) { $("#meditem-f-name").disabled = false; return; }
+      const found = medPickOptions().find((o) => o.name === v);
       if (!found) return;
       $("#meditem-f-name").value = found.name;
+      $("#meditem-f-name").disabled = true;
       $("#meditem-f-manufacturer").value = found.manufacturer || "";
       $("#meditem-f-alias").value = found.alias || "";
-      $("#meditem-f-unit").value = found.unit || "片";
-      $("#meditem-f-spec").value = found.spec || "";
-      $("#meditem-f-doseunit").value = found.doseUnit || "片";
-      $("#meditem-f-status").value = found.status || "active";
     };
-    setTimeout(() => $("#meditem-f-name").focus(), 50);
+    if (!$("#meditem-f-name").disabled) setTimeout(() => $("#meditem-f-name").focus(), 50);
   }
   function saveMedItem() {
     const name = $("#meditem-f-name").value.trim();
@@ -1274,23 +1380,34 @@
       name,
       manufacturer: $("#meditem-f-manufacturer").value.trim(),
       alias: $("#meditem-f-alias").value.trim(),
-      unit: $("#meditem-f-unit").value.trim() || "片",
-      spec: $("#meditem-f-spec").value.trim(),
       qty: Number($("#meditem-f-qty").value) || 0,
-      doseAmount: Number($("#meditem-f-dose").value) || 0,
-      doseUnit: $("#meditem-f-doseunit").value.trim() || "片",
-      timeSlots: $$(".meditem-f-slot").filter((c) => c.checked).map((c) => c.value),
-      meal: $("#meditem-f-meal").value,
-      status: $("#meditem-f-status").value,
-      dailyDose: Number($("#meditem-f-dailydose").value) || 0,
-      threshold: Number($("#meditem-f-threshold").value) || 7,
-      note: $("#meditem-f-note").value.trim(),
     };
-    if (!item.timeSlots.length) item.timeSlots = ["morning"];
-    if (editingMedIdx >= 0) orderDraft.medicines[editingMedIdx] = item;
-    else orderDraft.medicines.push(item);
+    // 新药：收集药箱主属性
+    if (medItemMode === "new") {
+      const slots = $$(".meditem-f-slot").filter((c) => c.checked).map((c) => c.value);
+      item._full = {
+        unit: $("#meditem-f-unit").value.trim() || "片",
+        spec: $("#meditem-f-spec").value.trim(),
+        doseAmount: Number($("#meditem-f-dose").value) || 0,
+        doseUnit: $("#meditem-f-doseunit").value.trim() || "片",
+        timeSlots: slots.length ? slots : ["morning"],
+        meal: $("#meditem-f-meal").value,
+        dailyDose: Number($("#meditem-f-dailydose").value) || 0,
+        threshold: Number($("#meditem-f-threshold").value) || 7,
+        status: $("#meditem-f-status").value,
+        note: $("#meditem-f-note").value.trim(),
+      };
+    }
+    if (editingMedIdx >= 0) {
+      const old = orderDraft.medicines[editingMedIdx] || {};
+      item.id = old.id; // 保持条目 id（库存 diff 依据）
+      orderDraft.medicines[editingMedIdx] = item;
+    } else {
+      orderDraft.medicines.push(item);
+    }
     $("#med-item-modal").hidden = true;
     editingMedIdx = -1;
+    medItemMode = "pick";
     renderOrderMeds();
   }
 
@@ -1300,28 +1417,35 @@
     if (id) {
       const rp = (DATA.reports || []).find((x) => x.id === id);
       if (!rp) return;
-      reportDraft = { title: rp.title, date: rp.date, kind: rp.kind, indicators: (rp.indicators || []).map((x) => Object.assign({}, x)) };
+      reportDraft = { title: rp.title, date: rp.date, kind: rp.kind, recordId: rp.recordId || "", fromRecord: !!fromRecord, indicators: (rp.indicators || []).map((x) => Object.assign({}, x)) };
     } else {
       reportDraft = {
         title: fromRecord && currentRecordId ? (findRecord(currentRecordId) || {}).hospital || "" : "自测",
         date: fromRecord && currentRecordId ? (findRecord(currentRecordId) || {}).visitDate || TODAY : TODAY,
         kind: fromRecord ? "hospital" : "self",
+        recordId: "",
+        fromRecord: !!fromRecord,
         indicators: [],
       };
     }
     $("#report-modal-title").textContent = editingReportId ? "编辑检查报告" : (fromRecord ? "添加检查报告（关联问诊）" : "添加自测报告");
     $("#report-f-title").value = reportDraft.title;
     $("#report-f-date").value = reportDraft.date;
-    $("#report-hint").innerHTML = fromRecord && currentRecordId
-      ? `<span class="hint">属性：标题 <b>${esc((findRecord(currentRecordId) || {}).hospital || "未填医院")}</b> · 日期 ${esc((findRecord(currentRecordId) || {}).visitDate || TODAY)}（已关联，保存后不可直接修改属性）</span>`
+    // 医院报告：标题与日期锁定（随问诊记录同步）；自测可改
+    const locked = reportDraft.kind === "hospital";
+    $("#report-f-title").disabled = locked;
+    $("#report-f-date").disabled = locked;
+    $("#report-hint").innerHTML = locked
+      ? `<span class="hint">属性：标题 <b>${esc(reportDraft.title || "未填医院")}</b> · 日期 ${esc(reportDraft.date || TODAY)}（医院报告，随问诊记录自动同步）</span>`
       : "";
     renderReportIndicators();
     $("#report-modal").hidden = false;
-    setTimeout(() => $("#report-f-title").focus(), 50);
+    if (!locked) setTimeout(() => $("#report-f-title").focus(), 50);
   }
   function renderReportIndicators() {
     const tb = $("#report-table tbody");
     if (!tb) return;
+    const meta = DATA.indicatorMeta || {};
     tb.innerHTML = reportDraft.indicators
       .map((ind, i) => `<tr data-i="${i}">
         <td><input data-f="name" value="${esc(ind.name)}" placeholder="如：血糖"/></td>
@@ -1332,12 +1456,42 @@
         <td><button class="row-del" data-i="${i}">✕</button></td>
       </tr>`)
       .join("");
+    // 同步表格内同名指标的单位/参考（修改一处 → 全部同步并记忆）
+    const syncByName = (name, field, val) => {
+      if (!name) return;
+      $$("#report-table tbody tr").forEach((tr) => {
+        const nameInp = tr.querySelector('[data-f="name"]');
+        if (!nameInp || nameInp.value.trim() !== name) return;
+        const target = tr.querySelector('[data-f="' + field + '"]');
+        if (target && target.value !== val) target.value = val;
+        const di = +tr.dataset.i;
+        if (reportDraft.indicators[di]) reportDraft.indicators[di][field] = val;
+      });
+    };
     $$("#report-table tbody tr").forEach((tr) => {
       const i = +tr.dataset.i;
       $$('[data-f]', tr).forEach((inp) => {
         const f = inp.dataset.f;
-        if (inp.type === "checkbox") inp.onchange = () => (reportDraft.indicators[i][f] = inp.checked);
-        else inp.oninput = () => (reportDraft.indicators[i][f] = inp.value);
+        if (inp.type === "checkbox") {
+          inp.onchange = () => (reportDraft.indicators[i][f] = inp.checked);
+          return;
+        }
+        inp.oninput = () => {
+          reportDraft.indicators[i][f] = inp.value;
+          if (f === "name") {
+            // 填过相同指标 → 直接填充单位与参考
+            const m = meta[inp.value.trim()];
+            if (m && (m.unit || m.range)) {
+              if (m.unit) { inp.closest("tr").querySelector('[data-f="unit"]').value = m.unit; reportDraft.indicators[i].unit = m.unit; }
+              if (m.range) { inp.closest("tr").querySelector('[data-f="range"]').value = m.range; reportDraft.indicators[i].range = m.range; }
+            }
+          }
+          if (f === "unit" || f === "range") {
+            // 修改任一指标单位/参考 → 同名指标全部同步
+            const nm = tr.querySelector('[data-f="name"]').value.trim();
+            syncByName(nm, f, inp.value);
+          }
+        };
       });
     });
     $$("#report-table .row-del").forEach((b) => (b.onclick = () => { reportDraft.indicators.splice(+b.dataset.i, 1); renderReportIndicators(); }));
@@ -1346,15 +1500,27 @@
     const title = $("#report-f-title").value.trim();
     const date = $("#report-f-date").value;
     const indicators = reportDraft.indicators.filter((x) => x.name && String(x.name).trim());
-    let recordId = "";
+    // 关联与属性：编辑保留原 recordId；新建时仅「从问诊记录进入」才关联（自测入口固定 self）
+    let recordId = reportDraft.recordId || "";
     let kind = reportDraft.kind;
-    if (currentRecordId && !editingReportId) {
+    if (!editingReportId && reportDraft.fromRecord && currentRecordId) {
       recordId = currentRecordId;
       kind = "hospital";
     }
     const item = { id: editingReportId || undefined, title: title || "检查报告", date, kind, recordId, indicators };
     const wasEdit = !!editingReportId;
     const savedReport = await NurseStorage.upsertReport(item);
+    // 记忆指标单位/参考值（隐式维护；同名多行时非空优先，避免空值覆盖）
+    const metaPatch = {};
+    indicators.forEach((x) => {
+      const nm = String(x.name).trim();
+      if (!nm) return;
+      const prev = metaPatch[nm] || { unit: "", range: "" };
+      if (x.unit) prev.unit = x.unit;
+      if (x.range) prev.range = x.range;
+      if (prev.unit || prev.range) metaPatch[nm] = prev;
+    });
+    if (Object.keys(metaPatch).length) await NurseStorage.setIndicatorMeta(metaPatch);
     DATA = await NurseStorage.load();
     $("#report-modal").hidden = true;
     editingReportId = null;
@@ -1371,20 +1537,20 @@
     toast(wasEdit ? "已保存检查报告" : "已添加检查报告并关联到问诊记录");
   }
 
-  // ===================== 每日扣减 =====================
+  // ===================== 每日扣减（对药箱 cabinet 药品扣减） =====================
   async function runDailyDecrement() {
     const today = dateKey(new Date());
     const data = await NurseStorage.load();
     if (data.lastDecrement === today) { DATA.lastDecrement = today; return; }
     let changed = false;
-    (data.orders || []).forEach((o) => (o.medicines || []).forEach((m) => {
-      if (m.status !== "active") return;
-      if (m.dailyDose > 0 && Number(m.qty) > 0) {
-        m.qty = Math.max(0, Math.round((Number(m.qty) - m.dailyDose) * 100) / 100);
-        if (Number(m.qty) <= 0) m.status = "out";
+    (data.cabinet || []).forEach((c) => {
+      if (c.status !== "active") return;
+      if (c.dailyDose > 0 && Number(c.qty) > 0) {
+        c.qty = Math.max(0, Math.round((Number(c.qty) - c.dailyDose) * 100) / 100);
+        if (Number(c.qty) <= 0) c.status = "out";
         changed = true;
       }
-    }));
+    });
     if (changed) { data.lastDecrement = today; await NurseStorage.save(data); DATA = data; }
     else { await NurseStorage.setLastDecrement(today); DATA.lastDecrement = today; }
   }
@@ -1626,19 +1792,55 @@
     }
   }
   async function deleteReportSwipe(item) {
-    const id = item.dataset.reportId;
+    const id = item.dataset.reportId || item.dataset.id;
     if (!id) return;
     if (confirm("确定删除这条检查报告？")) {
       await NurseStorage.deleteReport(id);
       DATA = await NurseStorage.load();
       renderRecords();
+      // 问诊详情页删除 → 刷新详情视图
+      if (!$("#record-view").hidden && currentRecordId) {
+        const latest = findRecord(currentRecordId);
+        if (latest) showRecordView(latest);
+      }
+      toast("已删除");
+    }
+  }
+  // 药单删除（药单列表 / 问诊详情页）：级联回退药箱库存并清理无引用药品
+  async function deleteOrderSwipe(item) {
+    const id = item.dataset.orderId || item.dataset.id;
+    if (!id) return;
+    if (confirm("确定删除这张药单？将同步回退药箱库存，无其他药单引用的药品会一并删除。")) {
+      await NurseStorage.deleteOrder(id);
+      DATA = await NurseStorage.load();
+      renderCabinet();
+      renderHome();
+      if (!$("#record-view").hidden && currentRecordId) {
+        const latest = findRecord(currentRecordId);
+        if (latest) showRecordView(latest);
+      }
+      toast("已删除药单");
+    }
+  }
+  // 药箱药品删除：库存不为 0 不能删除
+  async function deleteCabinetSwipe(item) {
+    const id = item.dataset.cabId;
+    if (!id) return;
+    const cab = (DATA.cabinet || []).find((c) => c.id === id);
+    if (!cab) return;
+    if (Number(cab.qty) > 0) { toast("库存不为 0，不能删除（请先清空库存）"); item.classList.remove("is-swiped"); return; }
+    if (confirm("确定删除药箱药品「" + cab.name + "」？")) {
+      await NurseStorage.deleteCabinetDrug(id);
+      DATA = await NurseStorage.load();
+      renderCabinet();
+      renderHome();
       toast("已删除");
     }
   }
 
   // ===================== 右滑返回 / 关闭弹窗 =====================
   function swipeBackAction() {
-    const modals = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "follow-modal", "reminder-modal"];
+    const modals = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
     for (const id of modals) {
       const m = document.getElementById(id);
       if (m && !m.hidden) {
@@ -1712,38 +1914,17 @@
 
     // 检查结果：添加自测报告 / 关注
     $("#btn-add-report").onclick = () => openReportModal(null);
-    $("#exam-trend").addEventListener("click", async (e) => {
-      const btn = e.target.closest(".trend-follow");
-      if (!btn) return;
-      const name = btn.dataset.ind;
-      const set = new Set(DATA.followedIndicators || []);
-      if (set.has(name)) set.delete(name);
-      else set.add(name);
-      DATA.followedIndicators = Array.from(set);
-      await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
-      renderExamTrend($("#exam-trend"));
-      renderExamFollow($("#exam-follow"));
-    });
     $("#exam-list").addEventListener("click", (e) => {
       const c = e.target.closest(".exam-entry");
       if (c) openReportModal(c.dataset.reportId);
     });
     $("#exam-trend").addEventListener("click", (e) => {
       const card = e.target.closest(".trend-card");
-      if (card && !e.target.closest(".trend-follow")) openExamView();
-    });
-    $("#exam-trend-full").addEventListener("click", (e) => {
-      const btn = e.target.closest(".trend-follow");
-      if (btn) {
-        const name = btn.dataset.ind;
-        const set = new Set(DATA.followedIndicators || []);
-        if (set.has(name)) set.delete(name); else set.add(name);
-        DATA.followedIndicators = Array.from(set);
-        NurseStorage.setFollowedIndicators(DATA.followedIndicators).then(() => { renderExamTrendFull(); renderExamTrend($("#exam-trend")); renderExamFollow($("#exam-follow")); });
-      }
+      if (card) openExamView();
     });
 
-    // 关注指标 管理
+    // 关注指标 管理（标题右侧齿轮）
+    $("#follow-manage-btn").onclick = () => openFollowModal();
     $("#follow-add").onclick = addFollowIndicator;
     $("#follow-done").onclick = () => { $("#follow-modal").hidden = true; renderExamFollow($("#exam-follow")); renderExamTrend($("#exam-trend")); };
     $("#follow-input").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowIndicator(); });
@@ -1757,17 +1938,25 @@
     }));
     $$(".cab-filter").forEach((b) => (b.onclick = () => { cabinetState.filter = b.dataset.filter; $$(".cab-filter").forEach((x) => x.classList.toggle("is-active", x === b)); renderCabinetSummary(); }));
     $("#btn-add-order").onclick = () => openOrderModal(null);
+    // 药箱药品：点击进编辑
+    $("#cabinet-list").addEventListener("click", (e) => {
+      const c = e.target.closest(".cab-item");
+      if (c) openCabinetModal(c.dataset.cabId);
+    });
+    // 药单卡片：点击进编辑
     $("#orders-list").addEventListener("click", (e) => {
-      const edit = e.target.closest("[data-order-edit]");
-      const del = e.target.closest("[data-order-del]");
-      if (edit) openOrderModal(edit.dataset.orderEdit);
-      else if (del) deleteOrderById(del.dataset.orderDel);
+      const c = e.target.closest(".order-card");
+      if (c) openOrderModal(c.dataset.orderId);
     });
 
     // 药单弹窗
     $("#order-med-add").onclick = () => openMedItemModal(-1);
     $("#order-save").onclick = saveOrder;
     $("#order-cancel").onclick = () => { $("#order-modal").hidden = true; editingOrderId = null; };
+
+    // 药箱药品弹窗
+    $("#cabitem-save").onclick = saveCabinetDrug;
+    $("#cabitem-cancel").onclick = () => { $("#cabinet-modal").hidden = true; editingCabId = null; };
 
     // 药品条目弹窗
     $("#meditem-save").onclick = saveMedItem;
@@ -1783,6 +1972,8 @@
     attachSwipe($("#records-list"), deleteRecordSwipe);
     attachSwipe($("#home-aidvice"), deleteAdviceSwipe);
     attachSwipe($("#exam-list"), deleteReportSwipe);
+    attachSwipe($("#orders-list"), deleteOrderSwipe);
+    attachSwipe($("#cabinet-list"), deleteCabinetSwipe);
 
     // 设置
     $("#ai-enabled").onchange = saveAISettings;
@@ -1801,15 +1992,6 @@
     $("#btn-export").onclick = exportData;
     $("#btn-import").onclick = () => $("#import-file").click();
     $("#import-file").onchange = (e) => { if (e.target.files && e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; };
-  }
-
-  async function deleteOrderById(id) {
-    if (!confirm("确定删除这张药单？药箱汇总与首页提醒会相应更新。")) return;
-    await NurseStorage.deleteOrder(id);
-    DATA = await NurseStorage.load();
-    renderCabinet();
-    renderHome();
-    toast("已删除药单");
   }
 
   // ===================== 检查结果 整页趋势视图（左右滑动切换指标） =====================
@@ -1834,12 +2016,9 @@
     const s = examViewSeries[examViewIndex];
     const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
     const latest = s.points[s.points.length - 1];
-    const isF = (DATA.followedIndicators || []).includes(s.name);
     $("#exam-view .view-header__sub").textContent = (examViewIndex + 1) + " / " + examViewSeries.length;
     $("#exam-trend-full").innerHTML = `<div class="trend-card is-followed">
-      <div class="trend-card__head"><b>${esc(s.name)}</b>
-        <button class="trend-follow ${isF ? "is-on" : ""}" data-ind="${esc(s.name)}">${isF ? "★ 已关注" : "☆ 关注"}</button>
-      </div>
+      <div class="trend-card__head"><b>${esc(s.name)}</b><span class="trend-star">⭐</span></div>
       <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
       ${chart}
     </div>`;

@@ -24,10 +24,14 @@
  *   orders: [ {                           // 药单
  *     id, source, date,
  *     kind: "custom"|"hospital", recordId,
- *     medicines: [ { id, name, manufacturer, alias, unit, spec,
- *                    qty, doseAmount, doseUnit, timeSlots, meal,
- *                    dailyDose, threshold, status, note } ],
+ *     medicines: [ { id, name, manufacturer, alias, qty } ],  // 药单条目只记 4 字段（qty=本药单配药数量）
  *     images[]                           // 药单/处方照片
+ *   } ],
+ *   cabinet: [ {                          // 药箱药品（主档，按药名唯一）
+ *     id, name, manufacturer, alias,
+ *     unit, spec, qty(库存),
+ *     doseAmount, doseUnit, timeSlots, meal,
+ *     dailyDose, threshold, status, note
  *   } ],
  *   reports: [ {                          // 检查报告
  *     id, title, date,
@@ -35,6 +39,7 @@
  *     indicators: [ {name,value,unit,range,abnormal} ],
  *     images[]                           // 报告照片
  *   } ],
+ *   indicatorMeta: { "血糖": {unit:"mmol/L", range:"3.9-6.1"} },  // 指标单位/参考值记忆（隐式维护）
  *   followedIndicators: ["血糖","血压"]     // 关注的检查指标（按名称）
  * }
  */
@@ -108,7 +113,9 @@
       },
       records: [],
       orders: [],
+      cabinet: [],
       reports: [],
+      indicatorMeta: {},
       followedIndicators: [],
     };
   }
@@ -185,7 +192,7 @@
     return ["active", "disabled", "out"].includes(v) ? v : "active";
   }
 
-  // 药单内的单个药品条目
+  // 药单内的单个药品条目（只记 药名/厂家/别名/数量；主属性归药箱 cabinet）
   function _normMedicine(m) {
     if (!m || typeof m !== "object") return null;
     if (!m.name || !String(m.name).trim()) return null;
@@ -194,17 +201,30 @@
       name: String(m.name).trim(),
       manufacturer: m.manufacturer || "",
       alias: m.alias || "",
-      unit: m.unit || "片",
-      spec: m.spec || "",
       qty: Number(m.qty) || 0,
-      doseAmount: Number(m.doseAmount) || 0,
-      doseUnit: m.doseUnit || "片",
-      timeSlots: _normTimeSlots(m.timeSlots),
-      meal: _normMeal(m.meal),
-      dailyDose: Number(m.dailyDose) || 0,
-      threshold: Number(m.threshold) || 0,
-      status: _normStatus(m.status),
-      note: m.note || "",
+    };
+  }
+
+  // 药箱药品主档（按药名唯一）
+  function _normCabinetDrug(c) {
+    if (!c || typeof c !== "object") return null;
+    if (!c.name || !String(c.name).trim()) return null;
+    return {
+      id: c.id || _uid("cab_"),
+      name: String(c.name).trim(),
+      manufacturer: c.manufacturer || "",
+      alias: c.alias || "",
+      unit: c.unit || "片",
+      spec: c.spec || "",
+      qty: Number(c.qty) || 0,
+      doseAmount: Number(c.doseAmount) || 0,
+      doseUnit: c.doseUnit || "片",
+      timeSlots: _normTimeSlots(c.timeSlots),
+      meal: _normMeal(c.meal),
+      dailyDose: Number(c.dailyDose) || 0,
+      threshold: Number(c.threshold) || 0,
+      status: _normStatus(c.status),
+      note: c.note || "",
     };
   }
 
@@ -284,6 +304,44 @@
     return _withIds(rec);
   }
 
+  // 旧版迁移：order.medicine 上的主属性抽取到 cabinet（按药名合并）
+  // 返回 cabinet 数组；幂等——cabinet 已存在（数组）则直接归一化
+  function _migrateCabinet(obj) {
+    if (Array.isArray(obj.cabinet)) {
+      return obj.cabinet.map(_normCabinetDrug).filter(Boolean);
+    }
+    const map = {};
+    (Array.isArray(obj.orders) ? obj.orders : []).forEach((o) => {
+      (o.medicines || []).forEach((m) => {
+        if (!m || !m.name) return;
+        const key = String(m.name).trim();
+        if (!key) return;
+        if (!map[key]) {
+          map[key] = {
+            name: key,
+            manufacturer: m.manufacturer || "",
+            alias: m.alias || "",
+            unit: m.unit || "片",
+            spec: m.spec || "",
+            qty: 0,
+            doseAmount: Number(m.doseAmount) || 0,
+            doseUnit: m.doseUnit || "片",
+            timeSlots: m.timeSlots || ["morning"],
+            meal: m.meal || "any",
+            dailyDose: Number(m.dailyDose) || 0,
+            threshold: Number(m.threshold) || 0,
+            status: m.status || "active",
+            note: m.note || "",
+          };
+        }
+        // 旧模型库存按药单 qty 汇总（每日扣减直接改药单条目 qty），求和即当前库存
+        map[key].qty += Number(m.qty) || 0;
+        if (map[key].status !== "active" && m.status === "active") map[key].status = "active";
+      });
+    });
+    return Object.values(map).map(_normCabinetDrug).filter(Boolean);
+  }
+
   function _normalize(obj) {
     const data = _empty();
     if (obj && typeof obj === "object") {
@@ -293,11 +351,22 @@
       if (Array.isArray(obj.records)) {
         data.records = obj.records.map(_normRecord).filter(Boolean);
       }
+      // cabinet（含旧版自动迁移）
+      data.cabinet = _migrateCabinet(obj);
       if (Array.isArray(obj.orders)) {
         data.orders = obj.orders.map(_normOrder).filter(Boolean);
       }
       if (Array.isArray(obj.reports)) {
         data.reports = obj.reports.map(_normReport).filter(Boolean);
+      }
+      if (obj.indicatorMeta && typeof obj.indicatorMeta === "object") {
+        const meta = {};
+        for (const k in obj.indicatorMeta) {
+          const v = obj.indicatorMeta[k];
+          if (!v || typeof v !== "object") continue;
+          meta[k] = { unit: String(v.unit || ""), range: String(v.range || "") };
+        }
+        data.indicatorMeta = meta;
       }
       if (Array.isArray(obj.followedIndicators)) {
         data.followedIndicators = obj.followedIndicators.filter((x) => x && typeof x === "string" && x.trim());
@@ -376,11 +445,65 @@
   }
   async function deleteRecord(id) {
     const data = await load();
+    const recOrders = data.orders.filter((o) => o.recordId === id);
     data.records = data.records.filter((r) => r.id !== id);
-    // 同步删除该记录关联的药单 / 检查报告（recordId 关联）
     data.orders = data.orders.filter((o) => o.recordId !== id);
     data.reports = data.reports.filter((rp) => rp.recordId !== id);
+    // 级联删除关联药单时同步回退药箱库存 / 清理无引用药品
+    recOrders.forEach((o) => _removeOrderFromCabinet(data, o));
     await save(data);
+  }
+
+  // ---------------- 药箱库存 同步 ----------------
+  // 药单保存前后 diff：按条目 id 对齐，qty 差额累加到 cabinet；被删条目回退并清理无引用药品
+  // fullMap: { 药名 → 主属性 }（仅新药填写全属性时提供）；excludeOrder：当前正在编辑的药单（引用检查时排除）
+  function _syncCabinetDiff(data, oldMeds, newMeds, fullMap, excludeOrder) {
+    const oldMap = {};
+    (oldMeds || []).forEach((m) => (oldMap[m.id] = m));
+    (newMeds || []).forEach((nm) => {
+      const om = oldMap[nm.id] || null;
+      const delta = Number(nm.qty || 0) - (om ? Number(om.qty || 0) : 0);
+      const full = fullMap ? fullMap[nm.name] : null;
+      if (delta !== 0 || full) _adjustCabinet(data, nm, delta, full);
+      if (om) delete oldMap[nm.id];
+    });
+    // 被删除的条目：回退数量；药名无任何药单（含本次新列表）引用 → 删除药箱药品
+    Object.keys(oldMap).forEach((k) => {
+      const om = oldMap[k];
+      _adjustCabinet(data, om, -Number(om.qty || 0), null);
+      const name = (om.name || "").trim();
+      if (!name) return;
+      const stillInNew = (newMeds || []).some((nm) => (nm.name || "").trim() === name);
+      const inOthers = data.orders.some((o) => o !== excludeOrder && (o.medicines || []).some((m) => (m.name || "").trim() === name));
+      if (!stillInNew && !inOthers) data.cabinet = data.cabinet.filter((c) => c.name !== name);
+    });
+  }
+  function _adjustCabinet(data, med, delta, full) {
+    const name = (med.name || "").trim();
+    if (!name) return;
+    let cab = data.cabinet.find((c) => c.name === name);
+    if (!cab) {
+      if (delta <= 0 && !full) return; // 回退但药箱无此药，忽略
+      cab = _normCabinetDrug(Object.assign({ name: name, manufacturer: med.manufacturer || "", alias: med.alias || "", qty: Math.max(0, delta) }, full || {}));
+      if (cab) data.cabinet.push(cab);
+      return;
+    }
+    cab.qty = Math.max(0, Math.round((Number(cab.qty || 0) + delta) * 100) / 100);
+    if (full) {
+      const merged = _normCabinetDrug(Object.assign({}, cab, full, { qty: cab.qty }));
+      if (merged) Object.assign(cab, merged);
+    }
+  }
+  // 删除药单：回退每条数量；药名无其他药单引用 → 删除药箱药品
+  function _removeOrderFromCabinet(data, order) {
+    const remaining = new Set();
+    data.orders.forEach((o) => (o.medicines || []).forEach((m) => remaining.add((m.name || "").trim())));
+    (order.medicines || []).forEach((m) => {
+      const name = (m.name || "").trim();
+      const cab = data.cabinet.find((c) => c.name === name);
+      if (cab) cab.qty = Math.max(0, Math.round((Number(cab.qty || 0) - Number(m.qty || 0)) * 100) / 100);
+      if (name && !remaining.has(name)) data.cabinet = data.cabinet.filter((c) => c.name !== name);
+    });
   }
 
   // ---------------- 药单（order） ----------------
@@ -395,8 +518,13 @@
     const it = _normOrder(item);
     if (!it) return null;
     const exist = item && item.id ? data.orders.find((x) => x.id === item.id) : null;
-    if (exist) Object.assign(exist, it);
-    else data.orders.unshift(it);
+    if (exist) {
+      _syncCabinetDiff(data, exist.medicines, it.medicines, item._full, exist);
+      Object.assign(exist, it);
+    } else {
+      _syncCabinetDiff(data, [], it.medicines, item._full, null);
+      data.orders.unshift(it);
+    }
     await save(data);
     return it;
   }
@@ -404,18 +532,64 @@
     const data = await load();
     const it = data.orders.find((x) => x.id === id);
     if (!it) return null;
+    const oldMeds = (it.medicines || []).map((m) => Object.assign({}, m));
     const merged = _normOrder(Object.assign({}, it, patch));
     if (!merged) return null;
+    if (patch && Array.isArray(patch.medicines)) _syncCabinetDiff(data, oldMeds, merged.medicines, patch._full, it);
     Object.assign(it, merged);
     await save(data);
     return it;
   }
   async function deleteOrder(id) {
     const data = await load();
+    const order = data.orders.find((x) => x.id === id) || null;
     data.orders = data.orders.filter((x) => x.id !== id);
     // 同步清理关联问诊记录的 orderId
     data.records.forEach((r) => {
       if (r.orderId === id) r.orderId = "";
+    });
+    // 回退药箱库存 / 清理无引用药品
+    if (order) _removeOrderFromCabinet(data, order);
+    await save(data);
+  }
+
+  // ---------------- 药箱药品（cabinet） ----------------
+  async function getCabinetDrugs() {
+    return (await load()).cabinet;
+  }
+  async function getCabinetDrug(id) {
+    return (await load()).cabinet.find((c) => c.id === id) || null;
+  }
+  async function upsertCabinetDrug(item) {
+    const data = await load();
+    const it = _normCabinetDrug(item);
+    if (!it) return null;
+    const exist = item && item.id ? data.cabinet.find((c) => c.id === item.id) : null;
+    const byName = !exist ? data.cabinet.find((c) => c.name === it.name) : null;
+    const target = exist || byName;
+    if (target) Object.assign(target, it);
+    else data.cabinet.unshift(it);
+    await save(data);
+    return it;
+  }
+  async function updateCabinetDrug(id, patch) {
+    const data = await load();
+    const it = data.cabinet.find((c) => c.id === id);
+    if (!it) return null;
+    const merged = _normCabinetDrug(Object.assign({}, it, patch));
+    if (!merged) return null;
+    Object.assign(it, merged);
+    await save(data);
+    return it;
+  }
+  async function deleteCabinetDrug(id) {
+    const data = await load();
+    const cab = data.cabinet.find((c) => c.id === id);
+    if (!cab) return;
+    data.cabinet = data.cabinet.filter((c) => c.id !== id);
+    // 同步从所有药单条目中移除该药（保持引用一致）
+    data.orders.forEach((o) => {
+      o.medicines = (o.medicines || []).filter((m) => (m.name || "").trim() !== cab.name);
     });
     await save(data);
   }
@@ -531,6 +705,25 @@
     return data.followedIndicators;
   }
 
+  // 指标单位/参考值记忆（隐式维护，合并写入；非空字段优先，空值不覆盖已有记忆）
+  async function setIndicatorMeta(map) {
+    const data = await load();
+    if (map && typeof map === "object") {
+      for (const k in map) {
+        const v = map[k];
+        if (!v || typeof v !== "object") continue;
+        const unit = String(v.unit || "");
+        const range = String(v.range || "");
+        const cur = data.indicatorMeta[k] || { unit: "", range: "" };
+        const next = { unit: unit || cur.unit, range: range || cur.range };
+        if (!next.unit && !next.range) continue;
+        data.indicatorMeta[k] = next;
+      }
+    }
+    await save(data);
+    return data.indicatorMeta;
+  }
+
   // ---------------- 每日扣减 ----------------
   async function setLastDecrement(dateKey) {
     const data = await load();
@@ -551,6 +744,8 @@
     cur.records = Object.values(map).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     cur.orders = incoming.orders.length ? incoming.orders : cur.orders;
     cur.reports = incoming.reports.length ? incoming.reports : cur.reports;
+    cur.cabinet = incoming.cabinet.length ? incoming.cabinet : cur.cabinet;
+    cur.indicatorMeta = Object.keys(incoming.indicatorMeta || {}).length ? incoming.indicatorMeta : cur.indicatorMeta;
     cur.settings = _mergeSettings(cur.settings, incoming.settings);
     await save(cur);
     return cur;
@@ -571,6 +766,11 @@
     upsertOrder,
     updateOrder,
     deleteOrder,
+    getCabinetDrugs,
+    getCabinetDrug,
+    upsertCabinetDrug,
+    updateCabinetDrug,
+    deleteCabinetDrug,
     getReports,
     getReport,
     upsertReport,
@@ -581,6 +781,7 @@
     getDone,
     setDone,
     setFollowedIndicators,
+    setIndicatorMeta,
     setLastDecrement,
     exportJSON,
     importJSON,

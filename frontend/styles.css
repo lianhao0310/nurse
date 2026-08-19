@@ -148,6 +148,7 @@ textarea {
   font-size: 1.05em;
   margin: 0;
 }
+.block-head__btn { flex: 0 0 auto; width: 30px; height: 30px; font-size: 0.95em; }
 .block-sub {
   font-size: 0.8em;
   color: var(--ink-3);
@@ -1738,9 +1739,7 @@ textarea {
 .exam-chip.is-bad { background: #fdecea; color: var(--danger); }
 
 /* 趋势卡内「关注」按钮 */
-.trend-follow { border: none; background: transparent; font-size: 0.82em; font-weight: 600; cursor: pointer; padding: 2px 8px; border-radius: 12px; }
-.trend-follow.is-on { color: #e6901a; background: #fff3e0; }
-.trend-follow:not(.is-on) { color: var(--primary-dark); background: var(--primary-soft); }
+.trend-star { font-size: 0.85em; color: #e6901a; background: #fff3e0; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
 
 /* 关注指标模块 */
 .exam-follow { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
@@ -1965,6 +1964,7 @@ textarea {
   flex-direction: column;
   gap: 8px;
   border-left: 4px solid var(--primary);
+  overflow: hidden; /* 左滑删除：圆角内裁切 */
 }
 .order-card__head {
   display: flex;
