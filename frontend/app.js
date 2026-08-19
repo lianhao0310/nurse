@@ -353,7 +353,9 @@
         .map((rec) => {
           const summary = rec.advice && rec.advice.text ? rec.advice.text : rec.result && rec.result.summary ? rec.result.summary : rec.transcript || "（无医嘱文字）";
           const title = (rec.hospital || "未填医院") + (rec.visitDate ? " · " + rec.visitDate : "");
-          const hasImg = (rec.images && rec.images.length);
+          const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
+          const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
+          const hasImg = (linkedOrder && linkedOrder.images && linkedOrder.images.length) || (linkedReport && linkedReport.images && linkedReport.images.length);
           const badges = (hasImg ? '<span class="rec-card__badge badge-img">📷</span>' : "") +
             (rec.orderId ? '<span class="rec-card__badge badge-link">💊 药单</span>' : "") +
             (rec.reportId ? '<span class="rec-card__badge badge-link">🧪 报告</span>' : "");
@@ -441,10 +443,13 @@
 
   // ---- 编辑表单（即问诊详情：直接可编辑） ----
   function renderRecordEdit(rec) {
+    const linkedOrder = rec && rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
+    const linkedReport = rec && rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
     recDraft = {
       adviceText: (rec && rec.advice && rec.advice.text) || "",
       audio: (rec && rec.advice && rec.advice.audio) || null,
-      images: (rec && rec.images ? rec.images.slice() : []),
+      orderImages: linkedOrder ? (linkedOrder.images || []).slice() : [],
+      reportImages: linkedReport ? (linkedReport.images || []).slice() : [],
     };
     const r = rec || {};
     const aiOn = DATA.settings.ai.enabled && DATA.settings.ai.apiKey;
@@ -468,18 +473,22 @@
 
         <div class="detail-sec"><h3>💊 药单</h3>
           <div id="rec-order-link">${renderRelatedOrder(rec)}</div>
-          <button type="button" class="btn btn-ghost" id="rec-order-add">${rec && rec.orderId ? "＋ 更换药单" : "＋ 添加药单"}</button>
+          <div class="rec-edit__row">
+            <button type="button" class="btn btn-ghost" id="rec-order-add">${rec && rec.orderId ? "＋ 更换药单" : "＋ 添加药单"}</button>
+            <button type="button" class="btn btn-ghost" id="rec-order-img">📷 导入药单图片</button>
+            <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
+          </div>
+          <div id="rec-order-thumbs" class="thumb-grid"></div>
         </div>
 
         <div class="detail-sec"><h3>🧪 检查报告</h3>
           <div id="rec-report-link">${renderRelatedReport(rec)}</div>
-          <button type="button" class="btn btn-ghost" id="rec-report-add">${rec && rec.reportId ? "＋ 更换检查报告" : "＋ 添加检查报告"}</button>
-        </div>
-
-        <div class="detail-sec"><h3>📷 资料照片</h3>
-          <button type="button" class="btn btn-ghost" id="rec-img">📷 导入图片（可多选/多次添加）</button>
-          <input type="file" id="rec-img-input" accept="image/*" multiple hidden />
-          <div id="rec-thumbs" class="thumb-grid"></div>
+          <div class="rec-edit__row">
+            <button type="button" class="btn btn-ghost" id="rec-report-add">${rec && rec.reportId ? "＋ 更换检查报告" : "＋ 添加检查报告"}</button>
+            <button type="button" class="btn btn-ghost" id="rec-report-img">📷 导入报告图片</button>
+            <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
+          </div>
+          <div id="rec-report-thumbs" class="thumb-grid"></div>
         </div>
 
         <div class="detail-actions">
@@ -491,8 +500,10 @@
   }
 
   function renderDraftThumbs() {
-    $("#rec-thumbs").innerHTML = recDraft.images.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-idx="${i}">✕</button></div>`).join("");
-    $$("#rec-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.images.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
+    $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="order" data-idx="${i}">✕</button></div>`).join("");
+    $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="report" data-idx="${i}">✕</button></div>`).join("");
+    $$("#rec-order-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.orderImages.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
+    $$("#rec-report-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.reportImages.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
     const ap = $("#rec-audio-preview");
     if (ap) ap.innerHTML = recDraft.audio ? `<div class="audio-card">🎵 ${esc(recDraft.audio.name)} <button class="thumb__del" id="rec-audio-del">✕</button><br/><audio controls src="${recDraft.audio.dataUrl}" style="width:100%"></audio></div>` : "";
     const adel = $("#rec-audio-del");
@@ -509,8 +520,10 @@
       if (f) readFileAsDataURL(f).then((d) => { recDraft.audio = { name: f.name, type: f.type || "audio/mpeg", dataUrl: d }; renderDraftThumbs(); });
       e.target.value = "";
     };
-    $("#rec-img").onclick = () => $("#rec-img-input").click();
-    $("#rec-img-input").onchange = (e) => { if (e.target.files) addImagesToDraft(e.target.files); e.target.value = ""; };
+    $("#rec-order-img").onclick = () => $("#rec-order-img-input").click();
+    $("#rec-order-img-input").onchange = (e) => { if (e.target.files) addImagesToDraft(e.target.files, "order"); e.target.value = ""; };
+    $("#rec-report-img").onclick = () => $("#rec-report-img-input").click();
+    $("#rec-report-img-input").onchange = (e) => { if (e.target.files) addImagesToDraft(e.target.files, "report"); e.target.value = ""; };
     $("#rec-save").onclick = () => saveRecordEdit(rec);
     $("#rec-cancel").onclick = () => closeView();
     // 关联药单 / 检查报告
@@ -534,12 +547,13 @@
       r.readAsDataURL(file);
     });
   }
-  async function addImagesToDraft(files) {
+  async function addImagesToDraft(files, kind) {
+    const bucket = kind === "report" ? recDraft.reportImages : recDraft.orderImages;
     for (const f of files) {
       if (!f.type.startsWith("image/")) continue;
       const d = await downscaleImage(f, 1280, 0.82);
       if (!d) continue;
-      recDraft.images.push({ name: f.name, type: "image/jpeg", dataUrl: d });
+      bucket.push({ name: f.name, type: "image/jpeg", dataUrl: d });
     }
     renderDraftThumbs();
   }
@@ -590,7 +604,6 @@
       visitDate: $("#rec-f-date").value,
       doctor: $("#rec-f-doctor").value.trim(),
       advice: { text: recDraft.adviceText.trim(), audio: recDraft.audio },
-      images: recDraft.images,
     };
     let saved;
     if (rec) {
@@ -599,6 +612,9 @@
       saved = await NurseStorage.appendRecord(Object.assign({ source: "text", transcript: payload.advice.text, manual: true, status: "done" }, payload));
       currentRecordId = saved.id;
     }
+    // 同步药单 / 检查报告的图片到关联实体（空数组也写入以覆盖删除）
+    if (saved.orderId) await NurseStorage.updateOrder(saved.orderId, { images: recDraft.orderImages });
+    if (saved.reportId) await NurseStorage.updateReport(saved.reportId, { images: recDraft.reportImages });
     DATA = await NurseStorage.load();
     if (!opts.silent) {
       closeView();
@@ -613,11 +629,14 @@
   async function runAIAnalyze(rec) {
     toast("AI 分析中…");
     try {
+      // 图片取自关联的检查报告 / 药单（若无则为空）
+      const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
+      const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
       const res = await NurseAI.analyzeConsult({
         settings: DATA.settings,
         adviceText: rec.advice && rec.advice.text,
-        examImages: (rec.images || []),
-        rxImages: [],
+        examImages: (linkedReport && linkedReport.images) || [],
+        rxImages: (linkedOrder && linkedOrder.images) || [],
       });
       aiModalState = { rec, data: res, type: "consult" };
       openAIModal();
@@ -693,10 +712,45 @@
       }))
       .filter((x) => x.name);
     const adviceText = $("#ai-advice").value.trim();
+    // 1. 保存医嘱文字与解析结果到记录
     rec.advice = { text: adviceText, audio: rec.advice ? rec.advice.audio : null };
     rec.result = rec.result || {};
     rec.result.medications = prescription.map((m) => ({ name: m.name, dose: m.dose || m.spec, freq: m.freq, time: m.time, note: m.note, disease: "" }));
     await NurseStorage.updateRecord(rec.id, { advice: rec.advice, result: rec.result });
+    DATA = await NurseStorage.load();
+    const latest0 = (DATA.records || []).find((r) => r.id === rec.id) || rec;
+
+    // 2. 检查报告：已关联则覆盖指标，否则新建并关联
+    if (examResults.length) {
+      const indicators = examResults.map((e) => ({ name: e.name, value: e.value, unit: e.unit, range: e.range, abnormal: e.abnormal }));
+      if (latest0.reportId) {
+        const exist = (DATA.reports || []).find((rp) => rp.id === latest0.reportId);
+        await NurseStorage.updateReport(latest0.reportId, { indicators, title: (exist && exist.title) || "检查报告", date: latest0.visitDate || TODAY, kind: "hospital" });
+      } else {
+        const rp = await NurseStorage.upsertReport({ title: latest0.hospital || "检查报告", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, indicators });
+        await NurseStorage.updateRecord(latest0.id, { reportId: rp.id });
+      }
+    }
+    // 3. 药单：已关联则覆盖药品，否则新建并关联
+    if (prescription.length) {
+      const medicines = prescription.map((m) => {
+        const doseNum = parseFloat(m.dose);
+        return {
+          name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "",
+          unit: "片", spec: m.spec || "",
+          qty: 0, doseAmount: doseNum > 0 ? doseNum : 0, doseUnit: "片",
+          timeSlots: ["morning"], meal: "any",
+          dailyDose: 0, threshold: 7, status: "active", note: m.note || "",
+        };
+      });
+      if (latest0.orderId) {
+        const exist = (DATA.orders || []).find((o) => o.id === latest0.orderId);
+        await NurseStorage.updateOrder(latest0.orderId, { medicines, source: (exist && exist.source) || latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital" });
+      } else {
+        const o = await NurseStorage.upsertOrder({ source: latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, medicines });
+        await NurseStorage.updateRecord(latest0.id, { orderId: o.id });
+      }
+    }
     DATA = await NurseStorage.load();
     aiModalState = null;
     $("#ai-modal").hidden = true;
@@ -704,8 +758,10 @@
     if (latest) showRecordView(latest);
     else closeView();
     renderRecords();
+    renderCabinet();
     renderHome();
-    toast("已保存 AI 分析结果（可在药单中录入处方）");
+    const didOverwrite = (examResults.length && latest0.reportId) || (prescription.length && latest0.orderId);
+    toast(didOverwrite ? "已保存并覆盖已关联的检查报告 / 药单" : "已保存（检查报告 / 药单已自动关联）");
   }
 
   // ---- 医嘱分析 ----

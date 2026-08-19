@@ -26,12 +26,14 @@
  *     kind: "custom"|"hospital", recordId,
  *     medicines: [ { id, name, manufacturer, alias, unit, spec,
  *                    qty, doseAmount, doseUnit, timeSlots, meal,
- *                    dailyDose, threshold, status, note } ]
+ *                    dailyDose, threshold, status, note } ],
+ *     images[]                           // 药单/处方照片
  *   } ],
  *   reports: [ {                          // 检查报告
  *     id, title, date,
  *     kind: "self"|"hospital", recordId,
- *     indicators: [ {name,value,unit,range,abnormal} ]
+ *     indicators: [ {name,value,unit,range,abnormal} ],
+ *     images[]                           // 报告照片
  *   } ],
  *   followedIndicators: ["血糖","血压"]     // 关注的检查指标（按名称）
  * }
@@ -217,6 +219,7 @@
       kind: o.kind === "hospital" ? "hospital" : "custom",
       recordId: o.recordId || "",
       medicines,
+      images: Array.isArray(o.images) ? o.images.map(_normImage).filter(Boolean) : [],
     };
   }
 
@@ -249,6 +252,7 @@
       kind: rp.kind === "self" ? "self" : "hospital",
       recordId: rp.recordId || "",
       indicators,
+      images: Array.isArray(rp.images) ? rp.images.map(_normImage).filter(Boolean) : [],
     };
   }
 
