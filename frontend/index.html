@@ -84,21 +84,28 @@
             <div id="records-empty" class="empty-tip big" hidden>还没有问诊记录。<br />点右上角「＋」新增一次就诊记录。</div>
 
             <div id="exam-pane" hidden>
-              <div class="block-head"><h2>📈 检查结果趋势（左右滑动切换）</h2></div>
-              <div id="exam-trend" class="exam-trend swipe"></div>
+              <button class="btn btn-primary block" id="btn-add-report">＋ 添加自测报告</button>
               <div class="block-head"><h2>⭐ 关注指标</h2></div>
               <div id="exam-follow" class="exam-follow"></div>
+              <div class="block-head"><h2>📈 关注指标趋势（左右滑动切换）</h2></div>
+              <div id="exam-trend" class="exam-trend swipe"></div>
               <div class="block-head"><h2>🧾 检查结果明细</h2></div>
               <div id="exam-list" class="exam-list"></div>
-              <div id="exam-empty" class="empty-tip big" hidden>还没有检查结果数据。<br />在「问诊记录」详情底部点「归档」，即可把检查结果更新到趋势与明细。</div>
+              <div id="exam-empty" class="empty-tip big" hidden>还没有检查报告。<br />点「添加自测报告」录入，或从问诊记录添加医院检查报告。</div>
             </div>
           </div>
         </section>
 
-        <!-- ============ 我的药箱 ============ -->
+        <!-- ============ 我的药箱（药箱 / 药单） ============ -->
         <section class="page" id="page-cabinet" hidden>
-          <div class="cabinet-header card-block">
-            <div class="cabinet-summary">
+          <div class="home-tabs__bar records-subtabs cab-subtabs">
+            <button class="home-tab is-active" data-ctab="cab">药箱</button>
+            <button class="home-tab" data-ctab="orders">药单</button>
+          </div>
+
+          <!-- 药箱页签：按药名合并汇总所有药单药品（只读） -->
+          <div id="cab-tab" class="page-pad">
+            <div class="cabinet-summary card-block">
               <div class="cabinet-summary__item">
                 <span class="cabinet-summary__num" id="cab-active-count">0</span>
                 <span class="cabinet-summary__label">使用中</span>
@@ -118,12 +125,16 @@
               <button class="cab-filter" data-filter="out">缺药</button>
               <button class="cab-filter" data-filter="disabled">停用</button>
             </div>
+            <div id="cabinet-list" class="cabinet-list"></div>
+            <div id="cabinet-empty" class="empty-tip big" hidden>药箱是空的。<br />去「药单」页签自建一个药单添加药品。</div>
           </div>
 
-          <button class="btn btn-primary block" id="btn-add-cab">＋ 添加药品</button>
-
-          <div id="cabinet-list" class="cabinet-list"></div>
-          <div id="cabinet-empty" class="empty-tip big" hidden>药箱还是空的。<br />点上方「添加药品」开始管理。</div>
+          <!-- 药单页签 -->
+          <div id="orders-tab" class="page-pad" hidden>
+            <button class="btn btn-primary block" id="btn-add-order">＋ 自建药单</button>
+            <div id="orders-list" class="orders-list"></div>
+            <div id="orders-empty" class="empty-tip big" hidden>还没有药单。<br />点上方「自建药单」开始记录一次购药 / 取药。</div>
+          </div>
         </section>
 
         <!-- ============ 我的 ============ -->
@@ -246,44 +257,133 @@
         </div>
       </section>
 
-      <!-- ============ 药品详情（整页视图） ============ -->
-      <section class="view" id="cab-view" hidden>
-        <header class="app-header view-header">
-          <button class="view-back" id="cab-view-back">‹ 返回</button>
-          <span id="cab-view-title">药品详情</span>
-        </header>
-        <div class="view-body" id="cab-view-body"></div>
-      </section>
-
-      <!-- ============ 药品详情 / 编辑 弹层 ============ -->
-      <div class="modal" id="cab-modal" hidden>
-        <div class="modal__mask" data-close="cab"></div>
+      <!-- ============ 药单 新建/编辑 弹层 ============ -->
+      <div class="modal" id="order-modal" hidden>
+        <div class="modal__mask" data-close="order"></div>
         <div class="modal__panel">
           <div class="modal__head">
-            <span id="cab-modal-title">药品详情</span>
-            <button class="modal__close" data-close="cab">✕</button>
+            <span id="order-modal-title">自建药单</span>
+            <button class="modal__close" data-close="order">✕</button>
           </div>
-          <div class="modal__body" id="cab-body"></div>
+          <div class="modal__body">
+            <label class="field"><span>来源</span><input type="text" id="order-f-source" placeholder="如：xx药店 / 医院" /></label>
+            <label class="field"><span>日期</span><input type="date" id="order-f-date" /></label>
+            <div class="order-hint" id="order-hint"></div>
+            <div class="detail-sec"><h4>💊 药品清单</h4>
+              <div id="order-meds" class="order-meds"></div>
+              <button class="btn btn-ghost btn-sm" id="order-med-add" type="button">＋ 添加药品</button>
+            </div>
+            <div class="capture-actions">
+              <button class="btn btn-primary block" id="order-save">保存药单</button>
+              <button class="btn btn-ghost block" id="order-cancel">取消</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- ============ 历史药品 弹层 ============ -->
-      <div class="modal" id="hist-modal" hidden>
-        <div class="modal__mask" data-close="hist"></div>
+      <!-- ============ 药单内 药品条目 编辑 弹层 ============ -->
+      <div class="modal" id="med-item-modal" hidden>
+        <div class="modal__mask" data-close="meditem"></div>
         <div class="modal__panel">
           <div class="modal__head">
-            <span>添加历史药品</span>
-            <button class="modal__close" data-close="hist">✕</button>
+            <span id="meditem-title">添加药品</span>
+            <button class="modal__close" data-close="meditem">✕</button>
           </div>
           <div class="modal__body">
-            <label class="field"><span>厂家</span><input type="text" id="hist-f-manufacturer" placeholder="如：辉瑞" /></label>
-            <label class="field"><span>规格</span><input type="text" id="hist-f-spec" placeholder="如：5mg*7片" /></label>
-            <label class="field"><span>别名 / 俗称</span><input type="text" id="hist-f-alias" placeholder="如：络活喜" /></label>
-            <label class="field"><span>单位规格</span><input type="text" id="hist-f-doseunit" placeholder="每单位规格大小，如：5mg" value="片" /></label>
-            <label class="field"><span>备注</span><input type="text" id="hist-f-note" placeholder="如：之前用过" /></label>
+            <label class="field"><span>选择药箱已有药品</span>
+              <select id="meditem-pick"><option value="">— 选择已有药品（自动填充）—</option></select>
+            </label>
+            <label class="field"><span>药名 *</span><input type="text" id="meditem-f-name" placeholder="如：苯磺酸氨氯地平片" /></label>
+            <div class="row2">
+              <label class="field"><span>厂家</span><input type="text" id="meditem-f-manufacturer" placeholder="如：辉瑞" /></label>
+              <label class="field"><span>别名</span><input type="text" id="meditem-f-alias" placeholder="如：络活喜" /></label>
+            </div>
+            <div class="row2">
+              <label class="field"><span>单位</span><input type="text" id="meditem-f-unit" placeholder="片" /></label>
+              <label class="field"><span>单位规格</span><input type="text" id="meditem-f-spec" placeholder="如：30mg" /></label>
+            </div>
+            <label class="field"><span>数量</span><input type="number" id="meditem-f-qty" value="0" /></label>
+            <div class="row2">
+              <label class="field"><span>单次用量</span><input type="number" id="meditem-f-dose" value="0" step="0.5" /></label>
+              <label class="field"><span>单位</span><input type="text" id="meditem-f-doseunit" placeholder="片" /></label>
+            </div>
+            <div class="field"><span>服用时段</span>
+              <div class="chk-row">
+                <label><input type="checkbox" class="meditem-f-slot" value="morning" checked /> 早</label>
+                <label><input type="checkbox" class="meditem-f-slot" value="noon" /> 中</label>
+                <label><input type="checkbox" class="meditem-f-slot" value="evening" /> 晚</label>
+              </div>
+            </div>
+            <div class="row2">
+              <label class="field"><span>餐次</span>
+                <select id="meditem-f-meal">
+                  <option value="any">不限</option>
+                  <option value="before">餐前</option>
+                  <option value="after">餐后</option>
+                </select>
+              </label>
+              <label class="field"><span>状态</span>
+                <select id="meditem-f-status">
+                  <option value="active">使用中</option>
+                  <option value="disabled">停用</option>
+                  <option value="out">缺药</option>
+                </select>
+              </label>
+            </div>
+            <div class="row2">
+              <label class="field"><span>每日消耗</span><input type="number" id="meditem-f-dailydose" value="0" step="0.5" /></label>
+              <label class="field"><span>库存阈值</span><input type="number" id="meditem-f-threshold" value="7" /></label>
+            </div>
+            <label class="field"><span>备注</span><input type="text" id="meditem-f-note" placeholder="其他备注" /></label>
             <div class="capture-actions">
-              <button class="btn btn-primary" id="hist-save" type="button">保存</button>
-              <button class="btn btn-ghost" id="hist-cancel" type="button">取消</button>
+              <button class="btn btn-primary block" id="meditem-save">保存药品</button>
+              <button class="btn btn-ghost block" id="meditem-cancel">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 检查报告 新建/编辑 弹层 ============ -->
+      <div class="modal" id="report-modal" hidden>
+        <div class="modal__mask" data-close="report"></div>
+        <div class="modal__panel">
+          <div class="modal__head">
+            <span id="report-modal-title">添加自测报告</span>
+            <button class="modal__close" data-close="report">✕</button>
+          </div>
+          <div class="modal__body">
+            <label class="field"><span>标题</span><input type="text" id="report-f-title" placeholder="如：自测" /></label>
+            <label class="field"><span>日期</span><input type="date" id="report-f-date" /></label>
+            <div class="report-hint" id="report-hint"></div>
+            <div class="detail-sec"><h4>🧪 指标</h4>
+              <div class="table-wrap"><table class="edit-table" id="report-table">
+                <thead><tr><th>指标</th><th>数值</th><th>单位</th><th>参考</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table></div>
+              <button class="btn btn-ghost btn-sm" id="report-ind-add" type="button">＋ 添加指标</button>
+            </div>
+            <div class="capture-actions">
+              <button class="btn btn-primary block" id="report-save">保存报告</button>
+              <button class="btn btn-ghost block" id="report-cancel">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 关注指标 管理 弹层 ============ -->
+      <div class="modal" id="follow-modal" hidden>
+        <div class="modal__mask" data-close="follow"></div>
+        <div class="modal__panel">
+          <div class="modal__head">
+            <span>管理关注指标</span>
+            <button class="modal__close" data-close="follow">✕</button>
+          </div>
+          <div class="modal__body">
+            <label class="field"><span>新增关注指标</span><input type="text" id="follow-input" placeholder="输入指标名，如：血糖" /></label>
+            <button class="btn btn-primary block" id="follow-add">＋ 添加关注</button>
+            <div class="detail-sec"><h4>已关注</h4><div id="follow-list" class="follow-mgr-list"></div></div>
+            <div class="capture-actions">
+              <button class="btn btn-ghost block" id="follow-done">完成</button>
             </div>
           </div>
         </div>
@@ -325,30 +425,6 @@
             <div class="capture-actions">
               <button class="btn btn-primary" id="rem-save" type="button">保存</button>
               <button class="btn btn-ghost" id="rem-cancel" type="button">取消</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============ 处方药 添加/编辑 弹层 ============ -->
-      <div class="modal" id="rx-modal" hidden>
-        <div class="modal__mask" data-close="rx"></div>
-        <div class="modal__panel">
-          <div class="modal__head">
-            <span id="rx-modal-title">添加药品</span>
-            <button class="modal__close" data-close="rx">✕</button>
-          </div>
-          <div class="modal__body">
-            <label class="field"><span>药名 *</span><input type="text" id="rx-f-name" placeholder="如：苯磺酸氨氯地平片" /></label>
-            <label class="field"><span>厂家</span><input type="text" id="rx-f-manufacturer" placeholder="如：辉瑞" /></label>
-            <label class="field"><span>别名 / 俗称</span><input type="text" id="rx-f-alias" placeholder="如：络活喜" /></label>
-            <label class="field"><span>规格</span><input type="text" id="rx-f-spec" placeholder="如：5mg×7片" /></label>
-            <label class="field"><span>剂量</span><input type="text" id="rx-f-dose" placeholder="如：1片" /></label>
-            <label class="field"><span>频次</span><input type="text" id="rx-f-freq" placeholder="如：每日1次" /></label>
-            <label class="field"><span>时间</span><input type="text" id="rx-f-time" placeholder="如：早餐后" /></label>
-            <div class="capture-actions">
-              <button class="btn btn-primary" id="rx-save" type="button">保存</button>
-              <button class="btn btn-ghost" id="rx-cancel" type="button">取消</button>
             </div>
           </div>
         </div>

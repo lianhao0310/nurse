@@ -1903,3 +1903,282 @@ textarea {
   white-space: nowrap;
   font-size: 0.86em;
 }
+
+/* ===================== 本轮新增：药单 / 检查报告 / 关注指标 / 关联摘要 ===================== */
+/* ---- 问诊记录 关联药单 / 检查报告 摘要卡片 ---- */
+.rec-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.rec-link__icon {
+  font-size: 1.3em;
+  flex: 0 0 auto;
+}
+.rec-link__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.rec-link__title {
+  font-weight: 700;
+  font-size: 0.95em;
+}
+.rec-link__meta {
+  font-size: 0.78em;
+  color: var(--ink-2);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rec-link__go {
+  flex: 0 0 auto;
+  font-size: 0.82em;
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+/* ---- 问诊记录卡片 徽标 ---- */
+.rec-card__badge.badge-link {
+  background: #eef3ff;
+  color: #3a6df0;
+}
+
+/* ---- 药单列表 ---- */
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.order-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 4px solid var(--primary);
+}
+.order-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.order-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.order-card__title b {
+  font-size: 1.05em;
+}
+.order-tag {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: #3a6df0;
+  font-weight: 600;
+}
+.order-tag--self {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+.order-card__date {
+  font-size: 0.8em;
+  color: var(--ink-3);
+}
+.order-card__meta {
+  font-size: 0.82em;
+  color: var(--ink-2);
+}
+.order-card__meds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.order-chip {
+  font-size: 0.78em;
+  background: #f0f2f5;
+  color: var(--ink-2);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.order-card__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.btn-danger-ghost {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- 药单弹窗：药品清单 ---- */
+.order-meds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.order-med {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.order-med__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.order-med__name {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.order-med__meta {
+  font-size: 0.78em;
+  color: var(--ink-2);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.order-med__ops {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- 关注指标 顶部管理区 ---- */
+.exam-follow__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.exam-follow__empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85em;
+  color: var(--ink-2);
+  flex-wrap: wrap;
+}
+.follow-chip {
+  position: relative;
+}
+.follow-chip__del {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  line-height: 1;
+}
+.follow-mgr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.follow-mgr-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
+/* ---- 检查结果 整页趋势视图 ---- */
+.exam-view-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.exam-view-nav__cur {
+  font-weight: 700;
+  font-size: 1em;
+}
+.exam-view-swipe {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+.exam-pt {
+  flex: 0 0 auto;
+  width: 140px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+  scroll-snap-align: start;
+  border-left: 3px solid var(--primary);
+}
+.exam-pt.is-bad {
+  border-left-color: var(--danger);
+}
+.exam-pt__date {
+  font-size: 0.75em;
+  color: var(--ink-3);
+}
+.exam-pt__val {
+  font-weight: 700;
+  font-size: 1em;
+  margin: 4px 0;
+}
+
+/* ---- 检查报告明细 标签 ---- */
+.exam-entry__tag {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 600;
+  margin-left: 6px;
+}
+.exam-entry__head {
+  display: flex;
+  align-items: center;
+}
+
+/* ---- 药单 / 报告弹窗 提示 ---- */
+.order-hint,
+.report-hint {
+  margin-bottom: 8px;
+}
+.order-hint .hint,
+.report-hint .hint {
+  font-size: 0.82em;
+  color: var(--ink-2);
+}
