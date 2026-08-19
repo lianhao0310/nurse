@@ -90,7 +90,7 @@
               <div id="exam-follow" class="exam-follow"></div>
               <div class="block-head"><h2>🧾 检查结果明细</h2></div>
               <div id="exam-list" class="exam-list"></div>
-              <div id="exam-empty" class="empty-tip big" hidden>还没有检查结果数据。<br />在「问诊记录」详情中做 AI 分析即可自动归档。</div>
+              <div id="exam-empty" class="empty-tip big" hidden>还没有检查结果数据。<br />在「问诊记录」详情底部点「归档」，即可把检查结果更新到趋势与明细。</div>
             </div>
           </div>
         </section>
@@ -174,10 +174,10 @@
                 <button class="btn btn-ghost btn-sm" id="btn-add-reminder" type="button">＋ 新增</button>
               </div>
               <div id="reminders-list" class="reminders-list"></div>
-              <label class="field field--inline">
-                <span>用药提醒提前（分钟）</span>
-                <input type="number" id="opt-med-min" min="0" max="120" />
-              </label>
+              <div class="me-card__times">
+                <span>用药提醒时间</span>
+                <button class="btn btn-ghost btn-sm" id="btn-times" type="button">早 08:00 · 中 12:30 · 晚 19:00</button>
+              </div>
             </div>
 
             <div class="me-card">
@@ -321,10 +321,6 @@
               <span>时间（可选）</span>
               <input type="time" id="rem-time" />
             </label>
-            <label class="field">
-              <span>提前提醒（天，0=当天）</span>
-              <input type="number" id="rem-advance" min="0" max="60" value="3" />
-            </label>
             <label class="switch-row">
               <span>启用此提醒</span>
               <input type="checkbox" id="rem-enabled" checked />
@@ -333,6 +329,51 @@
             <div class="capture-actions">
               <button class="btn btn-primary" id="rem-save" type="button">保存</button>
               <button class="btn btn-ghost" id="rem-cancel" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 处方药 添加/编辑 弹层 ============ -->
+      <div class="modal" id="rx-modal" hidden>
+        <div class="modal__mask" data-close="rx"></div>
+        <div class="modal__panel">
+          <div class="modal__head">
+            <span id="rx-modal-title">添加药品</span>
+            <button class="modal__close" data-close="rx">✕</button>
+          </div>
+          <div class="modal__body">
+            <label class="field"><span>药名 *</span><input type="text" id="rx-f-name" placeholder="如：苯磺酸氨氯地平片" /></label>
+            <label class="field"><span>厂家</span><input type="text" id="rx-f-manufacturer" placeholder="如：辉瑞" /></label>
+            <label class="field"><span>别名 / 俗称</span><input type="text" id="rx-f-alias" placeholder="如：络活喜" /></label>
+            <label class="field"><span>规格</span><input type="text" id="rx-f-spec" placeholder="如：5mg×7片" /></label>
+            <label class="field"><span>剂量</span><input type="text" id="rx-f-dose" placeholder="如：1片" /></label>
+            <label class="field"><span>频次</span><input type="text" id="rx-f-freq" placeholder="如：每日1次" /></label>
+            <label class="field"><span>时间</span><input type="text" id="rx-f-time" placeholder="如：早餐后" /></label>
+            <div class="capture-actions">
+              <button class="btn btn-primary" id="rx-save" type="button">保存</button>
+              <button class="btn btn-ghost" id="rx-cancel" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 用药提醒时间 弹层（早/中/晚） ============ -->
+      <div class="modal" id="times-modal" hidden>
+        <div class="modal__mask" data-close-times></div>
+        <div class="modal__panel">
+          <div class="modal__head">
+            <span id="times-modal-title">用药提醒时间</span>
+            <button class="modal__close" data-close-times>✕</button>
+          </div>
+          <div class="modal__body">
+            <label class="field"><span>🌅 早上提醒时间</span><input type="time" id="time-morning" value="08:00" /></label>
+            <label class="field"><span>☀️ 中午提醒时间</span><input type="time" id="time-noon" value="12:30" /></label>
+            <label class="field"><span>🌙 晚上提醒时间</span><input type="time" id="time-evening" value="19:00" /></label>
+            <p class="hint">开启提醒后，每天按上述时间推送用药提醒通知（需系统通知权限）。</p>
+            <div class="capture-actions">
+              <button class="btn btn-primary" id="times-save" type="button">开始提醒</button>
+              <button class="btn btn-ghost" id="times-cancel" type="button">取消</button>
             </div>
           </div>
         </div>

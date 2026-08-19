@@ -8,8 +8,8 @@
  *     ai: { enabled, baseUrl, apiKey, model },
  *     notifications, largeFont,
  *     dailyDone: { "2026-08-14": { medDoses:{}, tasks:{} } },
- *     reminders: [ {id,title,type,date,time,advanceDays,enabled,note} ],
- *     medReminderMinutes
+ *     reminders: [ {id,title,type,date,time,enabled,note} ],
+ *     reminderTimes: { morning, noon, evening }   // 用药提醒通知时间（早/中/晚）
  *   },
  *   records: [ {                          // 问诊记录
  *     id, createdAt, visitDate, hospital, doctor, source,
@@ -18,9 +18,10 @@
  *     examImages: [ {name,type,dataUrl} ],          // 检查结果照片
  *     examTable: [ {name,value,unit,range,abnormal} ],
  *     rxImages: [ {name,type,dataUrl} ],            // 处方药照片
- *     rxTable: [ {name,spec,dose,freq,time,note} ], // 处方药表格
+ *     rxTable: [ {name,manufacturer,alias,spec,dose,freq,time,note} ], // 处方药表格（含厂家/别名/规格）
  *     result: { engine, diseases, medications, tasks, advice, risks, summary } | null, // AI分析转化结果
  *     aiAdvice: { diet:[], taboo:[], text } | null,  // 医嘱分析生成的生活/饮食医嘱
+ *     archived,                                      // 已归档：检查结果已并入全局趋势/明细
  *     status, manual
  *   } ],
  *   cabinet: [ {                           // 我的药箱：每种药品一条记录
@@ -92,6 +93,13 @@
     return rec;
   }
 
+  // 用药提醒时间（早/中/晚）
+  function _normReminderTimes(v) {
+    const t = v && typeof v === "object" ? v : {};
+    const ok = (x, def) => (/^\d{1,2}:\d{2}$/.test(x) ? (String(x).length === 5 ? x : "0" + x) : def);
+    return { morning: ok(t.morning, "08:00"), noon: ok(t.noon, "12:30"), evening: ok(t.evening, "19:00") };
+  }
+
   function _empty() {
     return {
       version: VERSION,
@@ -103,7 +111,7 @@
         largeFont: false,
         dailyDone: {},
         reminders: [],
-        medReminderMinutes: 10,
+        reminderTimes: { morning: "08:00", noon: "12:30", evening: "19:00" },
       },
       records: [],
       cabinet: [],
@@ -126,7 +134,7 @@
       largeFont: !!s.largeFont,
       dailyDone: s.dailyDone && typeof s.dailyDone === "object" ? s.dailyDone : {},
       reminders: _normReminders(s.reminders, s),
-      medReminderMinutes: Number(s.medReminderMinutes) >= 0 ? Number(s.medReminderMinutes) : 10,
+      reminderTimes: _normReminderTimes(s.reminderTimes),
     };
   }
 
@@ -139,7 +147,6 @@
       type: r.type || "custom",
       date: r.date || "",
       time: r.time || "",
-      advanceDays: Number(r.advanceDays) >= 0 ? Number(r.advanceDays) : 3,
       enabled: r.enabled !== false,
       note: r.note || "",
     };
@@ -150,7 +157,7 @@
       if (list.length) return list;
     }
     if (s && s.nextVisit) {
-      return [_normReminder({ title: "下次就诊", type: "visit", date: s.nextVisit, advanceDays: Number(s.visitReminderDays) || 3 })];
+      return [_normReminder({ title: "下次就诊", type: "visit", date: s.nextVisit })];
     }
     return [];
   }
@@ -295,6 +302,8 @@
     if (!x.name || !String(x.name).trim()) return null;
     return {
       name: String(x.name).trim(),
+      manufacturer: x.manufacturer || "",
+      alias: x.alias || "",
       spec: x.spec || "",
       dose: x.dose || "",
       freq: x.freq || "",
@@ -328,6 +337,7 @@
       result: r.result || null,
       aiAdvice: r.aiAdvice && typeof r.aiAdvice === "object" ? { diet: (r.aiAdvice.diet || []).filter(Boolean), taboo: (r.aiAdvice.taboo || []).filter(Boolean), text: r.aiAdvice.text || "", createdAt: r.aiAdvice.createdAt || "" } : null,
       manual: !!r.manual,
+      archived: !!r.archived,
       status: r.status || "done",
     };
     // 旧数据：result 里的 medications 同步到 rxTable（去重）
