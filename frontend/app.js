@@ -516,8 +516,9 @@
     // 关联药单 / 检查报告
     $("#rec-order-link").onclick = (e) => { const c = e.target.closest("[data-rel='order']"); if (c) openOrderModal(c.dataset.id, true); };
     $("#rec-report-link").onclick = (e) => { const c = e.target.closest("[data-rel='report']"); if (c) openReportModal(c.dataset.id, true); };
-    $("#rec-order-add").onclick = () => pickRelatedOrder(rec);
-    $("#rec-report-add").onclick = () => pickRelatedReport(rec);
+    // 「添加药单 / 添加检查报告」：直接打开新建编辑弹窗，保存后自动关联
+    $("#rec-order-add").onclick = () => addOrderForRecord(rec);
+    $("#rec-report-add").onclick = () => addReportForRecord(rec);
     // AI 分析 / 医嘱分析：先静默保存当前编辑，再基于最新数据分析
     const aiBtn = $("#rec-ai-analyze");
     if (aiBtn) aiBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAIAnalyze(saved); };
@@ -796,79 +797,37 @@
     goPage("records");
   }
 
-  // ===================== 关联问诊记录：选择药单/检查报告 =====================
-  function pickRelatedOrder(rec) {
-    const orders = (DATA.orders || []).slice().sort((a, b) => ((a.date || "") < (b.date || "") ? 1 : -1));
-    const opts = orders
-      .map((o) => `<option value="${esc(o.id)}" ${rec && rec.orderId === o.id ? "selected" : ""}>${esc((o.source || "未填来源") + " · " + (o.date || "无日期") + " · " + (o.medicines || []).length + "种药")}</option>`)
-      .join("");
-    const body = $("#ai-modal-body");
-    body.innerHTML = `
-      <div class="field"><span>选择要关联的药单（可后续在药单页编辑）</span>
-        <select id="pick-order">${opts || '<option value="">（暂无药单，请先到「我的药箱 → 药单」自建）</option>'}</select>
-      </div>
-      <div class="capture-actions">
-        <button class="btn btn-primary block" id="pick-order-save">确认关联</button>
-        <button class="btn btn-ghost block" id="pick-cancel">取消</button>
-      </div>`;
-    aiModalState = { rec, type: "pick-order" };
-    $("#ai-modal").hidden = false;
-    $("#pick-order-save").onclick = async () => {
-      const orderId = $("#pick-order").value;
-      let targetRec = rec;
-      if (!targetRec || !targetRec.id) {
-        // 新记录：先静默保存基本信息，获得 id 后再关联
-        targetRec = await saveRecordEdit(rec, { silent: true });
-      }
-      if (targetRec && targetRec.id) {
-        await NurseStorage.updateRecord(targetRec.id, { orderId });
-        DATA = await NurseStorage.load();
-        $("#ai-modal").hidden = true; aiModalState = null;
-        const latest = (DATA.records || []).find((r) => r.id === targetRec.id);
-        if (latest) showRecordView(latest); else closeView();
-        renderRecords();
-        toast("已关联药单");
-      } else {
-        toast("请先填写问诊记录基本信息");
-      }
-    };
-    $("#pick-cancel").onclick = () => { aiModalState = null; $("#ai-modal").hidden = true; };
+  // ===================== 问诊记录：新建/编辑药单与检查报告并关联 =====================
+  // 「添加药单 / 更换药单」：无关联则直接打开新建药单弹窗（保存后自动关联），
+  // 已有关联则直接打开该药单的编辑弹窗
+  async function addOrderForRecord(rec) {
+    // 新记录先静默保存，获得 id 供关联；showRecordView 会重新绑定按钮
+    if (!rec || !rec.id) {
+      const saved = await saveRecordEdit(rec, { silent: true });
+      if (!saved || !saved.id) { toast("请先填写问诊记录基本信息"); return; }
+      currentRecordId = saved.id;
+      showRecordView((DATA.records || []).find((r) => r.id === saved.id));
+      const ai = $("#ai-modal"); if (ai) ai.hidden = true;
+    } else {
+      currentRecordId = rec.id;
+    }
+    // 已有关联药单 → 直接编辑该药单；否则新建
+    if (rec && rec.orderId) openOrderModal(rec.orderId, true);
+    else openOrderModal(null, true);
   }
-  function pickRelatedReport(rec) {
-    const reports = (DATA.reports || []).slice().sort((a, b) => ((a.date || "") < (b.date || "") ? 1 : -1));
-    const opts = reports
-      .map((rp) => `<option value="${esc(rp.id)}" ${rec && rec.reportId === rp.id ? "selected" : ""}>${esc((rp.title || "未填标题") + " · " + (rp.date || "无日期") + " · " + (rp.indicators || []).length + "项指标")}</option>`)
-      .join("");
-    const body = $("#ai-modal-body");
-    body.innerHTML = `
-      <div class="field"><span>选择要关联的检查报告（可后续在检查结果页编辑）</span>
-        <select id="pick-report">${opts || '<option value="">（暂无检查报告，请先点「添加自测报告」或在问诊记录添加）</option>'}</select>
-      </div>
-      <div class="capture-actions">
-        <button class="btn btn-primary block" id="pick-report-save">确认关联</button>
-        <button class="btn btn-ghost block" id="pick-cancel">取消</button>
-      </div>`;
-    aiModalState = { rec, type: "pick-report" };
-    $("#ai-modal").hidden = false;
-    $("#pick-report-save").onclick = async () => {
-      const reportId = $("#pick-report").value;
-      let targetRec = rec;
-      if (!targetRec || !targetRec.id) {
-        targetRec = await saveRecordEdit(rec, { silent: true });
-      }
-      if (targetRec && targetRec.id) {
-        await NurseStorage.updateRecord(targetRec.id, { reportId });
-        DATA = await NurseStorage.load();
-        $("#ai-modal").hidden = true; aiModalState = null;
-        const latest = (DATA.records || []).find((r) => r.id === targetRec.id);
-        if (latest) showRecordView(latest); else closeView();
-        renderRecords();
-        toast("已关联检查报告");
-      } else {
-        toast("请先填写问诊记录基本信息");
-      }
-    };
-    $("#pick-cancel").onclick = () => { aiModalState = null; $("#ai-modal").hidden = true; };
+  // 「添加检查报告 / 更换检查报告」：逻辑同上
+  async function addReportForRecord(rec) {
+    if (!rec || !rec.id) {
+      const saved = await saveRecordEdit(rec, { silent: true });
+      if (!saved || !saved.id) { toast("请先填写问诊记录基本信息"); return; }
+      currentRecordId = saved.id;
+      showRecordView((DATA.records || []).find((r) => r.id === saved.id));
+      const ai = $("#ai-modal"); if (ai) ai.hidden = true;
+    } else {
+      currentRecordId = rec.id;
+    }
+    if (rec && rec.reportId) openReportModal(rec.reportId, true);
+    else openReportModal(null, true);
   }
 
   // ===================== 检查结果趋势 / 明细 =====================
@@ -1185,22 +1144,21 @@
       kind = "hospital";
     }
     const item = { id: editingOrderId || undefined, source, date, kind, recordId, medicines };
-    await NurseStorage.upsertOrder(item);
+    const wasEdit = !!editingOrderId;
+    const savedOrder = await NurseStorage.upsertOrder(item);
     DATA = await NurseStorage.load();
     $("#order-modal").hidden = true;
     editingOrderId = null;
-    // 若从问诊记录添加，同步关联记录的 orderId
-    if (recordId && !currentRecordId) { /* 无需 */ }
-    if (recordId) {
+    if (recordId && savedOrder && savedOrder.id) {
       const rec = (DATA.records || []).find((r) => r.id === recordId);
-      if (rec && !rec.orderId) await NurseStorage.updateRecord(recordId, { orderId: item.id || (DATA.orders[0] && DATA.orders[0].id) });
+      if (rec && !rec.orderId) await NurseStorage.updateRecord(recordId, { orderId: savedOrder.id });
       DATA = await NurseStorage.load();
       const latest = (DATA.records || []).find((r) => r.id === recordId);
       if (latest && !$("#record-view").hidden) showRecordView(latest);
     }
     renderCabinet();
     renderHome();
-    toast(editingOrderId ? "已保存药单" : "已添加药单");
+    toast(wasEdit ? "已保存药单" : "已添加药单并关联到问诊记录");
   }
 
   // 药单内 药品条目 弹窗（完整字段，可下拉选药箱已有药品自动填充）
@@ -1339,13 +1297,14 @@
       kind = "hospital";
     }
     const item = { id: editingReportId || undefined, title: title || "检查报告", date, kind, recordId, indicators };
-    await NurseStorage.upsertReport(item);
+    const wasEdit = !!editingReportId;
+    const savedReport = await NurseStorage.upsertReport(item);
     DATA = await NurseStorage.load();
     $("#report-modal").hidden = true;
     editingReportId = null;
-    if (recordId) {
+    if (recordId && savedReport && savedReport.id) {
       const rec = (DATA.records || []).find((r) => r.id === recordId);
-      if (rec && !rec.reportId) await NurseStorage.updateRecord(recordId, { reportId: item.id || (DATA.reports[0] && DATA.reports[0].id) });
+      if (rec && !rec.reportId) await NurseStorage.updateRecord(recordId, { reportId: savedReport.id });
       DATA = await NurseStorage.load();
       const latest = (DATA.records || []).find((r) => r.id === recordId);
       if (latest && !$("#record-view").hidden) showRecordView(latest);
@@ -1353,7 +1312,7 @@
     renderRecords();
     renderCabinet();
     renderHome();
-    toast(editingReportId ? "已保存检查报告" : "已添加检查报告");
+    toast(wasEdit ? "已保存检查报告" : "已添加检查报告并关联到问诊记录");
   }
 
   // ===================== 每日扣减 =====================
