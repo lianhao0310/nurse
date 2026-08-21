@@ -13,7 +13,7 @@ const seed = {
     {
       id: "d1", name: "氨氯地平", disease: "高血压", doseAmount: 1, doseUnit: "片",
       timeSlots: ["morning"], meal: "any", intro: "降压", precautions: [], advice: "", note: "",
-      manufacturer: "厂家A", alias: "络活喜", qty: 10, unit: "片", status: "active", dailyDose: 1, threshold: 7,
+      manufacturer: "厂家A", alias: "络活喜", qty: 10, unit: "片", status: "active", threshold: 7,
       history: [{ id: "h1", manufacturer: "厂家B", spec: "5mg", alias: "", doseUnit: "片", note: "旧厂" }],
     },
   ],

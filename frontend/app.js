@@ -1167,7 +1167,6 @@
     $$(".cabitem-f-slot").forEach((ch) => (ch.checked = (c.timeSlots || ["morning"]).includes(ch.value)));
     $("#cabitem-f-meal").value = c.meal || "any";
     $("#cabitem-f-status").value = c.status || "active";
-    $("#cabitem-f-dailydose").value = Number(c.dailyDose) || 0;
     $("#cabitem-f-threshold").value = Number(c.threshold) || 0;
     $("#cabitem-f-note").value = c.note || "";
     $("#cabinet-modal").hidden = false;
@@ -1186,7 +1185,6 @@
       timeSlots: slots.length ? slots : ["morning"],
       meal: $("#cabitem-f-meal").value,
       status: $("#cabitem-f-status").value,
-      dailyDose: Number($("#cabitem-f-dailydose").value) || 0,
       threshold: Number($("#cabitem-f-threshold").value) || 0,
       note: $("#cabitem-f-note").value.trim(),
     };
@@ -1342,7 +1340,6 @@
       $$(".meditem-f-slot").forEach((c) => (c.checked = c.value === "morning"));
       $("#meditem-f-meal").value = "any";
       $("#meditem-f-status").value = "active";
-      $("#meditem-f-dailydose").value = 0;
       $("#meditem-f-threshold").value = 7;
       $("#meditem-f-note").value = "";
     }
@@ -1392,7 +1389,6 @@
         doseUnit: $("#meditem-f-doseunit").value.trim() || "片",
         timeSlots: slots.length ? slots : ["morning"],
         meal: $("#meditem-f-meal").value,
-        dailyDose: Number($("#meditem-f-dailydose").value) || 0,
         threshold: Number($("#meditem-f-threshold").value) || 7,
         status: $("#meditem-f-status").value,
         note: $("#meditem-f-note").value.trim(),
@@ -1545,8 +1541,9 @@
     let changed = false;
     (data.cabinet || []).forEach((c) => {
       if (c.status !== "active") return;
-      if (c.dailyDose > 0 && Number(c.qty) > 0) {
-        c.qty = Math.max(0, Math.round((Number(c.qty) - c.dailyDose) * 100) / 100);
+      const dayDose = Number(c.doseAmount || 0) * (c.timeSlots || []).length;
+      if (dayDose > 0 && Number(c.qty) > 0) {
+        c.qty = Math.max(0, Math.round((Number(c.qty) - dayDose) * 100) / 100);
         if (Number(c.qty) <= 0) c.status = "out";
         changed = true;
       }

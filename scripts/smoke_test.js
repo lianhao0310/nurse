@@ -119,7 +119,6 @@ const $ = (s) => document.querySelector(s);
   $("#cab-f-name").value = "阿司匹林";
   $("#cab-f-qty").value = "10";
   $("#cab-f-unit").value = "片";
-  $("#cab-f-daily").value = "1";
   $("#cab-f-threshold").value = "3";
   $("#cab-f-status").value = "active";
   $("#cab-f-save").click();

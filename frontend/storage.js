@@ -31,7 +31,7 @@
  *     id, name, manufacturer, alias,
  *     unit, spec, qty(库存),
  *     doseAmount, doseUnit, timeSlots, meal,
- *     dailyDose, threshold, status, note
+ *     threshold, status, note
  *   } ],
  *   reports: [ {                          // 检查报告
  *     id, title, date,
@@ -221,7 +221,6 @@
       doseUnit: c.doseUnit || "片",
       timeSlots: _normTimeSlots(c.timeSlots),
       meal: _normMeal(c.meal),
-      dailyDose: Number(c.dailyDose) || 0,
       threshold: Number(c.threshold) || 0,
       status: _normStatus(c.status),
       note: c.note || "",
@@ -328,7 +327,6 @@
             doseUnit: m.doseUnit || "片",
             timeSlots: m.timeSlots || ["morning"],
             meal: m.meal || "any",
-            dailyDose: Number(m.dailyDose) || 0,
             threshold: Number(m.threshold) || 0,
             status: m.status || "active",
             note: m.note || "",
@@ -632,7 +630,7 @@
   }
 
   // ---------------- 汇总工具：药箱页按药名合并所有药单的药品 ----------------
-  // 返回 [{ name, manufacturer, alias, unit, spec, qty(合并), status, doseAmount, doseUnit, timeSlots, meal, dailyDose, threshold, orderIds:[], count }]
+  // 返回 [{ name, manufacturer, alias, unit, spec, qty(合并), status, doseAmount, doseUnit, timeSlots, meal, threshold, orderIds:[], count }]
   function summarizeMedicines(orders) {
     const map = {};
     (orders || []).forEach((o) => {
@@ -652,7 +650,6 @@
             doseUnit: m.doseUnit || "片",
             timeSlots: (m.timeSlots || []).slice(),
             meal: m.meal || "any",
-            dailyDose: Number(m.dailyDose) || 0,
             threshold: Number(m.threshold) || 0,
             orderIds: [],
             occurrences: 0,
