@@ -24,14 +24,14 @@
  *   orders: [ {                           // 药单
  *     id, source, date,
  *     kind: "custom"|"hospital", recordId,
- *     medicines: [ { id, name, manufacturer, alias, qty } ],  // 药单条目只记 4 字段（qty=本药单配药数量）
+ *     medicines: [ { id, name, manufacturer, alias, qty, price } ],  // 药单条目（qty=本药单配药数量, price=单价）
  *     images[]                           // 药单/处方照片
  *   } ],
  *   cabinet: [ {                          // 药箱药品（主档，按药名唯一）
  *     id, name, manufacturer, alias,
  *     unit, spec, qty(库存),
  *     doseAmount, doseUnit, timeSlots, meal,
- *     threshold, status, note
+ *     threshold, status, note, disease
  *   } ],
  *   reports: [ {                          // 检查报告
  *     id, title, date,
@@ -202,6 +202,7 @@
       manufacturer: m.manufacturer || "",
       alias: m.alias || "",
       qty: Number(m.qty) || 0,
+      price: Number(m.price) || 0,
     };
   }
 
@@ -224,6 +225,7 @@
       threshold: Number(c.threshold) || 0,
       status: _normStatus(c.status),
       note: c.note || "",
+      disease: c.disease || "",
     };
   }
 

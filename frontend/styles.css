@@ -1956,6 +1956,11 @@ textarea {
   gap: 12px;
 }
 .order-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+.order-card .swipe-content {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -1964,7 +1969,6 @@ textarea {
   flex-direction: column;
   gap: 8px;
   border-left: 4px solid var(--primary);
-  overflow: hidden; /* 左滑删除：圆角内裁切 */
 }
 .order-card__head {
   display: flex;

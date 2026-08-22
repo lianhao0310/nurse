@@ -99,6 +99,7 @@
     applySettingsUI();
     bindEvents();
     setupSwipeBack();
+    setupModalSwipeDown();
     await runDailyDecrement();
     renderHome();
     renderRecords();
@@ -762,6 +763,7 @@
           id: same ? same.id : undefined,
           name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "",
           qty: same ? same.qty : 0,
+          price: same ? same.price : 0,
         };
       });
       if (existOrder) {
@@ -1101,6 +1103,7 @@
           d.manufacturer ? "厂家 " + d.manufacturer : "",
           d.alias && d.alias !== d.name ? "别名 " + d.alias : "",
           d.spec ? "规格 " + d.spec : "",
+          d.disease ? "针对 " + d.disease : "",
           "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
           "阈值 " + (Number(d.threshold) || 0),
           orderCnt ? "来自 " + orderCnt + " 个药单" : "",
@@ -1159,6 +1162,7 @@
     $("#cabitem-f-name").disabled = true; // 药名是药单关联键，创建后不可修改
     $("#cabitem-f-manufacturer").value = c.manufacturer || "";
     $("#cabitem-f-alias").value = c.alias || "";
+    $("#cabitem-f-disease").value = c.disease || "";
     $("#cabitem-f-unit").value = c.unit || "片";
     $("#cabitem-f-spec").value = c.spec || "";
     $("#cabitem-f-qty").value = Number(c.qty) || 0;
@@ -1187,6 +1191,7 @@
       status: $("#cabitem-f-status").value,
       threshold: Number($("#cabitem-f-threshold").value) || 0,
       note: $("#cabitem-f-note").value.trim(),
+      disease: $("#cabitem-f-disease").value.trim(),
     };
     await NurseStorage.updateCabinetDrug(editingCabId, patch);
     DATA = await NurseStorage.load();
@@ -1206,7 +1211,7 @@
       orderDraft = {
         source: o.source, date: o.date, kind: o.kind, recordId: o.recordId || "",
         fromRecord: !!fromRecord,
-        medicines: (o.medicines || []).map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty, _full: null })),
+        medicines: (o.medicines || []).map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty, price: m.price, _full: null })),
       };
     } else {
       // 自建药单：若从问诊记录进入，自动关联
@@ -1251,7 +1256,9 @@
           m.manufacturer ? "厂家 " + m.manufacturer : "",
           m.alias && m.alias !== m.name ? "别名 " + m.alias : "",
           "数量 " + (Number(m.qty) || 0),
+          Number(m.price) > 0 ? "单价 " + m.price + " 元" : "",
           cab && cab.spec ? "规格 " + cab.spec : "",
+          cab && cab.disease ? "针对 " + cab.disease : "",
           cab && cab.doseAmount ? "单次 " + cab.doseAmount + " " + (cab.doseUnit || "") : "",
           cab ? slotLabels(cab.timeSlots) : "",
         ].filter(Boolean).join(" · ");
@@ -1275,7 +1282,7 @@
     const source = $("#order-f-source").value.trim();
     if (!source) { toast("请填写药单来源"); return; }
     const date = $("#order-f-date").value;
-    const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty }));
+    const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty, price: m.price }));
     // 新药全属性（药箱主档建档用），剥离后不进入药单条目
     const full = {};
     orderDraft.medicines.forEach((m) => { if (m._full) full[m.name] = m._full; });
@@ -1331,6 +1338,7 @@
     $("#meditem-f-manufacturer").value = m.manufacturer || "";
     $("#meditem-f-alias").value = m.alias || "";
     $("#meditem-f-qty").value = Number(m.qty) || 0;
+    $("#meditem-f-price").value = Number(m.price) || 0;
     // 全属性区（仅新药展开）
     if (mIsNew) {
       $("#meditem-f-unit").value = "片";
@@ -1342,6 +1350,7 @@
       $("#meditem-f-status").value = "active";
       $("#meditem-f-threshold").value = 7;
       $("#meditem-f-note").value = "";
+      $("#meditem-f-disease").value = "";
     }
     setMedItemFull(mIsNew && $("#meditem-pick").value === MED_PICK_NEW);
     $("#med-item-modal").hidden = false;
@@ -1378,6 +1387,7 @@
       manufacturer: $("#meditem-f-manufacturer").value.trim(),
       alias: $("#meditem-f-alias").value.trim(),
       qty: Number($("#meditem-f-qty").value) || 0,
+      price: Number($("#meditem-f-price").value) || 0,
     };
     // 新药：收集药箱主属性
     if (medItemMode === "new") {
@@ -1392,6 +1402,7 @@
         threshold: Number($("#meditem-f-threshold").value) || 7,
         status: $("#meditem-f-status").value,
         note: $("#meditem-f-note").value.trim(),
+        disease: $("#meditem-f-disease").value.trim(),
       };
     }
     if (editingMedIdx >= 0) {
@@ -1836,19 +1847,65 @@
   }
 
   // ===================== 右滑返回 / 关闭弹窗 =====================
-  function swipeBackAction() {
-    const modals = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
-    for (const id of modals) {
+  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
+  function closeTopModal() {
+    for (const id of MODAL_IDS) {
       const m = document.getElementById(id);
       if (m && !m.hidden) {
         if (id === "ai-modal") aiModalState = null;
         if (id === "times-modal") closeTimesModal();
         else m.hidden = true;
-        return;
+        return true;
       }
     }
+    return false;
+  }
+  function swipeBackAction() {
+    if (closeTopModal()) return;
     if (!$("#record-view").hidden) { closeView(); return; }
     if (!$("#exam-view").hidden) { $("#exam-view").hidden = true; goPage("records"); return; }
+  }
+  // 向下滑动关闭弹窗（所有底部弹窗通用）
+  function setupModalSwipeDown() {
+    MODAL_IDS.forEach((id) => {
+      const modal = document.getElementById(id);
+      if (!modal) return;
+      const panel = modal.querySelector(".modal__panel");
+      if (!panel) return;
+      let sy = 0, dragging = false;
+      panel.addEventListener("touchstart", (e) => {
+        if (modal.hidden || e.touches.length !== 1) { dragging = false; return; }
+        sy = e.touches[0].clientY;
+        dragging = false;
+      }, { passive: true });
+      panel.addEventListener("touchmove", (e) => {
+        if (modal.hidden) return;
+        const dy = e.touches[0].clientY - sy;
+        if (!dragging && dy > 8) {
+          const body = panel.querySelector(".modal__body");
+          if (!body || body.scrollTop === 0) dragging = true;
+        }
+        if (dragging) {
+          if (e.cancelable) e.preventDefault();
+          panel.style.transition = "none";
+          panel.style.transform = "translateY(" + Math.max(0, dy) + "px)";
+        }
+      }, { passive: false });
+      panel.addEventListener("touchend", (e) => {
+        if (!dragging) return;
+        const dy = (e.changedTouches ? e.changedTouches[0].clientY : 0) - sy;
+        dragging = false;
+        if (dy > 100) {
+          panel.style.transition = "transform 0.18s ease";
+          panel.style.transform = "translateY(110%)";
+          setTimeout(() => { panel.style.transform = ""; panel.style.transition = ""; closeTopModal(); }, 180);
+        } else {
+          panel.style.transition = "transform 0.18s ease";
+          panel.style.transform = "translateY(0)";
+          setTimeout(() => { panel.style.transform = ""; panel.style.transition = ""; }, 200);
+        }
+      });
+    });
   }
   function setupSwipeBack() {
     let sx = 0, sy = 0, tracking = false;
