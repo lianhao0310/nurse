@@ -495,6 +495,7 @@
       </div>`;
   }
 
+  let _recDirtyCheck = null;
   function renderDraftThumbs() {
     $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="order" data-idx="${i}">✕</button></div>`).join("");
     $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="report" data-idx="${i}">✕</button></div>`).join("");
@@ -504,6 +505,7 @@
     if (ap) ap.innerHTML = recDraft.audio ? `<div class="audio-card">🎵 ${esc(recDraft.audio.name)} <button class="thumb__del" id="rec-audio-del">✕</button><br/><audio controls src="${recDraft.audio.dataUrl}" style="width:100%"></audio></div>` : "";
     const adel = $("#rec-audio-del");
     if (adel) adel.onclick = () => { recDraft.audio = null; renderDraftThumbs(); };
+    if (_recDirtyCheck) _recDirtyCheck();
   }
 
   function bindRecordEdit(rec) {
@@ -537,6 +539,18 @@
     if (aiBtn) aiBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAIAnalyze(saved); };
     const advBtn = $("#rec-advice-analyze");
     if (advBtn) advBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAdviceAnalyze(saved); };
+
+    // 保存按钮脏检查：有内容变化时高亮，无变化时灰显
+    const snap = () => JSON.stringify({
+      h: $("#rec-f-hospital").value, d: $("#rec-f-date").value, doc: $("#rec-f-doctor").value,
+      adv: recDraft.adviceText, audio: recDraft.audio ? recDraft.audio.name : "",
+      rx: (recDraft.orderImages || []).map((im) => im.dataUrl).join("\n"),
+      ex: (recDraft.reportImages || []).map((im) => im.dataUrl).join("\n"),
+    });
+    const recSnapshot = snap();
+    _recDirtyCheck = () => { const btn = $("#rec-save"); if (btn) btn.classList.toggle("is-dirty", snap() !== recSnapshot); };
+    ["#rec-f-hospital", "#rec-f-date", "#rec-f-doctor", "#rec-f-advice"].forEach((s) => { const el = $(s); if (el) el.addEventListener("input", _recDirtyCheck); });
+    _recDirtyCheck();
   }
 
   function readFileAsDataURL(file) {

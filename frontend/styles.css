@@ -2186,3 +2186,8 @@ textarea {
   font-size: 0.82em;
   color: var(--ink-2);
 }
+
+/* 问诊记录保存按钮：无改动时灰显 */
+#rec-save:not(.is-dirty) {
+  opacity: 0.5;
+}
