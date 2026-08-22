@@ -444,8 +444,8 @@
     recDraft = {
       adviceText: (rec && rec.advice && rec.advice.text) || "",
       audio: (rec && rec.advice && rec.advice.audio) || null,
-      orderImages: linkedOrder ? (linkedOrder.images || []).slice() : [],
-      reportImages: linkedReport ? (linkedReport.images || []).slice() : [],
+      orderImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages.slice() : (linkedOrder ? (linkedOrder.images || []).slice() : []),
+      reportImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages.slice() : (linkedReport ? (linkedReport.images || []).slice() : []),
     };
     const r = rec || {};
     const aiOn = DATA.settings.ai.enabled && DATA.settings.ai.apiKey;
@@ -604,6 +604,8 @@
       visitDate: $("#rec-f-date").value,
       doctor: $("#rec-f-doctor").value.trim(),
       advice: { text: recDraft.adviceText.trim(), audio: recDraft.audio },
+      rxImages: recDraft.orderImages,
+      examImages: recDraft.reportImages,
     };
     let saved;
     if (rec) {
@@ -647,8 +649,8 @@
       const res = await NurseAI.analyzeConsult({
         settings: DATA.settings,
         adviceText: rec.advice && rec.advice.text,
-        examImages: (linkedReport && linkedReport.images) || [],
-        rxImages: (linkedOrder && linkedOrder.images) || [],
+        examImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages : ((linkedReport && linkedReport.images) || []),
+        rxImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages : ((linkedOrder && linkedOrder.images) || []),
       });
       aiModalState = { rec, data: res, type: "consult" };
       openAIModal();

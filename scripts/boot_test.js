@@ -77,6 +77,19 @@ function assert(name, cond, extra) {
 
   const rtab = (name) => [...document.querySelectorAll(".records-subtabs .home-tab")].find((b) => b.dataset.rtab === name);
 
+  // --- 记录图片字段持久化（不影响现有测试的独立校验）---
+  const img1 = { name: "rx.jpg", type: "image/jpeg", dataUrl: "data:image/jpeg;base64,AAAA" };
+  const img2 = { name: "ex.jpg", type: "image/jpeg", dataUrl: "data:image/jpeg;base64,BBBB" };
+  const rec2 = await window.NurseStorage.appendRecord({
+    source: "text", transcript: "图片测试", hospital: "测试医院",
+    advice: { text: "图片测试", audio: null },
+    rxImages: [img1], examImages: [img2],
+  });
+  const loaded2 = await window.NurseStorage.load();
+  const lr = loaded2.records.find((x) => x.id === rec2.id);
+  assert("记录保存后保留药单图片(rxImages)", lr && lr.rxImages && lr.rxImages.length === 1);
+  assert("记录保存后保留报告图片(examImages)", lr && lr.examImages && lr.examImages.length === 1);
+
   // --- 子页签隔离（需求 #4：检查子页签不显示问诊记录）---
   assert("问诊子页签: 列表可见", $("#records-list") && !$("#records-list").hidden);
   assert("问诊子页签: 检查结果面板隐藏", $("#exam-pane") && $("#exam-pane").hidden);

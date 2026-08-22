@@ -294,6 +294,8 @@
       source: r.source || (r.transcript ? "text" : "upload"),
       transcript: r.transcript || "",
       images: Array.isArray(r.images) ? r.images.map(_normImage).filter(Boolean) : [],
+      rxImages: Array.isArray(r.rxImages) ? r.rxImages.map(_normImage).filter(Boolean) : [],
+      examImages: Array.isArray(r.examImages) ? r.examImages.map(_normImage).filter(Boolean) : [],
       advice: r.advice && typeof r.advice === "object" ? { text: r.advice.text || "", audio: _normImage(r.advice.audio) } : { text: r.transcript || "", audio: null },
       orderId: r.orderId || "",
       reportId: r.reportId || "",
@@ -421,6 +423,8 @@
       reportId: record.reportId || "",
       result: record.result || null,
       aiAdvice: record.aiAdvice || null,
+      rxImages: record.rxImages || [],
+      examImages: record.examImages || [],
       manual: !!record.manual,
       status: record.status || "done",
     });
