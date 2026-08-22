@@ -415,7 +415,7 @@
     return `<div class="order-card swipe-item" data-rel="order" data-id="${esc(o.id)}" data-swipe>
       <div class="swipe-content">
         <div class="order-card__head">
-          <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}</div>
+          <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}${o.aiGenerated ? '<span class="ai-badge">AI</span>' : ''}</div>
           <span class="order-card__date">${esc(o.date || "无日期")}</span>
         </div>
         <div class="order-card__meta">共 ${count} 种药品</div>
@@ -430,7 +430,7 @@
     if (!rp) return "";
     return `<div class="exam-entry swipe-item" data-rel="report" data-id="${esc(rp.id)}" data-swipe>
       <div class="swipe-content">
-        <div class="exam-entry__head"><b>${esc(rp.date || "")}</b>${rp.title ? " · " + esc(rp.title) : ""}<span class="exam-entry__tag">${rp.kind === "self" ? "自测" : "医院"}</span></div>
+        <div class="exam-entry__head"><b>${esc(rp.date || "")}</b>${rp.title ? " · " + esc(rp.title) : ""}<span class="exam-entry__tag">${rp.kind === "self" ? "自测" : "医院"}</span>${rp.aiGenerated ? '<span class="ai-badge">AI</span>' : ''}</div>
         <div class="exam-entry__inds">${(rp.indicators || []).map((i) => `<span class="exam-chip ${i.abnormal ? "is-bad" : ""}">${esc(i.name)} ${esc(i.value)}${esc(i.unit || "")}</span>`).join("")}</div>
       </div>
       <button class="swipe-del" data-swipe-del>删除</button>
@@ -654,10 +654,32 @@
   }
 
   // ---- AI 分析 ----
+  function showAIProgress(title) {
+    const body = $("#ai-modal-body");
+    body.innerHTML = `<div class="ai-progress">
+      <div class="ai-progress__spinner"></div>
+      <div class="ai-progress__title">${esc(title)}</div>
+      <pre class="ai-progress__output" id="ai-progress-output"></pre>
+    </div>`;
+    $("#ai-modal").hidden = false;
+  }
+  function updateAIProgress(text) {
+    const out = $("#ai-progress-output");
+    if (out) out.textContent = text;
+  }
+  function showAIError(title, msg) {
+    const body = $("#ai-modal-body");
+    body.innerHTML = `<div class="ai-error">
+      <div class="ai-error__icon">⚠️</div>
+      <div class="ai-error__title">${esc(title)}</div>
+      <div class="ai-error__msg">${esc(msg)}</div>
+      <button class="btn btn-ghost block" id="ai-error-close">关闭</button>
+    </div>`;
+    $("#ai-error-close").onclick = () => { $("#ai-modal").hidden = true; };
+  }
   async function runAIAnalyze(rec) {
-    toast("AI 分析中…");
+    showAIProgress("🤖 AI 分析中…");
     try {
-      // 图片取自关联的检查报告 / 药单（若无则为空）
       const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
       const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
       const res = await NurseAI.analyzeConsult({
@@ -665,11 +687,12 @@
         adviceText: rec.advice && rec.advice.text,
         examImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages : ((linkedReport && linkedReport.images) || []),
         rxImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages : ((linkedOrder && linkedOrder.images) || []),
+        onChunk: updateAIProgress,
       });
       aiModalState = { rec, data: res, type: "consult" };
       openAIModal();
     } catch (e) {
-      toast("AI 分析失败：" + (e && e.message ? e.message : e));
+      showAIError("AI 分析失败", e && e.message ? e.message : String(e));
     }
   }
   function openAIModal() {
@@ -753,9 +776,9 @@
       const indicators = examResults.map((e) => ({ name: e.name, value: e.value, unit: e.unit, range: e.range, abnormal: e.abnormal }));
       if (latest0.reportId) {
         const exist = (DATA.reports || []).find((rp) => rp.id === latest0.reportId);
-        await NurseStorage.updateReport(latest0.reportId, { indicators, title: (exist && exist.title) || "检查报告", date: latest0.visitDate || TODAY, kind: "hospital" });
+        await NurseStorage.updateReport(latest0.reportId, { indicators, title: (exist && exist.title) || "检查报告", date: latest0.visitDate || TODAY, kind: "hospital", aiGenerated: true });
       } else {
-        const rp = await NurseStorage.upsertReport({ title: latest0.hospital || "检查报告", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, indicators });
+        const rp = await NurseStorage.upsertReport({ title: latest0.hospital || "检查报告", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, indicators, aiGenerated: true });
         await NurseStorage.updateRecord(latest0.id, { reportId: rp.id });
       }
     }
@@ -783,9 +806,9 @@
         };
       });
       if (existOrder) {
-        await NurseStorage.updateOrder(latest0.orderId, { medicines, _full: full, source: existOrder.source || latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital" });
+        await NurseStorage.updateOrder(latest0.orderId, { medicines, _full: full, source: existOrder.source || latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital", aiGenerated: true });
       } else {
-        const o = await NurseStorage.upsertOrder({ source: latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, medicines, _full: full });
+        const o = await NurseStorage.upsertOrder({ source: latest0.hospital || "药单", date: latest0.visitDate || TODAY, kind: "hospital", recordId: latest0.id, medicines, _full: full, aiGenerated: true });
         await NurseStorage.updateRecord(latest0.id, { orderId: o.id });
       }
     }
@@ -804,14 +827,14 @@
 
   // ---- 医嘱分析 ----
   async function runAdviceAnalyze(rec) {
-    toast("医嘱分析中…");
+    showAIProgress("💡 医嘱分析中…");
     const ctx = buildAdviceContext(rec);
     try {
-      const res = await NurseAI.analyzeAdvice({ settings: DATA.settings, context: ctx });
+      const res = await NurseAI.analyzeAdvice({ settings: DATA.settings, context: ctx, onChunk: updateAIProgress });
       aiModalState = { rec, data: res, type: "advice" };
       openAdviceModal();
     } catch (e) {
-      toast("医嘱分析失败：" + (e && e.message ? e.message : e));
+      showAIError("医嘱分析失败", e && e.message ? e.message : String(e));
     }
   }
   function buildAdviceContext(rec) {
@@ -1076,7 +1099,7 @@
     el.innerHTML = entries
       .map((rp) => `<div class="exam-entry swipe-item" data-report-id="${esc(rp.id)}" data-swipe>
         <div class="swipe-content">
-          <div class="exam-entry__head"><b>${esc(rp.date || "")}</b>${rp.title ? " · " + esc(rp.title) : ""}<span class="exam-entry__tag">${rp.kind === "self" ? "自测" : "医院"}</span></div>
+          <div class="exam-entry__head"><b>${esc(rp.date || "")}</b>${rp.title ? " · " + esc(rp.title) : ""}<span class="exam-entry__tag">${rp.kind === "self" ? "自测" : "医院"}</span>${rp.aiGenerated ? '<span class="ai-badge">AI</span>' : ''}</div>
           <div class="exam-entry__inds">${(rp.indicators || []).map((i) => `<span class="exam-chip ${i.abnormal ? "is-bad" : ""}">${esc(i.name)} ${esc(i.value)}${esc(i.unit || "")}</span>`).join("")}</div>
         </div>
         <button class="swipe-del" data-swipe-del>删除</button>
@@ -1155,7 +1178,7 @@
         return `<div class="order-card swipe-item" data-order-id="${esc(o.id)}" data-swipe>
           <div class="swipe-content">
             <div class="order-card__head">
-              <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}</div>
+              <div class="order-card__title"><b>${esc(o.source || "未填来源")}</b>${kindTag}${o.aiGenerated ? '<span class="ai-badge">AI</span>' : ''}</div>
               <span class="order-card__date">${esc(o.date || "无日期")}</span>
             </div>
             <div class="order-card__meta">共 ${count} 种药品</div>

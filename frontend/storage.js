@@ -241,6 +241,7 @@
       recordId: o.recordId || "",
       medicines,
       images: Array.isArray(o.images) ? o.images.map(_normImage).filter(Boolean) : [],
+      aiGenerated: !!o.aiGenerated,
     };
   }
 
@@ -274,6 +275,7 @@
       recordId: rp.recordId || "",
       indicators,
       images: Array.isArray(rp.images) ? rp.images.map(_normImage).filter(Boolean) : [],
+      aiGenerated: !!rp.aiGenerated,
     };
   }
 

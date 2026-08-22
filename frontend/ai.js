@@ -295,6 +295,75 @@
     return parts;
   }
 
+  // Streaming 版 _chat：通过 SSE 增量回调实时输出 AI 文本
+  async function _chatStream(systemPrompt, userParts, settings, onChunk) {
+    const ai = settings.ai || {};
+    if (!ai.enabled || !ai.apiKey) throw new Error("AI 未启用或未配置 API Key");
+    const baseUrl = (ai.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const model = ai.model || "gpt-4o";
+    const body = {
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userParts },
+      ],
+      temperature: 0.2,
+      stream: true,
+    };
+    try { body.response_format = { type: "json_object" }; } catch (e) {}
+    let resp;
+    try {
+      resp = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + ai.apiKey },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      const msg = String(e && e.message ? e.message : e);
+      if (/Failed to fetch|NetworkError|CORS|cross-origin/i.test(msg)) {
+        throw new Error("网络或跨域(CORS)错误：请确认该接口允许浏览器跨域访问。");
+      }
+      throw new Error("请求失败：" + msg);
+    }
+    if (!resp.ok) {
+      let d = "";
+      try { d = await resp.text(); } catch (e) {}
+      if (resp.status === 401) throw new Error("API Key 无效或无权限（401）。");
+      if (resp.status === 404) throw new Error("接口路径不存在（404），请检查 Base URL。");
+      throw new Error("接口返回 " + resp.status + "：" + d.slice(0, 300));
+    }
+    // SSE streaming
+    if (resp.body && resp.body.getReader) {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let full = "", buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t || !t.startsWith("data:")) continue;
+          const data = t.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || "";
+            if (delta) { full += delta; if (onChunk) onChunk(full); }
+          } catch (e) {}
+        }
+      }
+      return _extractJSON(full);
+    }
+    // 回退：非 streaming
+    const data = await resp.json();
+    const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    if (onChunk) onChunk(content || "");
+    return _extractJSON(content);
+  }
+
   /**
    * AI 分析：把本次问诊的医嘱文字 + 检查结果图片 + 处方药图片 整理为结构化结果。
    * 返回 { advice, examResults[], prescription[] }
@@ -311,8 +380,8 @@
   ]
 }
 要求：
-- 指标尽量用标准名；数值、单位从图片提取，缺失则留空字符串；abnormal 依据参考范围或明显异常判断为 true/false。
-- 处方药尽量用通用名；剂量、频次、时间尽量从原文/图片提取。
+- 检查结果照片：逐行逐项提取图片中每一行检查指标，不要遗漏任何一项。每项包含指标名、数值、单位、参考范围。指标尽量用标准名；数值、单位从图片提取，缺失则留空字符串；abnormal 依据参考范围或明显异常判断为 true/false。
+- 处方药照片：逐项提取图片中每一种药品，不要遗漏。处方药尽量用通用名；剂量、频次、时间尽量从原文/图片提取。
 - 不编造信息，缺则留空或返回空数组。所有文字使用简体中文。`;
 
   async function analyzeConsult(opts) {
@@ -334,7 +403,7 @@
     });
     _imagesToParts(examImages, "【检查结果照片】请识别其中的指标名称、数值、单位与参考范围。").forEach((p) => userParts.push(p));
     _imagesToParts(rxImages, "【处方药照片】请识别药品名称、规格与用法用量。").forEach((p) => userParts.push(p));
-    const parsed = await _chat(CONSULT_SYSTEM, userParts, settings);
+    const parsed = await _chatStream(CONSULT_SYSTEM, userParts, settings, opts.onChunk);
     const arr = (x) => (Array.isArray(x) ? x : []);
     const result = {
       advice: String(parsed.advice || adviceText || ""),
@@ -378,7 +447,7 @@
     const ctx = (opts.context || "").trim();
     if (!ctx) throw new Error("没有提供分析所需的医嘱与检查信息");
     const userParts = [{ type: "text", text: ctx }];
-    const parsed = await _chat(ADVICE_SYSTEM, userParts, settings);
+    const parsed = await _chatStream(ADVICE_SYSTEM, userParts, settings, opts.onChunk);
     const arr = (x) => (Array.isArray(x) ? x : []);
     return {
       diet: arr(parsed.diet).map((x) => String(x)),
