@@ -495,12 +495,21 @@
       </div>`;
   }
 
+  function openLightbox(src) {
+    $("#img-lightbox-img").src = src;
+    $("#img-lightbox").hidden = false;
+  }
+  function closeLightbox() {
+    $("#img-lightbox").hidden = true;
+    $("#img-lightbox-img").src = "";
+  }
   let _recDirtyCheck = null;
   function renderDraftThumbs() {
     $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="order" data-idx="${i}">✕</button></div>`).join("");
     $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="report" data-idx="${i}">✕</button></div>`).join("");
     $$("#rec-order-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.orderImages.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
     $$("#rec-report-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.reportImages.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
+    $$("#rec-order-thumbs .thumb img, #rec-report-thumbs .thumb img").forEach((img) => (img.onclick = () => openLightbox(img.src)));
     const ap = $("#rec-audio-preview");
     if (ap) ap.innerHTML = recDraft.audio ? `<div class="audio-card">🎵 ${esc(recDraft.audio.name)} <button class="thumb__del" id="rec-audio-del">✕</button><br/><audio controls src="${recDraft.audio.dataUrl}" style="width:100%"></audio></div>` : "";
     const adel = $("#rec-audio-del");
@@ -971,12 +980,12 @@
   }
   function renderExamTrend(el) {
     if (!el) return;
-    const series = collectSeries();
+    const followed = DATA.followedIndicators || [];
+    const series = collectSeries().filter((s) => followed.includes(s.name));
     if (!series.length) {
-      el.innerHTML = '<div class="empty-tip">暂无趋势数据。</div>';
+      el.innerHTML = followed.length ? '<div class="empty-tip">关注的指标暂无趋势数据。</div>' : '<div class="empty-tip">请先在「关注指标」中添加需要跟踪的指标。</div>';
       return;
     }
-    const followed = DATA.followedIndicators || [];
     series.sort((a, b) => {
       const fa = followed.includes(a.name) ? 0 : 1;
       const fb = followed.includes(b.name) ? 0 : 1;
@@ -1280,6 +1289,12 @@
   function findRecord(id) {
     return (DATA.records || []).find((r) => r.id === id) || null;
   }
+  function deleteMedSwipe(item) {
+    const idx = +item.dataset.medIdx;
+    if (isNaN(idx)) return;
+    orderDraft.medicines.splice(idx, 1);
+    renderOrderMeds();
+  }
   function renderOrderMeds() {
     const box = $("#order-meds");
     if (!box) return;
@@ -1302,20 +1317,16 @@
           cab ? slotLabels(cab.timeSlots) : "",
         ].filter(Boolean).join(" · ");
         const st = cab ? drugStatus(cab) : "active";
-        return `<div class="order-med" data-med-idx="${i}">
-          <div class="order-med__main">
+        return `<div class="order-med swipe-item" data-med-idx="${i}" data-swipe>
+          <div class="swipe-content order-med__main">
             <div class="order-med__name">${esc(m.name)} <span class="cab-status ${esc(st)}">${statusLabel(st)}</span></div>
             ${meta ? `<div class="order-med__meta">${esc(meta)}</div>` : ""}
           </div>
-          <div class="order-med__ops">
-            <button type="button" class="icon-btn" data-med-edit="${i}">✎</button>
-            <button type="button" class="icon-btn icon-btn--danger" data-med-del="${i}">🗑</button>
-          </div>
+          <button class="swipe-del" data-swipe-del>删除</button>
         </div>`;
       })
       .join("");
-    $$("[data-med-edit]").forEach((b) => (b.onclick = () => openMedItemModal(+b.dataset.medEdit)));
-    $$("[data-med-del]").forEach((b) => (b.onclick = () => { orderDraft.medicines.splice(+b.dataset.medDel, 1); renderOrderMeds(); }));
+    $$("#order-meds .order-med__main").forEach((el) => (el.onclick = () => openMedItemModal(+el.closest("[data-med-idx]").dataset.medIdx)));
   }
   async function saveOrder() {
     const source = $("#order-f-source").value.trim();
@@ -2054,6 +2065,7 @@
     // 药品条目弹窗
     $("#meditem-save").onclick = saveMedItem;
     $("#meditem-cancel").onclick = () => { $("#med-item-modal").hidden = true; editingMedIdx = -1; };
+    $("#img-lightbox").addEventListener("click", closeLightbox);
     $("#med-item-modal").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") saveMedItem(); });
 
     // 检查报告弹窗
@@ -2067,6 +2079,7 @@
     attachSwipe($("#exam-list"), deleteReportSwipe);
     attachSwipe($("#orders-list"), deleteOrderSwipe);
     attachSwipe($("#cabinet-list"), deleteCabinetSwipe);
+    attachSwipe($("#order-meds"), deleteMedSwipe);
 
     // 设置
     $("#ai-enabled").onchange = saveAISettings;
@@ -2091,8 +2104,8 @@
   let examViewIndex = 0;
   let examViewSeries = [];
   function openExamView() {
-    examViewSeries = collectSeries();
     const followed = DATA.followedIndicators || [];
+    examViewSeries = collectSeries().filter((s) => followed.includes(s.name));
     examViewSeries.sort((a, b) => {
       const fa = followed.includes(a.name) ? 0 : 1;
       const fb = followed.includes(b.name) ? 0 : 1;
