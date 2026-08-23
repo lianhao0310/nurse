@@ -2136,7 +2136,7 @@
     el.addEventListener("touchstart", (e) => {
       if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
       const t = e.target;
-      if (t.closest && t.closest("input, textarea, select, .swipe, .table-wrap, .modal, .img-lightbox, .thumb")) { tracking = false; return; }
+      if (t.closest && t.closest("input, textarea, select, [data-swipe], .swipe-item, .table-wrap, .modal, .img-lightbox, .thumb")) { tracking = false; return; }
       sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
     }, { passive: true });
     el.addEventListener("touchend", (e) => {
