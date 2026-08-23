@@ -1,5 +1,5 @@
 /*
- * 私人护士 · 前端交互逻辑（v3 · 药单/检查报告架构）
+ * Nurse · 前端交互逻辑（v3 · 药单/检查报告架构）
  * 四页 Tab：首页 / 问诊记录 / 我的药箱 / 我的
  * 药箱页 =「药箱（按药名合并汇总只读）+ 药单（自建/医院药单）」
  * 首页用药提醒 = 汇总所有药单在用药品
@@ -104,7 +104,7 @@
     renderHome();
     renderRecords();
     renderCabinet();
-    setHeader("私人护士", "");
+    setHeader("Nurse", "");
   }
 
   function setHeader(title, sub) {
@@ -134,7 +134,7 @@
     $$(".tabbar__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.page === page));
     $$(".view").forEach((v) => (v.hidden = true));
     if (page === "home") {
-      setHeader("私人护士", "");
+      setHeader("Nurse", "");
       applyHomeTab();
       renderHome();
     } else if (page === "records") {
@@ -334,7 +334,7 @@
           const dose = d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "";
           notifs.push({
             id: id++,
-            title: "私人护士 · 用药提醒",
+            title: "Nurse · 用药提醒",
             body: (dose ? dose + " " : "") + d.name,
             schedule: { at, every: "day" },
           });
@@ -359,7 +359,7 @@
         const dose = d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "";
         notifTimers.push(
           setTimeout(() => {
-            try { new Notification("私人护士 · 用药提醒", { body: (dose ? dose + " " : "") + d.name }); } catch (e) {}
+            try { new Notification("Nurse · 用药提醒", { body: (dose ? dose + " " : "") + d.name }); } catch (e) {}
           }, diff)
         );
       }
@@ -372,7 +372,7 @@
         await LN.schedule({
           notifications: [{
             id: 99999,
-            title: "私人护士 · 用药提醒已开启",
+            title: "Nurse · 用药提醒已开启",
             body: "将每天按时提醒您用药：早 " + times.morning + " · 中 " + times.noon + " · 晚 " + times.evening,
             schedule: { at: new Date(Date.now() + 1000) },
           }],
@@ -382,7 +382,7 @@
     }
     try {
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("私人护士 · 用药提醒已开启", {
+        new Notification("Nurse · 用药提醒已开启", {
           body: "将每天按时提醒您用药：早 " + times.morning + " · 中 " + times.noon + " · 晚 " + times.evening,
         });
       }
@@ -1975,7 +1975,7 @@
     if (navigator.share) {
       try {
         const file = new File([json], "nurse-data-" + TODAY + ".json", { type: "application/json" });
-        await navigator.share({ title: "私人护士 · 健康档案备份", text: "存储到文件即可保存到 iCloud/本机。", files: [file] });
+        await navigator.share({ title: "Nurse · 健康档案备份", text: "存储到文件即可保存到 iCloud/本机。", files: [file] });
         toast("已调起分享，请选择「存储到文件」");
         return;
       } catch (e) { if (e && e.name === "AbortError") return; }

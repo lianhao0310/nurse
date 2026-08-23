@@ -1,5 +1,5 @@
 /*
- * 私人护士 · 图片上传工具（多图导入核心逻辑）
+ * Nurse · 图片上传工具（多图导入核心逻辑）
  * 从 <input type="file" multiple> 收集图片并压缩为 dataUrl。
  * 独立模块化以便单元测试：onchange 必须先把 input.files 快照为数组再重置 input，
  * 否则异步压缩遍历途中 input.value="" 会清空 FileList，导致只处理首张图。

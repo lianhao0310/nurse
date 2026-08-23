@@ -2,7 +2,7 @@
   "name": "nurse",
   "version": "1.0.0",
   "private": true,
-  "description": "私人护士 App：医患对话录音转写→医嘱/用药提醒/护理任务/饮食禁忌/风险预警（Capacitor iOS 封装，本地运行）",
+  "description": "Nurse App：医患对话录音转写→医嘱/用药提醒/护理任务/饮食禁忌/风险预警（Capacitor iOS 封装，本地运行）",
   "scripts": {
     "sync": "cap sync",
     "open:ios": "cap open ios",

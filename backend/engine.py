@@ -5,10 +5,10 @@
 输出：四模块结构化结果
   - medications : 药物清单
   - tasks       : 行为代办清单（监测/复诊/生活）
-  - advice      : 私人护士叮嘱（饮食与禁忌）
+  - advice      : Nurse叮嘱（饮食与禁忌）
   - risks       : 风险预警（异常处理）
   - reminders   : 由药物派生的用药提醒时间表（供前端展示）
-设计继承自《私人护士：多病种医嘱解析引擎 v1.0》四模块规范。
+设计继承自《Nurse：多病种医嘱解析引擎 v1.0》四模块规范。
 """
 import re
 import datetime as _dt

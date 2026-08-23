@@ -1,5 +1,5 @@
 /*
- * 私人护士 · 医嘱解析引擎（客户端规则版）
+ * Nurse · 医嘱解析引擎（客户端规则版）
  * 移植自 backend/engine.py + knowledge.py
  * 完全在浏览器 / iOS WebView 本地运行，零后端依赖。
  *

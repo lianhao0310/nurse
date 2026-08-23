@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""私人护士 App —— 后端服务
+"""Nurse App —— 后端服务
 - /api/health  健康检查
 - /api/parse   POST {transcript} -> 四模块结构化结果（LLM 优先，规则兜底）
 - /           托管前端静态文件（移动端风格 SPA）
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from engine import parse_transcript
 from llm import llm_available, parse_with_llm
 
-app = FastAPI(title="私人护士 App 后端", version="1.0")
+app = FastAPI(title="Nurse App 后端", version="1.0")
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 FRONTEND_DIR = os.path.abspath(FRONTEND_DIR)
