@@ -348,17 +348,10 @@
         .map((rec) => {
           const summary = rec.advice && rec.advice.text ? rec.advice.text : rec.result && rec.result.summary ? rec.result.summary : rec.transcript || "（无医嘱文字）";
           const title = (rec.hospital || "未填医院") + (rec.visitDate ? " · " + rec.visitDate : "");
-          const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
-          const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
-          const hasImg = (linkedOrder && linkedOrder.images && linkedOrder.images.length) || (linkedReport && linkedReport.images && linkedReport.images.length);
-          const badges = (hasImg ? '<span class="rec-card__badge badge-img">📷</span>' : "") +
-            (rec.orderId ? '<span class="rec-card__badge badge-link">💊 药单</span>' : "") +
-            (rec.reportId ? '<span class="rec-card__badge badge-link">🧪 报告</span>' : "");
           return `<div class="rec-card swipe-item" data-rec-id="${esc(rec.id)}" data-swipe>
             <div class="swipe-content">
               <div class="rec-card__top">
                 <span class="rec-card__date">${esc(title)}</span>
-                <span>${badges}</span>
               </div>
               <div class="rec-card__summary">👨‍⚕️ ${esc((rec.doctor || "未知医生") + "：" + summary)}</div>
             </div>
@@ -922,6 +915,7 @@
   }
 
   function closeView() {
+    closeLightbox();
     currentRecordId = null; // 离开详情页清空，避免污染后续新建（药单/报告）的关联判断
     $$(".view").forEach((v) => (v.hidden = true));
     goPage("records");
@@ -2034,6 +2028,46 @@
     }
   }
 
+  // ===================== 子页签切换 + 左右滑动 =====================
+  function switchRecordsTab(tab) {
+    $$(".records-subtabs .home-tab").forEach((x) => x.classList.toggle("is-active", x.dataset.rtab === tab));
+    renderRecords();
+  }
+  function switchCabinetTab(tab) {
+    $$(".cab-subtabs .home-tab").forEach((x) => x.classList.toggle("is-active", x.dataset.ctab === tab));
+    $("#cab-tab").hidden = tab !== "cab";
+    $("#orders-tab").hidden = tab !== "orders";
+    renderCabinet();
+  }
+  // 子页签区域左右滑动切换：容器内水平滑动 >60px 切上/下页签，stopPropagation 避免触发全局右滑返回
+  function bindPaneSwipe(el, tabs) {
+    if (!el) return;
+    let sx = 0, sy = 0, tracking = false;
+    el.addEventListener("touchstart", (e) => {
+      if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+      const t = e.target;
+      if (t.closest && t.closest("input, textarea, select, .swipe, .table-wrap, .modal, .img-lightbox, .thumb")) { tracking = false; return; }
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+    }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      if (!tracking) return;
+      tracking = false;
+      const dx = (e.changedTouches ? e.changedTouches[0].clientX : 0) - sx;
+      const dy = (e.changedTouches ? e.changedTouches[0].clientY : 0) - sy;
+      if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy)) return;
+      const idx = tabs.findIndex((t) => t.isActive());
+      if (idx < 0) return;
+      const next = dx < 0 ? idx + 1 : idx - 1;
+      if (next < 0 || next >= tabs.length) return;
+      tabs[next].activate();
+      e.stopPropagation();
+    }, { passive: true });
+  }
+  function activeTabData(sel, attr) {
+    const b = $(sel);
+    return b ? b.dataset[attr] : "";
+  }
+
   // ===================== 右滑返回 / 关闭弹窗 =====================
   const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
   function closeTopModal() {
@@ -2053,6 +2087,7 @@
     return false;
   }
   function swipeBackAction() {
+    if (!$("#img-lightbox").hidden) { closeLightbox(); return; }
     if (closeTopModal()) return;
     if (!$("#record-view").hidden) { closeView(); return; }
     if (!$("#exam-view").hidden) { $("#exam-view").hidden = true; goPage("records"); return; }
@@ -2150,10 +2185,7 @@
 
     // 问诊记录
     $("#btn-add-record").onclick = () => openRecord(null);
-    $$(".records-subtabs .home-tab").forEach((b) => (b.onclick = () => {
-      $$(".records-subtabs .home-tab").forEach((x) => x.classList.toggle("is-active", x === b));
-      renderRecords();
-    }));
+    $$(".records-subtabs .home-tab").forEach((b) => (b.onclick = () => switchRecordsTab(b.dataset.rtab)));
     $("#records-list").onclick = (e) => { const c = e.target.closest(".rec-card"); if (c) openRecord(c.dataset.recId); };
     $("#record-back").onclick = () => closeView();
     $("#exam-back").onclick = () => { $$(".view").forEach((v) => (v.hidden = true)); goPage("records"); };
@@ -2173,12 +2205,20 @@
     $("#follow-input").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowIndicator(); });
 
     // 药箱 / 药单
-    $$(".cab-subtabs .home-tab").forEach((b) => (b.onclick = () => {
-      $$(".cab-subtabs .home-tab").forEach((x) => x.classList.toggle("is-active", x === b));
-      $("#cab-tab").hidden = b.dataset.ctab !== "cab";
-      $("#orders-tab").hidden = b.dataset.ctab !== "orders";
-      renderCabinet();
-    }));
+    $$(".cab-subtabs .home-tab").forEach((b) => (b.onclick = () => switchCabinetTab(b.dataset.ctab)));
+    // 子页签左右滑动切换（首页/问诊/药箱）
+    bindPaneSwipe($("#home-tabs"), [
+      { isActive: () => homeTab === "remind", activate: () => switchHomeTab("remind") },
+      { isActive: () => homeTab === "aidvice", activate: () => switchHomeTab("aidvice") },
+    ]);
+    bindPaneSwipe($("#page-records"), [
+      { isActive: () => activeTabData(".records-subtabs .home-tab.is-active", "rtab") === "list", activate: () => switchRecordsTab("list") },
+      { isActive: () => activeTabData(".records-subtabs .home-tab.is-active", "rtab") === "exam", activate: () => switchRecordsTab("exam") },
+    ]);
+    bindPaneSwipe($("#page-cabinet"), [
+      { isActive: () => activeTabData(".cab-subtabs .home-tab.is-active", "ctab") === "cab", activate: () => switchCabinetTab("cab") },
+      { isActive: () => activeTabData(".cab-subtabs .home-tab.is-active", "ctab") === "orders", activate: () => switchCabinetTab("orders") },
+    ]);
     $$(".cab-filter").forEach((b) => (b.onclick = () => { cabinetState.filter = b.dataset.filter; $$(".cab-filter").forEach((x) => x.classList.toggle("is-active", x === b)); renderCabinetSummary(); }));
     $("#btn-add-order").onclick = () => openOrderModal(null);
     // 药箱药品：点击进编辑

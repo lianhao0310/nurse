@@ -1998,6 +1998,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .order-card__title b {
   font-size: 1.05em;
@@ -2259,6 +2260,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-weight: 600;
   margin-left: 6px;
   vertical-align: middle;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ---- 图片放大预览 ---- */
