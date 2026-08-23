@@ -87,8 +87,8 @@
               <button class="btn btn-primary block" id="btn-add-report">＋ 添加自测报告</button>
               <div class="block-head"><h2>⭐ 关注指标</h2><button type="button" class="icon-btn block-head__btn" id="follow-manage-btn" title="管理关注指标">⚙</button></div>
               <div id="exam-follow" class="exam-follow"></div>
-              <div class="block-head"><h2>📈 关注指标趋势（左右滑动切换）</h2></div>
-              <div id="exam-trend" class="exam-trend swipe"></div>
+              <div class="block-head"><h2>📈 关注指标趋势</h2></div>
+              <div id="exam-trend" class="exam-trend"></div>
               <div class="block-head"><h2>🧾 检查结果明细</h2></div>
               <div id="exam-list" class="exam-list"></div>
               <div id="exam-empty" class="empty-tip big" hidden>还没有检查报告。<br />点「添加自测报告」录入，或从问诊记录添加医院检查报告。</div>
@@ -447,7 +447,7 @@
             <button class="modal__close" data-close="follow">✕</button>
           </div>
           <div class="modal__body">
-            <label class="field"><span>新增关注指标</span><input type="text" id="follow-input" placeholder="输入指标名，如：血糖" /></label>
+            <label class="field"><span>新增关注指标</span><input type="text" id="follow-input" placeholder="输入或选择指标名" list="follow-suggestions" /><datalist id="follow-suggestions"></datalist></label>
             <button class="btn btn-primary block" id="follow-add">＋ 添加关注</button>
             <div class="detail-sec"><h4>已关注</h4><div id="follow-list" class="follow-mgr-list"></div></div>
             <div class="capture-actions">

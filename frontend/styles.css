@@ -1721,16 +1721,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* ===================== 检查结果趋势 ===================== */
-.exam-trend { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
-.exam-trend.swipe {
-  flex-direction: row;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-}
-.exam-trend.swipe .trend-card { flex: 0 0 82%; max-width: 320px; scroll-snap-align: start; }
+.exam-trend { margin-bottom: 8px; }
+.trend-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory; }
+.trend-tab { flex: 0 0 auto; padding: 6px 14px; border-radius: 999px; background: #f0f0f0; color: var(--ink-2); font-size: 0.9em; font-weight: 600; border: none; cursor: pointer; scroll-snap-align: start; }
+.trend-tab.is-active { background: var(--primary); color: #fff; }
 .trend-card {
   background: #fff;
   border-radius: var(--radius);
@@ -2127,17 +2121,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* ---- 检查结果 整页趋势视图 ---- */
-.exam-view-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.exam-view-nav__cur {
-  font-weight: 700;
-  font-size: 1em;
-}
 .exam-view-swipe {
   display: flex;
   overflow-x: auto;

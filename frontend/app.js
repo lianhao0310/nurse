@@ -801,12 +801,13 @@
           meal: "any",
         };
         if (!same) full[m.name] = fullData; // 新药 → 建档药箱（主属性取 AI 解析结果）
+        const aiQty = parseSpecQty(m.spec) * (m.packCount || 0);
         return {
           id: same ? same.id : undefined,
           name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "",
           spec: m.spec || "",
           packCount: m.packCount || 0,
-          qty: same ? same.qty : 0,
+          qty: same ? same.qty : aiQty,
           price: same ? same.price : 0,
         };
       });
@@ -983,22 +984,24 @@
       return;
     }
     series.sort((a, b) => {
-      const fa = followed.includes(a.name) ? 0 : 1;
-      const fb = followed.includes(b.name) ? 0 : 1;
-      return fa - fb;
+      const fa = followed.indexOf(a.name);
+      const fb = followed.indexOf(b.name);
+      return (fa < 0 ? 999 : fa) - (fb < 0 ? 999 : fb);
     });
-    el.innerHTML = series
-      .map((s) => {
-        const isF = followed.includes(s.name);
-        const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
-        const latest = s.points[s.points.length - 1];
-        return `<div class="trend-card ${isF ? "is-followed" : ""}">
-          <div class="trend-card__head"><b>${esc(s.name)}</b>${isF ? '<span class="trend-star">⭐</span>' : ""}</div>
-          <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
-          ${chart}
-        </div>`;
-      })
-      .join("");
+    if (trendTabIndex >= series.length) trendTabIndex = 0;
+    const tabsHtml = series.map((s, i) => `<button class="trend-tab ${i === trendTabIndex ? "is-active" : ""}" data-trend-tab="${i}">${esc(s.name)}</button>`).join("");
+    const s = series[trendTabIndex];
+    const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
+    const latest = s.points[s.points.length - 1];
+    el.innerHTML = `<div class="trend-tabs">${tabsHtml}</div>
+      <div class="trend-card is-followed" data-trend-detail="${trendTabIndex}">
+        <div class="trend-card__head"><b>${esc(s.name)}</b><span class="trend-star">⭐</span></div>
+        <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
+        ${chart}
+      </div>`;
+    $$("[data-trend-tab]").forEach((b) => (b.onclick = () => { trendTabIndex = +b.dataset.trendTab; renderExamTrend(el); }));
+    const card = $("[data-trend-detail]");
+    if (card) card.onclick = () => openExamView(trendTabIndex);
   }
   function singlePoint(s) {
     const p = s.points[0];
@@ -1065,6 +1068,10 @@
   // 关注指标 管理弹窗
   function openFollowModal() {
     $("#follow-input").value = "";
+    const allNames = collectSeries().map((s) => s.name);
+    const followed = new Set(DATA.followedIndicators || []);
+    const dl = $("#follow-suggestions");
+    if (dl) dl.innerHTML = allNames.filter((n) => !followed.has(n)).map((n) => `<option value="${esc(n)}">`).join("");
     renderFollowList();
     $("#follow-modal").hidden = false;
   }
@@ -2039,10 +2046,7 @@
       const c = e.target.closest(".exam-entry");
       if (c) openReportModal(c.dataset.reportId);
     });
-    $("#exam-trend").addEventListener("click", (e) => {
-      const card = e.target.closest(".trend-card");
-      if (card) openExamView();
-    });
+
 
     // 关注指标 管理（标题右侧齿轮）
     $("#follow-manage-btn").onclick = () => openFollowModal();
@@ -2117,18 +2121,19 @@
     $("#import-file").onchange = (e) => { if (e.target.files && e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; };
   }
 
-  // ===================== 检查结果 整页趋势视图（左右滑动切换指标） =====================
+  // ===================== 检查结果 整页趋势视图 =====================
   let examViewIndex = 0;
   let examViewSeries = [];
-  function openExamView() {
+  let trendTabIndex = 0;
+  function openExamView(idx) {
     const followed = DATA.followedIndicators || [];
     examViewSeries = collectSeries().filter((s) => followed.includes(s.name));
     examViewSeries.sort((a, b) => {
-      const fa = followed.includes(a.name) ? 0 : 1;
-      const fb = followed.includes(b.name) ? 0 : 1;
-      return fa - fb;
+      const fa = followed.indexOf(a.name);
+      const fb = followed.indexOf(b.name);
+      return (fa < 0 ? 999 : fa) - (fb < 0 ? 999 : fb);
     });
-    examViewIndex = 0;
+    examViewIndex = (typeof idx === "number" && idx >= 0 && idx < examViewSeries.length) ? idx : 0;
     $$(".view").forEach((v) => (v.hidden = true));
     $$(".page").forEach((p) => (p.hidden = true));
     $("#exam-view").hidden = false;
@@ -2139,38 +2144,13 @@
     const s = examViewSeries[examViewIndex];
     const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
     const latest = s.points[s.points.length - 1];
-    $("#exam-view .view-header__sub").textContent = (examViewIndex + 1) + " / " + examViewSeries.length;
+    $("#exam-view .view-header__sub").textContent = s.name;
     $("#exam-trend-full").innerHTML = `<div class="trend-card is-followed">
       <div class="trend-card__head"><b>${esc(s.name)}</b><span class="trend-star">⭐</span></div>
       <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
       ${chart}
     </div>`;
-    const listEl = $("#exam-list-full");
-    const byName = {};
-    examViewSeries.forEach((x) => (byName[x.name] = x));
-    listEl.innerHTML = `<div class="exam-view-nav">
-      <button class="btn btn-ghost btn-sm" id="exam-prev" ${examViewIndex <= 0 ? "disabled" : ""}>‹ 上一个</button>
-      <span class="exam-view-nav__cur">${esc(s.name)}</span>
-      <button class="btn btn-ghost btn-sm" id="exam-next" ${examViewIndex >= examViewSeries.length - 1 ? "disabled" : ""}>下一个 ›</button>
-    </div>
-    <div class="exam-view-swipe" id="exam-view-swipe">${s.points.map((p) => `<div class="exam-pt ${p.abnormal ? "is-bad" : ""}"><div class="exam-pt__date">${esc(p.date || "")}</div><div class="exam-pt__val">${esc(p.value + " " + (s.unit || ""))}</div>${p.abnormal ? '<span class="tag tag--bad">异常</span>' : ""}</div>`).join("")}</div>`;
-    $("#exam-prev").onclick = () => { if (examViewIndex > 0) { examViewIndex--; renderExamView(); } };
-    $("#exam-next").onclick = () => { if (examViewIndex < examViewSeries.length - 1) { examViewIndex++; renderExamView(); } };
-    // 左右滑动切换指标
-    let sx = 0, sy = 0, tracking = false;
-    const swipeEl = $("#exam-view-swipe");
-    if (swipeEl) {
-      swipeEl.ontouchstart = (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; tracking = true; };
-      swipeEl.ontouchend = (e) => {
-        if (!tracking) return; tracking = false;
-        const dx = (e.changedTouches[0].clientX) - sx;
-        const dy = (e.changedTouches[0].clientY) - sy;
-        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-          if (dx < 0 && examViewIndex < examViewSeries.length - 1) { examViewIndex++; renderExamView(); }
-          else if (dx > 0 && examViewIndex > 0) { examViewIndex--; renderExamView(); }
-        }
-      };
-    }
+    $("#exam-list-full").innerHTML = `<div class="exam-view-swipe">${s.points.map((p) => `<div class="exam-pt ${p.abnormal ? "is-bad" : ""}"><div class="exam-pt__date">${esc(p.date || "")}</div><div class="exam-pt__val">${esc(p.value + " " + (s.unit || ""))}</div>${p.abnormal ? '<span class="tag tag--bad">异常</span>' : ""}</div>`).join("")}</div>`;
   }
   function renderExamTrendFull() {
     if (!$("#exam-view").hidden) renderExamView();
