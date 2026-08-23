@@ -990,7 +990,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .cab-item.disabled .swipe-content {
   border-left-color: var(--ink-3);
-  opacity: 0.85;
+}
+.cab-item.disabled .cab-item__top {
+  opacity: 0.6;
 }
 .cab-item.out .swipe-content {
   border-left-color: var(--danger);
