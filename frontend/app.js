@@ -714,7 +714,7 @@
         <button type="button" class="btn btn-ghost btn-sm" id="ai-exam-add">＋ 添加指标</button>
       </div>
       <div class="detail-sec"><h4>💊 处方药</h4>
-        <div class="table-wrap"><table class="edit-table" id="ai-rx-t"><thead><tr><th>药名</th><th>规格</th><th>包装</th><th>数量</th><th>剂量</th><th>频次</th><th>时间</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap"><table class="edit-table" id="ai-rx-t"><thead><tr><th>药名</th><th>规格</th><th>数量</th><th></th></tr></thead><tbody></tbody></table></div>
         <button type="button" class="btn btn-ghost btn-sm" id="ai-rx-add">＋ 添加药品</button>
       </div>
       <div class="capture-actions">
@@ -736,16 +736,12 @@
     const rxFields = [
       { cell: (r) => `<input data-f="name" value="${esc(r.name)}"/>` },
       { cell: (r) => `<input data-f="spec" value="${esc(r.spec)}"/>` },
-      { cell: (r) => `<input data-f="packSpec" value="${esc(r.packSpec || "")}"/>` },
       { cell: (r) => `<input type="number" data-f="packCount" value="${esc(r.packCount || 0)}"/>` },
-      { cell: (r) => `<input data-f="dose" value="${esc(r.dose)}"/>` },
-      { cell: (r) => `<input data-f="freq" value="${esc(r.freq)}"/>` },
-      { cell: (r) => `<input data-f="time" value="${esc(r.time)}"/>` },
     ];
     renderT("#ai-exam-t", data.examResults, examFields);
     renderT("#ai-rx-t", data.prescription, rxFields);
     $("#ai-exam-add").onclick = () => { data.examResults.push({ name: "", value: "", unit: "", range: "", abnormal: false }); renderT("#ai-exam-t", data.examResults, examFields); };
-    $("#ai-rx-add").onclick = () => { data.prescription.push({ name: "", spec: "", packSpec: "", packCount: 0, dose: "", freq: "", time: "" }); renderT("#ai-rx-t", data.prescription, rxFields); };
+    $("#ai-rx-add").onclick = () => { data.prescription.push({ name: "", spec: "", packCount: 0 }); renderT("#ai-rx-t", data.prescription, rxFields); };
     $("#ai-save").onclick = saveAIModal;
     $("#ai-cancel").onclick = () => { aiModalState = null; $("#ai-modal").hidden = true; };
     $("#ai-modal").hidden = false;
@@ -767,19 +763,14 @@
         manufacturer: "",
         alias: "",
         spec: row.querySelector('[data-f="spec"]').value.trim(),
-        packSpec: row.querySelector('[data-f="packSpec"]').value.trim(),
         packCount: Number(row.querySelector('[data-f="packCount"]').value) || 0,
-        dose: row.querySelector('[data-f="dose"]').value.trim(),
-        freq: row.querySelector('[data-f="freq"]').value.trim(),
-        time: row.querySelector('[data-f="time"]').value.trim(),
-        note: "",
       }))
       .filter((x) => x.name);
     const adviceText = $("#ai-advice").value.trim();
     // 1. 保存医嘱文字与解析结果到记录
     rec.advice = { text: adviceText, audio: rec.advice ? rec.advice.audio : null };
     rec.result = rec.result || {};
-    rec.result.medications = prescription.map((m) => ({ name: m.name, dose: m.dose || m.spec, freq: m.freq, time: m.time, note: m.note, disease: "" }));
+    rec.result.medications = prescription.map((m) => ({ name: m.name, spec: m.spec, packCount: m.packCount, disease: "" }));
     await NurseStorage.updateRecord(rec.id, { advice: rec.advice, result: rec.result });
     DATA = await NurseStorage.load();
     const latest0 = (DATA.records || []).find((r) => r.id === rec.id) || rec;
@@ -801,23 +792,21 @@
       const oldMeds = existOrder ? (existOrder.medicines || []) : [];
       const full = {};
       const medicines = prescription.map((m) => {
-        const doseNum = parseFloat(m.dose);
         const same = oldMeds.find((om) => om.name === m.name);
         const fullData = {
           spec: m.spec || "",
-          doseAmount: doseNum > 0 ? doseNum : 0,
+          doseAmount: 0,
           doseUnit: "片",
           timeSlots: ["morning"],
           meal: "any",
         };
         if (!same) full[m.name] = fullData; // 新药 → 建档药箱（主属性取 AI 解析结果）
-        const aiQty = parseSpecQty(m.packSpec) * (m.packCount || 0);
         return {
           id: same ? same.id : undefined,
           name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "",
-          spec: m.packSpec || "",
+          spec: m.spec || "",
           packCount: m.packCount || 0,
-          qty: same ? same.qty : aiQty,
+          qty: same ? same.qty : 0,
           price: same ? same.price : 0,
         };
       });

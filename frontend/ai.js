@@ -376,12 +376,12 @@
     { "name":"指标名（用标准名，如 收缩压、空腹血糖）", "value":"数值", "unit":"单位", "range":"参考范围(可选)", "abnormal": false }
   ],
   "prescription": [
-    { "name":"药品通用名", "spec":"规格/剂量(如 5mg)", "packSpec":"包装规格(如 30mg*100，表示一盒100片)", "packCount":"药品数(如 10，表示10盒)", "dose":"单次用量(如 1片)", "freq":"频次(如 1次/日)", "time":"服药时间(如 早饭后)", "note":"说明(可选)" }
+    { "name":"药品通用名", "spec":"规格(如 5mg、0.25g)", "packCount":"数量(如 2，表示2盒)" }
   ]
 }
 要求：
 - 检查结果照片：逐行逐项提取图片中每一行检查指标，不要遗漏任何一项。每项包含指标名、数值、单位、参考范围。指标尽量用标准名；数值、单位从图片提取，缺失则留空字符串；abnormal 依据参考范围或明显异常判断为 true/false。
-- 处方药照片：逐项提取图片中每一种药品，不要遗漏。处方药尽量用通用名；剂量、频次、时间尽量从原文/图片提取。
+- 处方药照片：逐项提取图片中每一种药品，不要遗漏。处方药尽量用通用名；规格和数量尽量从原文/图片提取。
 - 不编造信息，缺则留空或返回空数组。所有文字使用简体中文。`;
 
   async function analyzeConsult(opts) {
@@ -417,12 +417,7 @@
       prescription: arr(parsed.prescription).map((p) => ({
         name: String(p.name || "").trim(),
         spec: String(p.spec || ""),
-        packSpec: String(p.packSpec || ""),
         packCount: Number(p.packCount) || 0,
-        dose: String(p.dose || ""),
-        freq: String(p.freq || ""),
-        time: String(p.time || ""),
-        note: String(p.note || ""),
       })),
     };
     if (!result.advice && !result.examResults.length && !result.prescription.length) {

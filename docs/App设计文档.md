@@ -134,7 +134,7 @@ v2.0 根据当前代码实现全面修订，每项功能标注实现状态（✅
 
 ### 4.4 药箱与药单管理 ✅
 - **药箱（cabinet）为药品主档**，按药名唯一：厂家/别名/单位规格/库存/单次用量/时段/餐次/阈值/状态/备注/针对病症。
-- **药单（orders）条目只记引用属性**：药名/厂家/别名/包装规格/药品数/数量/单价。药名创建后不可改。
+- **药单（orders）条目只记引用属性**：药名/厂家/别名/规格/数量/总数量/单价。药名创建后不可改。
 - **库存同步**：药单保存/删除/条目增删均自动 diff 同步药箱（新药入库、编辑按差额调整、删除回退，无引用药品自动清理）。
 - **新药建档**：药单内添加新药可展开全属性一次建档到药箱。
 - **每日消耗**：由「单次用量 × 时段数」自动计算，不再手动录入。
@@ -350,8 +350,8 @@ FollowedIndicators(关注指标) ⊂ Indicator names
 | name | string | 药名（创建后不可改） |
 | manufacturer | string | 厂家 |
 | alias | string | 别名 |
-| spec | string | 包装规格（如 30mg*100） |
-| packCount | number | 药品数（盒数） |
+| spec | string | 规格（如 5mg） |
+| packCount | number | 数量 |
 | qty | number | 总数量（自动计算或手填） |
 | price | number | 单价 |
 
@@ -494,7 +494,7 @@ FollowedIndicators(关注指标) ⊂ Indicator names
 {
   "advice": "归纳后的医嘱文字",
   "examResults": [{ "name","value","unit","range","abnormal" }],
-  "prescription": [{ "name","spec","packSpec","packCount","dose","freq","time","note" }]
+  "prescription": [{ "name","spec","packCount" }]
 }
 要求：逐行逐项提取，不遗漏，不编造，缺则留空。所有文字使用简体中文。
 ```
@@ -519,7 +519,7 @@ FollowedIndicators(关注指标) ⊂ Indicator names
     { "name": "舒张压", "value": "92", "unit": "mmHg", "range": "60-90", "abnormal": true }
   ],
   "prescription": [
-    { "name": "苯磺酸氨氯地平片", "spec": "5mg", "packSpec": "5mg*28", "packCount": 2, "dose": "1片", "freq": "1次/日", "time": "晨起空腹", "note": "" }
+    { "name": "苯磺酸氨氯地平片", "spec": "5mg", "packCount": 2 }
   ]
 }
 ```
