@@ -293,17 +293,60 @@
   }
 
   // 用药提醒通知（数据源=所有药单在用药品）
+  // 优先使用 Capacitor Local Notifications（iOS 原生，app 关闭后也能提醒）；
+  // 降级到浏览器 Notification + setTimeout（仅开发调试用）
   let notifTimers = [];
+  let _notifIds = [];
+  function getLocalNotif() {
+    if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.LocalNotifications) {
+      return Capacitor.Plugins.LocalNotifications;
+    }
+    return null;
+  }
   function clearNotifTimers() {
     notifTimers.forEach((t) => clearTimeout(t));
     notifTimers = [];
   }
-  function scheduleNotifications(done) {
+  async function clearNotifScheduled() {
+    const LN = getLocalNotif();
+    if (LN && _notifIds.length) {
+      try { await LN.cancel({ notifications: _notifIds.map((id) => ({ id })) }); } catch (e) {}
+    }
+    _notifIds = [];
+  }
+  async function scheduleNotifications(done) {
     clearNotifTimers();
+    await clearNotifScheduled();
     if (!DATA.settings.notifications) return;
+    const meds = activeMedicines();
+    const LN = getLocalNotif();
+    if (LN) {
+      const notifs = [];
+      let id = 1;
+      for (const d of meds) {
+        for (const slot of d.timeSlots || []) {
+          const key = d.id + "@" + slot;
+          if (done.medDoses[key]) continue;
+          const [hh, mm] = slotTime(slot).split(":").map(Number);
+          const at = new Date();
+          at.setHours(hh, mm, 0, 0);
+          if (at.getTime() <= Date.now()) at.setDate(at.getDate() + 1);
+          const dose = d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "";
+          notifs.push({
+            id: id++,
+            title: "私人护士 · 用药提醒",
+            body: (dose ? dose + " " : "") + d.name,
+            schedule: { at, every: "day" },
+          });
+        }
+      }
+      _notifIds = notifs.map((n) => n.id);
+      if (notifs.length) { try { await LN.schedule({ notifications: notifs }); } catch (e) {} }
+      return;
+    }
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const now = Date.now();
-    for (const d of activeMedicines()) {
+    for (const d of meds) {
       for (const slot of d.timeSlots || []) {
         const key = d.id + "@" + slot;
         if (done.medDoses[key]) continue;
@@ -316,15 +359,27 @@
         const dose = d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "";
         notifTimers.push(
           setTimeout(() => {
-            try {
-              new Notification("私人护士 · 用药提醒", { body: (dose ? dose + " " : "") + d.name });
-            } catch (e) {}
+            try { new Notification("私人护士 · 用药提醒", { body: (dose ? dose + " " : "") + d.name }); } catch (e) {}
           }, diff)
         );
       }
     }
   }
-  function notifyNow(times) {
+  async function notifyNow(times) {
+    const LN = getLocalNotif();
+    if (LN) {
+      try {
+        await LN.schedule({
+          notifications: [{
+            id: 99999,
+            title: "私人护士 · 用药提醒已开启",
+            body: "将每天按时提醒您用药：早 " + times.morning + " · 中 " + times.noon + " · 晚 " + times.evening,
+            schedule: { at: new Date(Date.now() + 1000) },
+          }],
+        });
+      } catch (e) {}
+      return;
+    }
     try {
       if ("Notification" in window && Notification.permission === "granted") {
         new Notification("私人护士 · 用药提醒已开启", {
@@ -483,9 +538,8 @@
         </div>
 
         <div class="detail-actions">
-          <button class="btn btn-primary block" id="rec-save">💾 保存</button>
           ${aiOn ? `<button class="btn btn-ghost block" id="rec-ai-analyze">🤖 AI 分析</button><button class="btn btn-ghost block" id="rec-advice-analyze">💡 医嘱分析</button>` : ""}
-          <button class="btn btn-ghost block" id="rec-cancel">返回</button>
+          <div class="rec-autosave-hint">修改自动保存 · 右滑返回</div>
         </div>
       </div>`;
   }
@@ -498,7 +552,10 @@
     $("#img-lightbox").hidden = true;
     $("#img-lightbox-img").src = "";
   }
-  let _recDirtyCheck = null;
+  let _recAutoSaveTimer = null;
+  let _recAutoSaveDirty = false;
+  let _editingRec = null;
+  let _recAutoSaveTrigger = null;
   function renderDraftThumbs() {
     $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="order" data-idx="${i}">✕</button></div>`).join("");
     $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="report" data-idx="${i}">✕</button></div>`).join("");
@@ -509,7 +566,7 @@
     if (ap) ap.innerHTML = recDraft.audio ? `<div class="audio-card">🎵 ${esc(recDraft.audio.name)} <button class="thumb__del" id="rec-audio-del">✕</button><br/><audio controls src="${recDraft.audio.dataUrl}" style="width:100%"></audio></div>` : "";
     const adel = $("#rec-audio-del");
     if (adel) adel.onclick = () => { recDraft.audio = null; renderDraftThumbs(); };
-    if (_recDirtyCheck) _recDirtyCheck();
+    if (_recAutoSaveTrigger) _recAutoSaveTrigger();
   }
 
   function bindRecordEdit(rec) {
@@ -530,8 +587,6 @@
     if (orderCopyBtn) orderCopyBtn.onclick = () => openCopyPicker("order");
     const reportCopyBtn = $("#rec-report-copy");
     if (reportCopyBtn) reportCopyBtn.onclick = () => openCopyPicker("report");
-    $("#rec-save").onclick = () => saveRecordEdit(rec);
-    $("#rec-cancel").onclick = () => closeView();
     // 关联药单 / 检查报告：点卡片进编辑，左滑删除
     $("#rec-order-link").onclick = (e) => { const c = e.target.closest("[data-rel='order']"); if (c) openOrderModal(c.dataset.id); };
     $("#rec-report-link").onclick = (e) => { const c = e.target.closest("[data-rel='report']"); if (c) openReportModal(c.dataset.id); };
@@ -548,17 +603,23 @@
     const advBtn = $("#rec-advice-analyze");
     if (advBtn) advBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAdviceAnalyze(saved); };
 
-    // 保存按钮脏检查：有内容变化时高亮，无变化时灰显
-    const snap = () => JSON.stringify({
-      h: $("#rec-f-hospital").value, d: $("#rec-f-date").value, doc: $("#rec-f-doctor").value,
-      adv: recDraft.adviceText, audio: recDraft.audio ? recDraft.audio.name : "",
-      rx: (recDraft.orderImages || []).map((im) => im.dataUrl).join("\n"),
-      ex: (recDraft.reportImages || []).map((im) => im.dataUrl).join("\n"),
-    });
-    const recSnapshot = snap();
-    _recDirtyCheck = () => { const btn = $("#rec-save"); if (btn) btn.classList.toggle("is-dirty", snap() !== recSnapshot); };
-    ["#rec-f-hospital", "#rec-f-date", "#rec-f-doctor", "#rec-f-advice"].forEach((s) => { const el = $(s); if (el) el.addEventListener("input", _recDirtyCheck); });
-    _recDirtyCheck();
+    // 自动保存：修改后 debounce 静默保存
+    _editingRec = rec;
+    _recAutoSaveDirty = false;
+    _recAutoSaveTrigger = () => {
+      _recAutoSaveDirty = true;
+      if (_recAutoSaveTimer) clearTimeout(_recAutoSaveTimer);
+      _recAutoSaveTimer = setTimeout(async () => {
+        _recAutoSaveTimer = null;
+        if (!_recAutoSaveDirty) return;
+        _recAutoSaveDirty = false;
+        const saved = await saveRecordEdit(_editingRec, { silent: true });
+        if (saved) _editingRec = saved;
+        renderRecords();
+        renderHome();
+      }, 800);
+    };
+    ["#rec-f-hospital", "#rec-f-date", "#rec-f-doctor", "#rec-f-advice"].forEach((s) => { const el = $(s); if (el) el.addEventListener("input", _recAutoSaveTrigger); });
   }
 
   function readFileAsDataURL(file) {
@@ -789,7 +850,7 @@
       const medicines = prescription.map((m) => {
         const same = oldMeds.find((om) => om.name === m.name);
         const fullData = {
-          spec: m.spec || "",
+          spec: parseSpecUnit(m.spec),
           doseAmount: 0,
           doseUnit: "片",
           timeSlots: ["morning"],
@@ -914,8 +975,20 @@
     toast("已更新首页 AI 医嘱");
   }
 
-  function closeView() {
+  async function closeView() {
     closeLightbox();
+    if (!$("#record-view").hidden) {
+      if (_recAutoSaveTimer) { clearTimeout(_recAutoSaveTimer); _recAutoSaveTimer = null; }
+      if (_recAutoSaveDirty && _editingRec) {
+        _recAutoSaveDirty = false;
+        const saved = await saveRecordEdit(_editingRec, { silent: true });
+        if (saved) _editingRec = saved;
+        renderRecords();
+        renderHome();
+      }
+    }
+    _recAutoSaveDirty = false;
+    _recAutoSaveTrigger = null;
     currentRecordId = null; // 离开详情页清空，避免污染后续新建（药单/报告）的关联判断
     $$(".view").forEach((v) => (v.hidden = true));
     goPage("records");
@@ -1231,6 +1304,14 @@
   }
 
   // 药箱页签：药箱药品主档（cabinet），点击进编辑，左滑删除
+  function latestMedInfo(name) {
+    const orders = (DATA.orders || []).slice().sort((a, b) => ((a.date || "") < (b.date || "") ? 1 : -1));
+    for (const o of orders) {
+      const m = (o.medicines || []).find((mm) => mm.name === name);
+      if (m) return { manufacturer: m.manufacturer || "", alias: m.alias || "", price: Number(m.price) || 0 };
+    }
+    return { manufacturer: "", alias: "", price: 0 };
+  }
   function renderCabinetSummary() {
     const listBox = $("#cabinet-list");
     const empty = $("#cabinet-empty");
@@ -1246,9 +1327,10 @@
     listBox.innerHTML = filtered
       .map((d) => {
         const orderCnt = (DATA.orders || []).filter((o) => (o.medicines || []).some((m) => m.name === d.name)).length;
+        const info = latestMedInfo(d.name);
         const meta = [
-          d.manufacturer ? "厂家 " + d.manufacturer : "",
-          d.alias && d.alias !== d.name ? "别名 " + d.alias : "",
+          info.manufacturer ? "厂家 " + info.manufacturer : "",
+          info.alias && info.alias !== d.name ? "别名 " + info.alias : "",
           d.spec ? "规格 " + d.spec : "",
           d.disease ? "针对 " + d.disease : "",
           "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
@@ -1307,8 +1389,6 @@
     $("#cabitem-title").textContent = "编辑药箱药品";
     $("#cabitem-f-name").value = c.name;
     $("#cabitem-f-name").disabled = true; // 药名是药单关联键，创建后不可修改
-    $("#cabitem-f-manufacturer").value = c.manufacturer || "";
-    $("#cabitem-f-alias").value = c.alias || "";
     $("#cabitem-f-disease").value = c.disease || "";
     $("#cabitem-f-unit").value = c.unit || "片";
     $("#cabitem-f-spec").value = c.spec || "";
@@ -1329,8 +1409,6 @@
     $("#cabinet-modal").hidden = true;
     const slots = $$(".cabitem-f-slot").filter((ch) => ch.checked).map((ch) => ch.value);
     const patch = {
-      manufacturer: $("#cabitem-f-manufacturer").value.trim(),
-      alias: $("#cabitem-f-alias").value.trim(),
       unit: $("#cabitem-f-unit").value.trim() || "片",
       spec: $("#cabitem-f-spec").value.trim(),
       qty: Number($("#cabitem-f-qty").value) || 0,
@@ -1481,6 +1559,10 @@
     const m = String(spec).match(/\*(\d+)/);
     return m ? parseInt(m[1], 10) : 0;
   }
+  function parseSpecUnit(spec) {
+    if (!spec) return "";
+    return String(spec).split("*")[0].trim();
+  }
   function openMedItemModal(idx) {
     editingMedIdx = idx;
     const m = idx >= 0 ? orderDraft.medicines[idx] || {} : {};
@@ -1566,9 +1648,10 @@
     // 新药：收集药箱主属性
     if (medItemMode === "new") {
       const slots = $$(".meditem-f-slot").filter((c) => c.checked).map((c) => c.value);
+      const fullSpec = $("#meditem-f-spec").value.trim() || parseSpecUnit(packSpec);
       item._full = {
         unit: $("#meditem-f-unit").value.trim() || "片",
-        spec: $("#meditem-f-spec").value.trim(),
+        spec: fullSpec,
         doseAmount: Number($("#meditem-f-dose").value) || 0,
         doseUnit: $("#meditem-f-doseunit").value.trim() || "片",
         timeSlots: slots.length ? slots : ["morning"],
@@ -1860,7 +1943,13 @@
   async function toggleNotify() {
     const on = $("#opt-notify").checked;
     if (on) {
-      if ("Notification" in window && Notification.permission === "default") {
+      const LN = getLocalNotif();
+      if (LN) {
+        try {
+          const perm = await LN.requestPermissions();
+          if (perm.display !== "granted") { $("#opt-notify").checked = false; toast("未授予通知权限，请在系统设置中开启"); return; }
+        } catch (e) {}
+      } else if ("Notification" in window && Notification.permission === "default") {
         try {
           const p = await Notification.requestPermission();
           if (p !== "granted") { $("#opt-notify").checked = false; toast("未授予通知权限"); return; }
@@ -1871,6 +1960,7 @@
       await NurseStorage.updateSettings({ notifications: false });
       DATA = await NurseStorage.load();
       clearNotifTimers();
+      await clearNotifScheduled();
       toast("已关闭通知");
     }
   }

@@ -2179,9 +2179,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   color: var(--ink-2);
 }
 
-/* 问诊记录保存按钮：无改动时灰显 */
-#rec-save:not(.is-dirty) {
-  opacity: 0.5;
+/* 问诊编辑页：自动保存提示 */
+.rec-autosave-hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted, #999);
+  padding: 6px 0 2px;
 }
 
 /* ---- AI 分析进度面板 ---- */
