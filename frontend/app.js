@@ -1227,7 +1227,10 @@
     $("#cabinet-modal").hidden = false;
   }
   async function saveCabinetDrug() {
-    if (!editingCabId) return;
+    if (!editingCabId) { $("#cabinet-modal").hidden = true; return; }
+    const id = editingCabId;
+    editingCabId = null;
+    $("#cabinet-modal").hidden = true;
     const slots = $$(".cabitem-f-slot").filter((ch) => ch.checked).map((ch) => ch.value);
     const patch = {
       manufacturer: $("#cabitem-f-manufacturer").value.trim(),
@@ -1244,13 +1247,10 @@
       note: $("#cabitem-f-note").value.trim(),
       disease: $("#cabitem-f-disease").value.trim(),
     };
-    await NurseStorage.updateCabinetDrug(editingCabId, patch);
+    await NurseStorage.updateCabinetDrug(id, patch);
     DATA = await NurseStorage.load();
-    $("#cabinet-modal").hidden = true;
-    editingCabId = null;
     renderCabinet();
     renderHome();
-    toast("已保存药箱药品");
   }
 
   // ===================== 药单 弹窗 =====================
@@ -1297,6 +1297,7 @@
     if (isNaN(idx)) return;
     orderDraft.medicines.splice(idx, 1);
     renderOrderMeds();
+    persistOrder();
   }
   function renderOrderMeds() {
     const box = $("#order-meds");
@@ -1333,15 +1334,14 @@
       .join("");
     $$("#order-meds .order-med__main").forEach((el) => (el.onclick = () => openMedItemModal(+el.closest("[data-med-idx]").dataset.medIdx)));
   }
-  async function saveOrder() {
+  async function persistOrder() {
+    if (!orderDraft) return false;
     const source = $("#order-f-source").value.trim();
-    if (!source) { toast("请填写药单来源"); return; }
+    if (!source) return false;
     const date = $("#order-f-date").value;
     const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, spec: m.spec, packCount: m.packCount, qty: m.qty, price: m.price }));
-    // 新药全属性（药箱主档建档用），剥离后不进入药单条目
     const full = {};
     orderDraft.medicines.forEach((m) => { if (m._full) full[m.name] = m._full; });
-    // 关联与属性：编辑保留原 recordId；新建时仅「从问诊记录进入」才关联
     let recordId = orderDraft.recordId || "";
     let kind = orderDraft.kind;
     if (!editingOrderId && orderDraft.fromRecord && currentRecordId) {
@@ -1349,21 +1349,25 @@
       kind = "hospital";
     }
     const item = { id: editingOrderId || undefined, source, date, kind, recordId, medicines, _full: full };
-    const wasEdit = !!editingOrderId;
     const savedOrder = await NurseStorage.upsertOrder(item);
+    if (!editingOrderId && savedOrder) editingOrderId = savedOrder.id;
     DATA = await NurseStorage.load();
-    $("#order-modal").hidden = true;
-    editingOrderId = null;
     if (recordId && savedOrder && savedOrder.id) {
       const rec = (DATA.records || []).find((r) => r.id === recordId);
       if (rec && !rec.orderId) await NurseStorage.updateRecord(recordId, { orderId: savedOrder.id });
       DATA = await NurseStorage.load();
-      const latest = (DATA.records || []).find((r) => r.id === recordId);
-      if (latest && !$("#record-view").hidden) showRecordView(latest);
     }
     renderCabinet();
     renderHome();
-    toast(wasEdit ? "已保存药单" : "已添加药单并关联到问诊记录");
+    const latest = recordId ? (DATA.records || []).find((r) => r.id === recordId) : null;
+    if (latest && !$("#record-view").hidden) showRecordView(latest);
+    return true;
+  }
+  async function closeOrderModal() {
+    const hasContent = !!orderDraft && ($("#order-f-source").value.trim() || orderDraft.medicines.length);
+    $("#order-modal").hidden = true;
+    if (hasContent) await persistOrder();
+    editingOrderId = null;
   }
 
   // 药单内 药品条目 弹窗（药单只记 药名/厂家/别名/数量；新药可填全属性建档药箱）
@@ -1490,6 +1494,14 @@
     editingMedIdx = -1;
     medItemMode = "pick";
     renderOrderMeds();
+    persistOrder();
+  }
+  function closeMedItemModal() {
+    const name = $("#meditem-f-name").value.trim();
+    if (name) { saveMedItem(); return; }
+    $("#med-item-modal").hidden = true;
+    editingMedIdx = -1;
+    medItemMode = "pick";
   }
 
   // ===================== 检查报告 弹窗 =====================
@@ -1923,11 +1935,15 @@
   // ===================== 右滑返回 / 关闭弹窗 =====================
   const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
   function closeTopModal() {
-    for (const id of MODAL_IDS) {
+    for (let i = MODAL_IDS.length - 1; i >= 0; i--) {
+      const id = MODAL_IDS[i];
       const m = document.getElementById(id);
       if (m && !m.hidden) {
-        if (id === "ai-modal") aiModalState = null;
-        if (id === "times-modal") closeTimesModal();
+        if (id === "ai-modal") { aiModalState = null; m.hidden = true; }
+        else if (id === "times-modal") closeTimesModal();
+        else if (id === "order-modal") closeOrderModal();
+        else if (id === "med-item-modal") closeMedItemModal();
+        else if (id === "cabinet-modal") saveCabinetDrug();
         else m.hidden = true;
         return true;
       }
@@ -2011,7 +2027,7 @@
   // ===================== 事件绑定 =====================
   function bindEvents() {
     $$(".tabbar__btn").forEach((b) => (b.onclick = () => goPage(b.dataset.page)));
-    $$("[data-close]").forEach((el) => (el.onclick = () => { const k = el.dataset.close; if (k === "ai") aiModalState = null; const m = $("#" + k + "-modal"); if (m) m.hidden = true; }));
+    $$("[data-close]").forEach((el) => (el.onclick = () => closeTopModal()));
 
     // 首页页签
     $$(".home-tab").forEach((b) => (b.onclick = () => switchHomeTab(b.dataset.htab)));
@@ -2076,16 +2092,11 @@
 
     // 药单弹窗
     $("#order-med-add").onclick = () => openMedItemModal(-1);
-    $("#order-save").onclick = saveOrder;
-    $("#order-cancel").onclick = () => { $("#order-modal").hidden = true; editingOrderId = null; };
-
-    // 药箱药品弹窗
-    $("#cabitem-save").onclick = saveCabinetDrug;
-    $("#cabitem-cancel").onclick = () => { $("#cabinet-modal").hidden = true; editingCabId = null; };
+    $("#order-f-source").onchange = () => persistOrder();
+    $("#order-f-date").onchange = () => persistOrder();
 
     // 药品条目弹窗
     $("#meditem-save").onclick = saveMedItem;
-    $("#meditem-cancel").onclick = () => { $("#med-item-modal").hidden = true; editingMedIdx = -1; };
     $("#img-lightbox").addEventListener("click", closeLightbox);
     $("#med-item-modal").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") saveMedItem(); });
 
