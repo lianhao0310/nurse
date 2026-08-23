@@ -472,6 +472,7 @@
           <div class="rec-edit__row">
             ${!(rec && rec.orderId) ? `<button type="button" class="btn btn-ghost" id="rec-order-add">＋ 添加药单</button>` : ""}
             <button type="button" class="btn btn-ghost" id="rec-order-img">📷 导入药单图片</button>
+            <button type="button" class="btn btn-ghost" id="rec-order-copy">📋 复制药单</button>
             <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
           </div>
           <div id="rec-order-thumbs" class="thumb-grid"></div>
@@ -482,6 +483,7 @@
           <div class="rec-edit__row">
             ${!(rec && rec.reportId) ? `<button type="button" class="btn btn-ghost" id="rec-report-add">＋ 添加检查报告</button>` : ""}
             <button type="button" class="btn btn-ghost" id="rec-report-img">📷 导入报告图片</button>
+            <button type="button" class="btn btn-ghost" id="rec-report-copy">📋 复制报告</button>
             <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
           </div>
           <div id="rec-report-thumbs" class="thumb-grid"></div>
@@ -528,9 +530,13 @@
       e.target.value = "";
     };
     $("#rec-order-img").onclick = () => $("#rec-order-img-input").click();
-    $("#rec-order-img-input").onchange = (e) => { if (e.target.files) addImagesToDraft(e.target.files, "order"); e.target.value = ""; };
+    $("#rec-order-img-input").onchange = (e) => { const fs = NurseImgUpload.snapshotAndReset(e.target); if (fs.length) addImagesToDraft(fs, "order"); };
     $("#rec-report-img").onclick = () => $("#rec-report-img-input").click();
-    $("#rec-report-img-input").onchange = (e) => { if (e.target.files) addImagesToDraft(e.target.files, "report"); e.target.value = ""; };
+    $("#rec-report-img-input").onchange = (e) => { const fs = NurseImgUpload.snapshotAndReset(e.target); if (fs.length) addImagesToDraft(fs, "report"); };
+    const orderCopyBtn = $("#rec-order-copy");
+    if (orderCopyBtn) orderCopyBtn.onclick = () => openCopyPicker("order");
+    const reportCopyBtn = $("#rec-report-copy");
+    if (reportCopyBtn) reportCopyBtn.onclick = () => openCopyPicker("report");
     $("#rec-save").onclick = () => saveRecordEdit(rec);
     $("#rec-cancel").onclick = () => closeView();
     // 关联药单 / 检查报告：点卡片进编辑，左滑删除
@@ -572,12 +578,8 @@
   }
   async function addImagesToDraft(files, kind) {
     const bucket = kind === "report" ? recDraft.reportImages : recDraft.orderImages;
-    for (const f of files) {
-      if (!f.type.startsWith("image/")) continue;
-      const d = await downscaleImage(f, 1280, 0.82);
-      if (!d) continue;
-      bucket.push({ name: f.name, type: "image/jpeg", dataUrl: d });
-    }
+    const imgs = await NurseImgUpload.collectImages(files, (f) => downscaleImage(f, 1280, 0.82));
+    for (const im of imgs) bucket.push(im);
     renderDraftThumbs();
   }
   function downscaleImage(file, maxDim, quality) {
@@ -956,6 +958,106 @@
     }
     if (rec && rec.reportId) openReportModal(rec.reportId, true);
     else openReportModal(null, true);
+  }
+
+  // ===================== 问诊记录：复制已有 药单/检查报告 =====================
+  // 从历史药单/报告中选一个，复制内容（药品/指标 + 图片）创建新副本并关联到当前问诊记录；
+  // 若当前记录已有关联，先解除旧关联（保留旧实体），再关联新副本。
+  let copyPickKind = null;
+  function openCopyPicker(kind) {
+    copyPickKind = kind;
+    const isOrder = kind === "order";
+    const rec = currentRecordId ? findRecord(currentRecordId) : null;
+    const curId = isOrder ? (rec && rec.orderId) : (rec && rec.reportId);
+    const list = isOrder ? (DATA.orders || []) : (DATA.reports || []);
+    const candidates = list.filter((x) => x.id !== curId && (isOrder ? ((x.medicines || []).length || (x.images || []).length) : ((x.indicators || []).length || (x.images || []).length)));
+    $("#copy-pick-title").textContent = isOrder ? "复制已有药单" : "复制已有检查报告";
+    if (!candidates.length) {
+      $("#copy-pick-list").innerHTML = '<div class="empty-tip" style="padding:18px;text-align:center">暂无可复制的' + (isOrder ? "药单" : "检查报告") + "</div>";
+    } else {
+      $("#copy-pick-list").innerHTML = candidates.map((x) => {
+        if (isOrder) {
+          const cnt = (x.medicines || []).length;
+          const imgCnt = (x.images || []).length;
+          return `<div class="copy-pick-item" data-id="${esc(x.id)}">
+            <div class="copy-pick__title"><b>${esc(x.source || "未填来源")}</b><span class="copy-pick__date">${esc(x.date || "")}</span></div>
+            <div class="copy-pick__meta">共 ${cnt} 种药品${imgCnt ? " · " + imgCnt + " 张图" : ""}</div>
+            ${cnt ? `<div class="copy-pick__chips">${x.medicines.slice(0, 5).map((m) => `<span class="order-chip">${esc(m.name)}</span>`).join("")}${cnt > 5 ? `<span class="order-chip">+${cnt - 5}</span>` : ""}</div>` : ""}
+          </div>`;
+        }
+        const inds = x.indicators || [];
+        const imgCnt = (x.images || []).length;
+        return `<div class="copy-pick-item" data-id="${esc(x.id)}">
+          <div class="copy-pick__title"><b>${esc(x.date || "")}</b>${x.title ? `<span class="copy-pick__date">${esc(x.title)}</span>` : ""}</div>
+          <div class="copy-pick__meta">${inds.length} 项指标${imgCnt ? " · " + imgCnt + " 张图" : ""}</div>
+          ${inds.length ? `<div class="copy-pick__chips">${inds.slice(0, 6).map((i) => `<span class="exam-chip ${i.abnormal ? "is-bad" : ""}">${esc(i.name)} ${esc(i.value)}${esc(i.unit || "")}</span>`).join("")}</div>` : ""}
+        </div>`;
+      }).join("");
+      $$("#copy-pick-list .copy-pick-item").forEach((el) => (el.onclick = () => applyCopy(el.dataset.id)));
+    }
+    $("#copy-pick-modal").hidden = false;
+  }
+  async function applyCopy(sourceId) {
+    $("#copy-pick-modal").hidden = true;
+    const isOrder = copyPickKind === "order";
+    let recId = currentRecordId;
+    let rec = recId ? findRecord(recId) : null;
+    if (!rec || !recId) {
+      const cur = recId ? rec : null;
+      const saved = await saveRecordEdit(cur, { silent: true });
+      if (!saved || !saved.id) { toast("请先填写问诊记录基本信息"); return; }
+      recId = saved.id; currentRecordId = recId;
+      rec = findRecord(recId);
+    }
+    if (!rec) { toast("当前问诊记录不存在"); return; }
+    const src = (isOrder ? (DATA.orders || []) : (DATA.reports || [])).find((x) => x.id === sourceId);
+    if (!src) { toast("源数据不存在"); return; }
+    const srcImages = (src.images || []).map((im) => ({ name: im.name, type: im.type, dataUrl: im.dataUrl }));
+    if (isOrder) {
+      if (rec.orderId && rec.orderId !== sourceId) {
+        const old = (DATA.orders || []).find((o) => o.id === rec.orderId);
+        if (old) await NurseStorage.updateOrder(old.id, { recordId: "" });
+      }
+      const newItem = {
+        source: rec.hospital || src.source || "药单",
+        date: rec.visitDate || src.date || TODAY,
+        kind: "hospital",
+        recordId: recId,
+        medicines: (src.medicines || []).map((m) => ({ name: m.name, manufacturer: m.manufacturer, alias: m.alias, spec: m.spec, packCount: m.packCount, qty: m.qty, price: m.price })),
+        images: srcImages,
+      };
+      const savedOrder = await NurseStorage.upsertOrder(newItem);
+      if (savedOrder && savedOrder.id) {
+        await NurseStorage.updateRecord(recId, { orderId: savedOrder.id, rxImages: srcImages });
+      }
+      DATA = await NurseStorage.load();
+      const latest = findRecord(recId);
+      if (latest && !$("#record-view").hidden) showRecordView(latest);
+      renderCabinet(); renderHome(); renderRecords();
+      toast("已复制药单到本次问诊");
+    } else {
+      if (rec.reportId && rec.reportId !== sourceId) {
+        const old = (DATA.reports || []).find((r) => r.id === rec.reportId);
+        if (old) await NurseStorage.updateReport(old.id, { recordId: "" });
+      }
+      const newItem = {
+        title: rec.hospital || src.title || "检查报告",
+        date: rec.visitDate || src.date || TODAY,
+        kind: "hospital",
+        recordId: recId,
+        indicators: (src.indicators || []).map((x) => ({ name: x.name, value: x.value, unit: x.unit, range: x.range, abnormal: x.abnormal })),
+        images: srcImages,
+      };
+      const savedReport = await NurseStorage.upsertReport(newItem);
+      if (savedReport && savedReport.id) {
+        await NurseStorage.updateRecord(recId, { reportId: savedReport.id, examImages: srcImages });
+      }
+      DATA = await NurseStorage.load();
+      const latest = findRecord(recId);
+      if (latest && !$("#record-view").hidden) showRecordView(latest);
+      renderRecords(); renderHome();
+      toast("已复制检查报告到本次问诊");
+    }
   }
 
   // ===================== 检查结果趋势 / 明细 =====================
@@ -1933,7 +2035,7 @@
   }
 
   // ===================== 右滑返回 / 关闭弹窗 =====================
-  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
+  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
   function closeTopModal() {
     for (let i = MODAL_IDS.length - 1; i >= 0; i--) {
       const id = MODAL_IDS[i];

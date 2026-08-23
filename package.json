@@ -6,7 +6,8 @@
   "scripts": {
     "sync": "cap sync",
     "open:ios": "cap open ios",
-    "build:web": "echo '前端为静态资源，无需构建步骤；Capacitor 直接复制 frontend/ 目录'"
+    "build:web": "echo '前端为静态资源，无需构建步骤；Capacitor 直接复制 frontend/ 目录'",
+    "test": "node --test tests/multi-image.test.js"
   },
   "dependencies": {
     "@capacitor/camera": "^6.0.2",

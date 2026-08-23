@@ -2284,3 +2284,20 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   object-fit: contain;
   border-radius: 8px;
 }
+
+/* ---- 复制已有 药单/检查报告 选择列表 ---- */
+.copy-pick-list { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.copy-pick-item {
+  background: #fff;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.copy-pick-item:active { transform: scale(0.98); background: #f6f7f9; }
+.copy-pick__title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.copy-pick__title b { font-size: 1em; color: var(--ink); font-weight: 600; }
+.copy-pick__date { font-size: 0.8em; color: var(--ink-3); flex-shrink: 0; }
+.copy-pick__meta { font-size: 0.82em; color: var(--ink-2); margin-bottom: 6px; }
+.copy-pick__chips { display: flex; flex-wrap: wrap; gap: 6px; }
