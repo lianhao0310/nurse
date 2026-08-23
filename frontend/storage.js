@@ -201,6 +201,8 @@
       name: String(m.name).trim(),
       manufacturer: m.manufacturer || "",
       alias: m.alias || "",
+      spec: m.spec || "",
+      packCount: Number(m.packCount) || 0,
       qty: Number(m.qty) || 0,
       price: Number(m.price) || 0,
     };

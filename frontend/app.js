@@ -714,7 +714,7 @@
         <button type="button" class="btn btn-ghost btn-sm" id="ai-exam-add">＋ 添加指标</button>
       </div>
       <div class="detail-sec"><h4>💊 处方药</h4>
-        <div class="table-wrap"><table class="edit-table" id="ai-rx-t"><thead><tr><th>药名</th><th>规格</th><th>剂量</th><th>频次</th><th>时间</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap"><table class="edit-table" id="ai-rx-t"><thead><tr><th>药名</th><th>规格</th><th>包装</th><th>数量</th><th>剂量</th><th>频次</th><th>时间</th><th></th></tr></thead><tbody></tbody></table></div>
         <button type="button" class="btn btn-ghost btn-sm" id="ai-rx-add">＋ 添加药品</button>
       </div>
       <div class="capture-actions">
@@ -736,6 +736,8 @@
     const rxFields = [
       { cell: (r) => `<input data-f="name" value="${esc(r.name)}"/>` },
       { cell: (r) => `<input data-f="spec" value="${esc(r.spec)}"/>` },
+      { cell: (r) => `<input data-f="packSpec" value="${esc(r.packSpec || "")}"/>` },
+      { cell: (r) => `<input type="number" data-f="packCount" value="${esc(r.packCount || 0)}"/>` },
       { cell: (r) => `<input data-f="dose" value="${esc(r.dose)}"/>` },
       { cell: (r) => `<input data-f="freq" value="${esc(r.freq)}"/>` },
       { cell: (r) => `<input data-f="time" value="${esc(r.time)}"/>` },
@@ -743,7 +745,7 @@
     renderT("#ai-exam-t", data.examResults, examFields);
     renderT("#ai-rx-t", data.prescription, rxFields);
     $("#ai-exam-add").onclick = () => { data.examResults.push({ name: "", value: "", unit: "", range: "", abnormal: false }); renderT("#ai-exam-t", data.examResults, examFields); };
-    $("#ai-rx-add").onclick = () => { data.prescription.push({ name: "", spec: "", dose: "", freq: "", time: "" }); renderT("#ai-rx-t", data.prescription, rxFields); };
+    $("#ai-rx-add").onclick = () => { data.prescription.push({ name: "", spec: "", packSpec: "", packCount: 0, dose: "", freq: "", time: "" }); renderT("#ai-rx-t", data.prescription, rxFields); };
     $("#ai-save").onclick = saveAIModal;
     $("#ai-cancel").onclick = () => { aiModalState = null; $("#ai-modal").hidden = true; };
     $("#ai-modal").hidden = false;
@@ -765,6 +767,8 @@
         manufacturer: "",
         alias: "",
         spec: row.querySelector('[data-f="spec"]').value.trim(),
+        packSpec: row.querySelector('[data-f="packSpec"]').value.trim(),
+        packCount: Number(row.querySelector('[data-f="packCount"]').value) || 0,
         dose: row.querySelector('[data-f="dose"]').value.trim(),
         freq: row.querySelector('[data-f="freq"]').value.trim(),
         time: row.querySelector('[data-f="time"]').value.trim(),
@@ -807,10 +811,13 @@
           meal: "any",
         };
         if (!same) full[m.name] = fullData; // 新药 → 建档药箱（主属性取 AI 解析结果）
+        const aiQty = parseSpecQty(m.packSpec) * (m.packCount || 0);
         return {
           id: same ? same.id : undefined,
           name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "",
-          qty: same ? same.qty : 0,
+          spec: m.packSpec || "",
+          packCount: m.packCount || 0,
+          qty: same ? same.qty : aiQty,
           price: same ? same.price : 0,
         };
       });
@@ -1309,9 +1316,11 @@
         const meta = [
           m.manufacturer ? "厂家 " + m.manufacturer : "",
           m.alias && m.alias !== m.name ? "别名 " + m.alias : "",
+          m.spec ? "规格 " + m.spec : "",
+          m.packCount > 0 ? "药品数 " + m.packCount : "",
           "数量 " + (Number(m.qty) || 0),
           Number(m.price) > 0 ? "单价 " + m.price + " 元" : "",
-          cab && cab.spec ? "规格 " + cab.spec : "",
+          cab && cab.spec ? "单位规格 " + cab.spec : "",
           cab && cab.disease ? "针对 " + cab.disease : "",
           cab && cab.doseAmount ? "单次 " + cab.doseAmount + " " + (cab.doseUnit || "") : "",
           cab ? slotLabels(cab.timeSlots) : "",
@@ -1371,6 +1380,11 @@
     const box = $("#meditem-full");
     if (box) box.hidden = !visible;
   }
+  function parseSpecQty(spec) {
+    if (!spec) return 0;
+    const m = String(spec).match(/\*(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
   function openMedItemModal(idx) {
     editingMedIdx = idx;
     const m = idx >= 0 ? orderDraft.medicines[idx] || {} : {};
@@ -1387,6 +1401,8 @@
     $("#meditem-f-name").disabled = !mIsNew; // 药名创建后不可修改
     $("#meditem-f-manufacturer").value = m.manufacturer || "";
     $("#meditem-f-alias").value = m.alias || "";
+    $("#meditem-f-packspec").value = m.spec || "";
+    $("#meditem-f-packcount").value = Number(m.packCount) || 0;
     $("#meditem-f-qty").value = Number(m.qty) || 0;
     $("#meditem-f-price").value = Number(m.price) || 0;
     // 全属性区（仅新药展开）
@@ -1427,16 +1443,28 @@
       $("#meditem-f-manufacturer").value = found.manufacturer || "";
       $("#meditem-f-alias").value = found.alias || "";
     };
+    const updateQtyFromSpec = () => {
+      const per = parseSpecQty($("#meditem-f-packspec").value.trim());
+      const pc = Number($("#meditem-f-packcount").value) || 0;
+      if (per > 0 && pc > 0) $("#meditem-f-qty").value = per * pc;
+    };
+    $("#meditem-f-packspec").oninput = updateQtyFromSpec;
+    $("#meditem-f-packcount").oninput = updateQtyFromSpec;
     if (!$("#meditem-f-name").disabled) setTimeout(() => $("#meditem-f-name").focus(), 50);
   }
   function saveMedItem() {
     const name = $("#meditem-f-name").value.trim();
     if (!name) { toast("请填写药名"); return; }
+    const packSpec = $("#meditem-f-packspec").value.trim();
+    const packCount = Number($("#meditem-f-packcount").value) || 0;
+    const per = parseSpecQty(packSpec);
     const item = {
       name,
       manufacturer: $("#meditem-f-manufacturer").value.trim(),
       alias: $("#meditem-f-alias").value.trim(),
-      qty: Number($("#meditem-f-qty").value) || 0,
+      spec: packSpec,
+      packCount,
+      qty: (per > 0 && packCount > 0) ? per * packCount : (Number($("#meditem-f-qty").value) || 0),
       price: Number($("#meditem-f-price").value) || 0,
     };
     // 新药：收集药箱主属性

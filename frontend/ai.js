@@ -376,7 +376,7 @@
     { "name":"指标名（用标准名，如 收缩压、空腹血糖）", "value":"数值", "unit":"单位", "range":"参考范围(可选)", "abnormal": false }
   ],
   "prescription": [
-    { "name":"药品通用名", "spec":"规格/剂量(如 5mg)", "dose":"单次用量(如 1片)", "freq":"频次(如 1次/日)", "time":"服药时间(如 早饭后)", "note":"说明(可选)" }
+    { "name":"药品通用名", "spec":"规格/剂量(如 5mg)", "packSpec":"包装规格(如 30mg*100，表示一盒100片)", "packCount":"药品数(如 10，表示10盒)", "dose":"单次用量(如 1片)", "freq":"频次(如 1次/日)", "time":"服药时间(如 早饭后)", "note":"说明(可选)" }
   ]
 }
 要求：
@@ -417,6 +417,8 @@
       prescription: arr(parsed.prescription).map((p) => ({
         name: String(p.name || "").trim(),
         spec: String(p.spec || ""),
+        packSpec: String(p.packSpec || ""),
+        packCount: Number(p.packCount) || 0,
         dose: String(p.dose || ""),
         freq: String(p.freq || ""),
         time: String(p.time || ""),
