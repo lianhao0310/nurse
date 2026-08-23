@@ -1266,7 +1266,7 @@
       orderDraft = {
         source: o.source, date: o.date, kind: o.kind, recordId: o.recordId || "",
         fromRecord: !!fromRecord,
-        medicines: (o.medicines || []).map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty, price: m.price, _full: null })),
+        medicines: (o.medicines || []).map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, spec: m.spec, packCount: m.packCount, qty: m.qty, price: m.price, _full: null })),
       };
     } else {
       // 自建药单：若从问诊记录进入，自动关联
@@ -1341,7 +1341,7 @@
     const source = $("#order-f-source").value.trim();
     if (!source) { toast("请填写药单来源"); return; }
     const date = $("#order-f-date").value;
-    const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, qty: m.qty, price: m.price }));
+    const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, spec: m.spec, packCount: m.packCount, qty: m.qty, price: m.price }));
     // 新药全属性（药箱主档建档用），剥离后不进入药单条目
     const full = {};
     orderDraft.medicines.forEach((m) => { if (m._full) full[m.name] = m._full; });
