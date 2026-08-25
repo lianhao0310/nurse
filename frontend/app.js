@@ -572,14 +572,8 @@
   function bindRecordEdit(rec) {
     renderDraftThumbs();
     $("#rec-f-advice").oninput = (e) => (recDraft.adviceText = e.target.value);
-    const _hasSR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-    if (_hasSR) {
-      $("#rec-mic").onclick = startRecMic;
-      $("#rec-audio-file").onclick = () => $("#rec-audio-input").click();
-    } else {
-      $("#rec-mic").onclick = () => $("#rec-audio-input").click();
-      $("#rec-audio-file").hidden = true;
-    }
+    $("#rec-mic").onclick = startRecMic;
+    $("#rec-audio-file").onclick = () => $("#rec-audio-input").click();
     $("#rec-audio-input").onchange = (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) readFileAsDataURL(f).then((d) => { recDraft.audio = { name: f.name, type: f.type || "audio/mpeg", dataUrl: d }; renderDraftThumbs(); });
@@ -666,19 +660,44 @@
     });
   }
 
-  let recMic = null, recMicOn = false;
+  let _mediaRec = null, _mediaChunks = [], _mediaRecOn = false;
   function startRecMic() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { toast("当前设备不支持语音输入，请直接输入文字或上传录音文件"); return; }
     const btn = $("#rec-mic");
-    if (recMicOn) { try { recMic.stop(); } catch (e) {} return; }
-    const r = new SR();
-    r.lang = "zh-CN"; r.interimResults = true; r.continuous = true;
-    recMic = r; recMicOn = true; btn.classList.add("recording");
-    r.onresult = (e) => { let t = ""; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; const ta = $("#rec-f-advice"); ta.value = (recDraft.adviceText ? recDraft.adviceText + " " : "") + t; recDraft.adviceText = ta.value; };
-    r.onend = () => { recMicOn = false; btn.classList.remove("recording"); };
-    r.onerror = () => { recMicOn = false; btn.classList.remove("recording"); };
-    try { r.start(); } catch (e) { recMicOn = false; btn.classList.remove("recording"); }
+    if (_mediaRecOn) { try { _mediaRec.stop(); } catch (e) {} return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast("当前设备不支持录音，请上传录音文件"); return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        _mediaChunks = [];
+        _mediaRec = new MediaRecorder(stream);
+        _mediaRecOn = true;
+        btn.classList.add("recording");
+        btn.textContent = "⏹ 停止录音";
+        _mediaRec.ondataavailable = (e) => { if (e.data.size > 0) _mediaChunks.push(e.data); };
+        _mediaRec.onstop = () => {
+          _mediaRecOn = false;
+          btn.classList.remove("recording");
+          btn.textContent = "🎙 录音";
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(_mediaChunks, { type: _mediaRec.mimeType || "audio/mp4" });
+          const reader = new FileReader();
+          reader.onload = () => {
+            const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("webm") ? "webm" : "mp3";
+            recDraft.audio = { name: "录音." + ext, type: blob.type, dataUrl: reader.result };
+            renderDraftThumbs();
+            toast("录音已保存");
+          };
+          reader.readAsDataURL(blob);
+        };
+        _mediaRec.start();
+      })
+      .catch(() => {
+        _mediaRecOn = false;
+        btn.classList.remove("recording");
+        btn.textContent = "🎙 录音";
+        toast("无法访问麦克风，请检查权限");
+      });
   }
 
   // 保存
@@ -753,9 +772,25 @@
     try {
       const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
       const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
+      let adviceText = (rec.advice && rec.advice.text) || "";
+      const audio = rec.advice && rec.advice.audio;
+      if (audio && audio.dataUrl && !adviceText) {
+        updateAIProgress("正在转写录音…");
+        try {
+          adviceText = await NurseAI.transcribeAudio({ settings: DATA.settings, audio });
+          const ta = $("#rec-f-advice");
+          if (ta) { ta.value = adviceText; recDraft.adviceText = adviceText; }
+          await saveRecordEdit(rec, { silent: true });
+          DATA = await NurseStorage.load();
+          rec = (DATA.records || []).find((r) => r.id === rec.id) || rec;
+        } catch (e) {
+          showAIError("录音转写失败", e && e.message ? e.message : String(e));
+          return;
+        }
+      }
       const res = await NurseAI.analyzeConsult({
         settings: DATA.settings,
-        adviceText: rec.advice && rec.advice.text,
+        adviceText,
         examImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages : ((linkedReport && linkedReport.images) || []),
         rxImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages : ((linkedOrder && linkedOrder.images) || []),
         onChunk: updateAIProgress,

@@ -666,6 +666,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: var(--danger);
   animation: pulse 1s infinite;
 }
+.btn.recording {
+  background: var(--danger);
+  color: #fff;
+  animation: pulse 1s infinite;
+}
 @keyframes pulse {
   0%,
   100% {

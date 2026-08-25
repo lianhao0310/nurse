@@ -453,5 +453,43 @@
     };
   }
 
-  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice };
+  /**
+   * 录音转文字：调用 /audio/transcriptions（Whisper API）
+   * @param {Object} opts
+   *   audio: { name, type, dataUrl }  录音文件
+   *   settings: 全局设置（含 ai 配置）
+   * @returns Promise<string> 转写文字
+   */
+  async function transcribeAudio(opts) {
+    const settings = opts.settings || {};
+    const ai = settings.ai || {};
+    if (!ai.enabled || !ai.apiKey) throw new Error("AI 未启用或未配置 API Key");
+    const baseUrl = (ai.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const audio = opts.audio;
+    if (!audio || !audio.dataUrl) throw new Error("没有提供录音文件");
+    const resp = await fetch(audio.dataUrl);
+    const blob = await resp.blob();
+    const formData = new FormData();
+    formData.append("file", blob, audio.name || "audio.mp3");
+    formData.append("model", "whisper-1");
+    let r;
+    try {
+      r = await fetch(baseUrl + "/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + ai.apiKey },
+        body: formData,
+      });
+    } catch (e) {
+      throw new Error("录音转写请求失败：请确认接口支持 /audio/transcriptions");
+    }
+    if (!r.ok) {
+      const d = await r.text().catch(() => "");
+      if (r.status === 404) throw new Error("接口不支持录音转写（404），请确认 API 提供商支持 Whisper");
+      throw new Error("录音转写失败：" + r.status + " " + d.slice(0, 200));
+    }
+    const data = await r.json();
+    return data.text || "";
+  }
+
+  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice, transcribeAudio };
 });
