@@ -214,7 +214,7 @@
             <div class="med__check">${isDone ? "✓" : ""}</div>
             <div class="med__main">
               <div class="med__name">${esc(d.name)}</div>
-              <div class="med__meta">${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "")}${d.meal !== "any" ? " · " + mealLabel(d.meal) : ""} · 余 ${esc(Number(d.qty) || 0)}${d.unit ? " " + d.unit : ""}</div>
+              <div class="med__meta">${esc(d.doseAmount ? d.doseAmount + " " + (d.doseUnit || "") : "")}${d.meal !== "any" ? " · " + mealLabel(d.meal) : ""}${d.spec ? " · " + esc(d.spec) : ""} · 余 ${esc(Number(d.qty) || 0)}${d.unit ? " " + d.unit : ""}</div>
             </div>
           </div>`;
         })
@@ -1308,9 +1308,9 @@
     const orders = (DATA.orders || []).slice().sort((a, b) => ((a.date || "") < (b.date || "") ? 1 : -1));
     for (const o of orders) {
       const m = (o.medicines || []).find((mm) => mm.name === name);
-      if (m) return { manufacturer: m.manufacturer || "", alias: m.alias || "", price: Number(m.price) || 0 };
+      if (m) return { manufacturer: m.manufacturer || "", alias: m.alias || "", spec: m.spec || "", price: Number(m.price) || 0 };
     }
-    return { manufacturer: "", alias: "", price: 0 };
+    return { manufacturer: "", alias: "", spec: "", price: 0 };
   }
   function renderCabinetSummary() {
     const listBox = $("#cabinet-list");
@@ -1331,7 +1331,8 @@
         const meta = [
           info.manufacturer ? "厂家 " + info.manufacturer : "",
           info.alias && info.alias !== d.name ? "别名 " + info.alias : "",
-          d.spec ? "规格 " + d.spec : "",
+          info.spec ? "规格 " + info.spec : "",
+          info.price ? "价格 ¥" + info.price : "",
           d.disease ? "针对 " + d.disease : "",
           "库存 " + (Number(d.qty) || 0) + " " + (d.unit || "片"),
           "阈值 " + (Number(d.threshold) || 0),
