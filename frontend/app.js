@@ -572,8 +572,14 @@
   function bindRecordEdit(rec) {
     renderDraftThumbs();
     $("#rec-f-advice").oninput = (e) => (recDraft.adviceText = e.target.value);
-    $("#rec-mic").onclick = startRecMic;
-    $("#rec-audio-file").onclick = () => $("#rec-audio-input").click();
+    const _hasSR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (_hasSR) {
+      $("#rec-mic").onclick = startRecMic;
+      $("#rec-audio-file").onclick = () => $("#rec-audio-input").click();
+    } else {
+      $("#rec-mic").onclick = () => $("#rec-audio-input").click();
+      $("#rec-audio-file").hidden = true;
+    }
     $("#rec-audio-input").onchange = (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) readFileAsDataURL(f).then((d) => { recDraft.audio = { name: f.name, type: f.type || "audio/mpeg", dataUrl: d }; renderDraftThumbs(); });
