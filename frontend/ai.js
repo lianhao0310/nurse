@@ -491,5 +491,96 @@
     return data.text || "";
   }
 
-  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice, transcribeAudio };
+  /**
+   * AI 分析检查报告：仅从图片中提取关注指标的数值，单位和参考值使用个人设置
+   * @param {Object} opts
+   *   examImages: [{dataUrl}]   检查报告照片
+   *   followedIndicators: [{name, unit, range}]  关注指标配置
+   *   settings: 全局设置
+   * @returns Promise<{ examResults: [{name, value, unit, range, abnormal}] }>
+   */
+  const REPORT_SYSTEM = `你是一名"Nurse"健康助手。请从检查报告照片中提取用户关注的指标数值。
+仅输出 JSON 对象，不要额外说明：
+{
+  "examResults": [
+    { "name": "指标名", "value": "数值" }
+  ]
+}
+要求：
+- 仅提取用户关注的指标，不要提取其他指标
+- 每个指标只需 name 和 value，不要输出 unit 和 range
+- 数值从图片中提取，缺失则跳过该指标
+- 不编造信息，简体中文`;
+
+  async function analyzeReport(opts) {
+    const settings = opts.settings || {};
+    const model = (settings.ai && settings.ai.model) || "";
+    let examImages = (opts.examImages || []).filter((im) => im && im.dataUrl);
+    if (isTextOnlyModel(model)) examImages = [];
+    if (!examImages.length) throw new Error("没有提供检查报告照片");
+    const followed = (opts.followedIndicators || []).map((f) => typeof f === "string" ? { name: f } : f);
+    const followedNames = followed.map((f) => f.name).filter(Boolean);
+    if (!followedNames.length) throw new Error("没有配置关注指标");
+    const userParts = [
+      { type: "text", text: "请从以下检查报告照片中提取这些关注指标的数值：" + followedNames.join("、") },
+    ];
+    _imagesToParts(examImages, "【检查报告照片】").forEach((p) => userParts.push(p));
+    const parsed = await _chatStream(REPORT_SYSTEM, userParts, settings, opts.onChunk);
+    const arr = (x) => (Array.isArray(x) ? x : []);
+    const followedMap = {};
+    followed.forEach((f) => (followedMap[f.name] = f));
+    return {
+      examResults: arr(parsed.examResults).map((e) => {
+        const name = String(e.name || "").trim();
+        const f = followedMap[name] || {};
+        return {
+          name,
+          value: e.value === 0 || e.value ? String(e.value) : "",
+          unit: f.unit || "",
+          range: f.range || "",
+          abnormal: false,
+        };
+      }).filter((e) => e.name && e.value),
+    };
+  }
+
+  /**
+   * AI 分析药单：从处方照片中提取药品信息
+   * @param {Object} opts
+   *   rxImages: [{dataUrl}]   处方药照片
+   *   settings: 全局设置
+   * @returns Promise<{ prescription: [{name, spec, packCount}] }>
+   */
+  const RX_SYSTEM = `你是一名"Nurse"健康助手。请从处方药照片中提取药品信息。
+仅输出 JSON 对象，不要额外说明：
+{
+  "prescription": [
+    { "name": "药品通用名", "spec": "规格(如 5mg、30mg*100)", "packCount": "数量(如 2，表示2盒)" }
+  ]
+}
+要求：
+- 逐项提取图片中每一种药品，不要遗漏
+- 药品尽量用通用名；规格和数量尽量从原文/图片提取
+- 不编造信息，缺则留空或返回空数组。简体中文`;
+
+  async function analyzePrescription(opts) {
+    const settings = opts.settings || {};
+    const model = (settings.ai && settings.ai.model) || "";
+    let rxImages = (opts.rxImages || []).filter((im) => im && im.dataUrl);
+    if (isTextOnlyModel(model)) rxImages = [];
+    if (!rxImages.length) throw new Error("没有提供处方药照片");
+    const userParts = [];
+    _imagesToParts(rxImages, "【处方药照片】请识别药品名称、规格与用法用量。").forEach((p) => userParts.push(p));
+    const parsed = await _chatStream(RX_SYSTEM, userParts, settings, opts.onChunk);
+    const arr = (x) => (Array.isArray(x) ? x : []);
+    return {
+      prescription: arr(parsed.prescription).map((p) => ({
+        name: String(p.name || "").trim(),
+        spec: String(p.spec || ""),
+        packCount: Number(p.packCount) || 0,
+      })).filter((p) => p.name),
+    };
+  }
+
+  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice, transcribeAudio, analyzeReport, analyzePrescription };
 });

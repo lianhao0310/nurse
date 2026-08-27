@@ -2127,6 +2127,26 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   padding: 8px 12px;
   font-weight: 600;
 }
+.follow-mgr-row__info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+}
+.follow-mgr-row__name { font-weight: 600; }
+.follow-mgr-row__unit, .follow-mgr-row__range, .follow-mgr-row__val {
+  font-size: 0.82em;
+  color: var(--ink-2);
+  font-weight: 400;
+}
+.follow-list-me { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+/* AI 分区域按钮：禁用状态置灰 */
+.ai-sec-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* ---- 检查结果 整页趋势视图 ---- */
 .exam-view-swipe {

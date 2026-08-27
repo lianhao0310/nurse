@@ -126,6 +126,7 @@
     document.body.classList.toggle("large-font", !!s.largeFont);
     renderAISummary();
     renderRemindersList();
+    renderFollowListMe();
   }
 
   // ===================== 页面路由 =====================
@@ -418,7 +419,6 @@
 
     // 检查结果子页签
     renderExamTrend($("#exam-trend"));
-    renderExamFollow($("#exam-follow"));
     renderExamList($("#exam-list"));
     examEmpty.hidden = (DATA.reports || []).length > 0;
     applyRecordsTab();
@@ -513,6 +513,7 @@
             <input type="file" id="rec-audio-input" accept="audio/*" hidden />
           </div>
           <div id="rec-audio-preview"></div>
+          ${aiOn ? `<button type="button" class="btn btn-ghost block ai-sec-btn" id="rec-ai-advice" disabled>🤖 AI 分析医嘱</button>` : ""}
         </div>
 
         <div class="detail-sec"><h3>💊 药单</h3>
@@ -524,6 +525,7 @@
             <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
           </div>
           <div id="rec-order-thumbs" class="thumb-grid"></div>
+          ${aiOn ? `<button type="button" class="btn btn-ghost block ai-sec-btn" id="rec-ai-order" disabled>🤖 AI 分析药单</button>` : ""}
         </div>
 
         <div class="detail-sec"><h3>🧪 检查报告</h3>
@@ -535,10 +537,11 @@
             <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
           </div>
           <div id="rec-report-thumbs" class="thumb-grid"></div>
+          ${aiOn ? `<button type="button" class="btn btn-ghost block ai-sec-btn" id="rec-ai-report" disabled>🤖 AI 分析检查报告</button>` : ""}
         </div>
 
         <div class="detail-actions">
-          ${aiOn ? `<button class="btn btn-ghost block" id="rec-ai-analyze">🤖 AI 分析</button><button class="btn btn-ghost block" id="rec-advice-analyze">💡 医嘱分析</button>` : ""}
+          ${aiOn ? `<button class="btn btn-ghost block" id="rec-advice-analyze">💡 医嘱分析</button>` : ""}
           <div class="rec-autosave-hint">修改自动保存 · 右滑返回</div>
         </div>
       </div>`;
@@ -556,6 +559,7 @@
   let _recAutoSaveDirty = false;
   let _editingRec = null;
   let _recAutoSaveTrigger = null;
+  let _updateAIBtnStates = null;
   function renderDraftThumbs() {
     $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="order" data-idx="${i}">✕</button></div>`).join("");
     $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="report" data-idx="${i}">✕</button></div>`).join("");
@@ -567,6 +571,7 @@
     const adel = $("#rec-audio-del");
     if (adel) adel.onclick = () => { recDraft.audio = null; renderDraftThumbs(); };
     if (_recAutoSaveTrigger) _recAutoSaveTrigger();
+    if (_updateAIBtnStates) _updateAIBtnStates();
   }
 
   function bindRecordEdit(rec) {
@@ -597,9 +602,23 @@
     if (addOrderBtn) addOrderBtn.onclick = () => addOrderForRecord(rec);
     const addReportBtn = $("#rec-report-add");
     if (addReportBtn) addReportBtn.onclick = () => addReportForRecord(rec);
-    // AI 分析 / 医嘱分析：先静默保存当前编辑，再基于最新数据分析
-    const aiBtn = $("#rec-ai-analyze");
-    if (aiBtn) aiBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAIAnalyze(saved); };
+    // AI 分析按钮（分区域）：默认置灰，有录音/图片后可用
+    function updateAIBtnStates() {
+      const adviceBtn = $("#rec-ai-advice");
+      if (adviceBtn) adviceBtn.disabled = !recDraft.audio;
+      const orderBtn = $("#rec-ai-order");
+      if (orderBtn) orderBtn.disabled = !((recDraft.orderImages || []).length > 0);
+      const reportBtn = $("#rec-ai-report");
+      if (reportBtn) reportBtn.disabled = !((recDraft.reportImages || []).length > 0);
+    }
+    _updateAIBtnStates = updateAIBtnStates;
+    updateAIBtnStates();
+    const aiAdviceBtn = $("#rec-ai-advice");
+    if (aiAdviceBtn) aiAdviceBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAIAnalyze(saved); };
+    const aiOrderBtn = $("#rec-ai-order");
+    if (aiOrderBtn) aiOrderBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runOrderAIAnalyze(saved); };
+    const aiReportBtn = $("#rec-ai-report");
+    if (aiReportBtn) aiReportBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runReportAIAnalyze(saved); };
     const advBtn = $("#rec-advice-analyze");
     if (advBtn) advBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAdviceAnalyze(saved); };
 
@@ -799,6 +818,69 @@
       openAIModal();
     } catch (e) {
       showAIError("AI 分析失败", e && e.message ? e.message : String(e));
+    }
+  }
+  async function runOrderAIAnalyze(rec) {
+    showAIProgress("🤖 AI 分析药单中…");
+    try {
+      const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
+      const rxImages = (rec.rxImages && rec.rxImages.length) ? rec.rxImages : ((linkedOrder && linkedOrder.images) || []);
+      if (!rxImages.length) { showAIError("无药单图片", "请先导入药单图片"); return; }
+      const res = await NurseAI.analyzePrescription({ settings: DATA.settings, rxImages, onChunk: updateAIProgress });
+      const prescription = res.prescription || [];
+      if (!prescription.length) { showAIError("AI 未能识别", "未能从药单图片中识别出药品信息"); return; }
+      const existOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
+      const oldMeds = existOrder ? (existOrder.medicines || []) : [];
+      const full = {};
+      const medicines = prescription.map((m) => {
+        const same = oldMeds.find((om) => om.name === m.name);
+        const fullData = { spec: parseSpecUnit(m.spec), doseAmount: 0, doseUnit: "片", timeSlots: ["morning"], meal: "any" };
+        if (!same) full[m.name] = fullData;
+        const aiQty = parseSpecQty(m.spec) * (m.packCount || 0);
+        return { id: same ? same.id : undefined, name: m.name, manufacturer: "", alias: "", spec: m.spec || "", packCount: m.packCount || 0, qty: same ? same.qty : aiQty, price: same ? same.price : 0 };
+      });
+      if (existOrder) {
+        await NurseStorage.updateOrder(rec.orderId, { medicines, _full: full, aiGenerated: true });
+      } else {
+        const o = await NurseStorage.upsertOrder({ source: rec.hospital || "药单", date: rec.visitDate || TODAY, kind: "hospital", recordId: rec.id, medicines, _full: full, aiGenerated: true });
+        await NurseStorage.updateRecord(rec.id, { orderId: o.id });
+      }
+      DATA = await NurseStorage.load();
+      $("#ai-modal").hidden = true;
+      const latest = (DATA.records || []).find((r) => r.id === rec.id);
+      if (latest && !$("#record-view").hidden) showRecordView(latest);
+      renderRecords(); renderCabinet(); renderHome();
+      toast("药单 AI 分析已保存");
+    } catch (e) {
+      showAIError("AI 分析药单失败", e && e.message ? e.message : String(e));
+    }
+  }
+  async function runReportAIAnalyze(rec) {
+    showAIProgress("🤖 AI 分析检查报告中…");
+    try {
+      const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
+      const examImages = (rec.examImages && rec.examImages.length) ? rec.examImages : ((linkedReport && linkedReport.images) || []);
+      if (!examImages.length) { showAIError("无报告图片", "请先导入检查报告图片"); return; }
+      const followedIndicators = DATA.followedIndicators || [];
+      if (!followedIndicators.length) { showAIError("未配置关注指标", "请先在「我的 → 关注指标」中添加关注指标"); return; }
+      const res = await NurseAI.analyzeReport({ settings: DATA.settings, examImages, followedIndicators, onChunk: updateAIProgress });
+      const indicators = res.examResults || [];
+      if (!indicators.length) { showAIError("AI 未能识别", "未能从报告中识别出关注指标数据"); return; }
+      if (rec.reportId) {
+        const exist = (DATA.reports || []).find((rp) => rp.id === rec.reportId);
+        await NurseStorage.updateReport(rec.reportId, { indicators, title: (exist && exist.title) || "检查报告", date: rec.visitDate || TODAY, kind: "hospital", aiGenerated: true });
+      } else {
+        const rp = await NurseStorage.upsertReport({ title: rec.hospital || "检查报告", date: rec.visitDate || TODAY, kind: "hospital", recordId: rec.id, indicators, aiGenerated: true });
+        await NurseStorage.updateRecord(rec.id, { reportId: rp.id });
+      }
+      DATA = await NurseStorage.load();
+      $("#ai-modal").hidden = true;
+      const latest = (DATA.records || []).find((r) => r.id === rec.id);
+      if (latest && !$("#record-view").hidden) showRecordView(latest);
+      renderRecords(); renderHome();
+      toast("检查报告 AI 分析已保存");
+    } catch (e) {
+      showAIError("AI 分析检查报告失败", e && e.message ? e.message : String(e));
     }
   }
   function openAIModal() {
@@ -1187,10 +1269,10 @@
   }
   function renderExamTrend(el) {
     if (!el) return;
-    const followed = DATA.followedIndicators || [];
+    const followed = (DATA.followedIndicators || []).map((f) => typeof f === "string" ? f : f.name);
     const series = collectSeries().filter((s) => followed.includes(s.name));
     if (!series.length) {
-      el.innerHTML = followed.length ? '<div class="empty-tip">关注的指标暂无趋势数据。</div>' : '<div class="empty-tip">请先在「关注指标」中添加需要跟踪的指标。</div>';
+      el.innerHTML = followed.length ? '<div class="empty-tip">关注的指标暂无趋势数据。</div>' : '<div class="empty-tip">请先在「我的 → 关注指标」中添加需要跟踪的指标。</div>';
       return;
     }
     series.sort((a, b) => {
@@ -1198,20 +1280,16 @@
       const fb = followed.indexOf(b.name);
       return (fa < 0 ? 999 : fa) - (fb < 0 ? 999 : fb);
     });
-    if (trendTabIndex >= series.length) trendTabIndex = 0;
-    const tabsHtml = series.map((s, i) => `<button class="trend-tab ${i === trendTabIndex ? "is-active" : ""}" data-trend-tab="${i}">${esc(s.name)}</button>`).join("");
-    const s = series[trendTabIndex];
-    const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
-    const latest = s.points[s.points.length - 1];
-    el.innerHTML = `<div class="trend-tabs">${tabsHtml}</div>
-      <div class="trend-card is-followed" data-trend-detail="${trendTabIndex}">
+    el.innerHTML = series.map((s, i) => {
+      const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
+      const latest = s.points[s.points.length - 1];
+      return `<div class="trend-card is-followed" data-trend-detail="${i}">
         <div class="trend-card__head"><b>${esc(s.name)}</b><span class="trend-star">⭐</span></div>
         <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
         ${chart}
       </div>`;
-    $$("[data-trend-tab]").forEach((b) => (b.onclick = () => { trendTabIndex = +b.dataset.trendTab; renderExamTrend(el); }));
-    const card = $("[data-trend-detail]");
-    if (card) card.onclick = () => openExamView(trendTabIndex);
+    }).join("");
+    $$("[data-trend-detail]").forEach((card) => (card.onclick = () => openExamView(+card.dataset.trendDetail)));
   }
   function singlePoint(s) {
     const p = s.points[0];
@@ -1239,47 +1317,50 @@
     </svg>`;
   }
 
-  // 关注指标区（顶部可增删）：显示最新值（管理入口=标题右侧齿轮）
-  function renderExamFollow(el) {
+  // 关注指标区（"我的"页面）：显示指标名+单位+参考值+最新值
+  function renderFollowListMe() {
+    const el = $("#follow-list-me");
     if (!el) return;
     const followed = DATA.followedIndicators || [];
+    const sub = $("#follow-sub");
+    if (sub) sub.textContent = followed.length ? followed.length + " 项" : "";
     if (!followed.length) {
-      el.innerHTML = '<div class="exam-follow__empty"><span>还没有关注指标，点标题右侧 ⚙ 添加。</span></div>';
+      el.innerHTML = '<div class="empty-tip">还没有关注指标，点「新增」添加。</div>';
       return;
     }
     const series = collectSeries();
     const byName = {};
     series.forEach((s) => (byName[s.name] = s));
-    el.innerHTML = `
-      <div class="exam-follow__list">${followed
-        .map((name) => {
-          const s = byName[name];
-          if (!s) return `<div class="follow-chip"><span class="follow-chip__name">${esc(name)}</span><span class="follow-chip__val">暂无数据</span><button class="follow-chip__del" data-unfollow="${esc(name)}">✕</button></div>`;
-          const latest = s.points[s.points.length - 1];
-          return `<div class="follow-chip">
-            <span class="follow-chip__name">${esc(name)}</span>
-            <span class="follow-chip__val"><b>${esc(latest.value + " " + (s.unit || ""))}</b>${latest.abnormal ? " ⚠️" : ""}</span>
-            <span class="follow-chip__date">${esc(latest.date || "")}</span>
-            <button class="follow-chip__del" data-unfollow="${esc(name)}">✕</button>
-          </div>`;
-        })
-        .join("")}
+    el.innerHTML = followed.map((f) => {
+      const name = typeof f === "string" ? f : f.name;
+      const unit = typeof f === "string" ? "" : (f.unit || "");
+      const range = typeof f === "string" ? "" : (f.range || "");
+      const s = byName[name];
+      const latest = s && s.points.length ? s.points[s.points.length - 1] : null;
+      return `<div class="follow-mgr-row">
+        <div class="follow-mgr-row__info">
+          <span class="follow-mgr-row__name">${esc(name)}</span>
+          ${unit ? '<span class="follow-mgr-row__unit">' + esc(unit) + '</span>' : ""}
+          ${range ? '<span class="follow-mgr-row__range">参考 ' + esc(range) + '</span>' : ""}
+          ${latest ? '<span class="follow-mgr-row__val">最新 ' + esc(latest.value + " " + (latest.unit || unit || "")) + '</span>' : '<span class="follow-mgr-row__val">暂无数据</span>'}
+        </div>
+        <button class="icon-btn icon-btn--danger" data-follow-del="${esc(name)}">✕</button>
       </div>`;
-    $$("[data-unfollow]").forEach((b) => (b.onclick = async () => {
-      const set = new Set(DATA.followedIndicators || []);
-      set.delete(b.dataset.unfollow);
-      DATA.followedIndicators = Array.from(set);
+    }).join("");
+    $$("[data-follow-del]").forEach((b) => (b.onclick = async () => {
+      DATA.followedIndicators = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== b.dataset.followDel);
       await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
-      renderExamFollow(el);
-      renderExamTrend($("#exam-trend"));
+      renderFollowListMe();
     }));
   }
 
   // 关注指标 管理弹窗
   function openFollowModal() {
     $("#follow-input").value = "";
+    $("#follow-unit").value = "";
+    $("#follow-range").value = "";
     const allNames = collectSeries().map((s) => s.name);
-    const followed = new Set(DATA.followedIndicators || []);
+    const followed = new Set((DATA.followedIndicators || []).map((f) => typeof f === "string" ? f : f.name));
     const dl = $("#follow-suggestions");
     if (dl) dl.innerHTML = allNames.filter((n) => !followed.has(n)).map((n) => `<option value="${esc(n)}">`).join("");
     renderFollowList();
@@ -1290,13 +1371,21 @@
     if (!box) return;
     const followed = DATA.followedIndicators || [];
     if (!followed.length) { box.innerHTML = '<div class="empty-tip" style="padding:4px 0">还没有关注指标</div>'; return; }
-    box.innerHTML = followed.map((name) => `<div class="follow-mgr-row">
-      <span>${esc(name)}</span><button class="icon-btn icon-btn--danger" data-follow-del="${esc(name)}">✕</button>
-    </div>`).join("");
+    box.innerHTML = followed.map((f) => {
+      const name = typeof f === "string" ? f : f.name;
+      const unit = typeof f === "string" ? "" : (f.unit || "");
+      const range = typeof f === "string" ? "" : (f.range || "");
+      return `<div class="follow-mgr-row">
+        <div class="follow-mgr-row__info">
+          <span class="follow-mgr-row__name">${esc(name)}</span>
+          ${unit ? '<span class="follow-mgr-row__unit">' + esc(unit) + '</span>' : ""}
+          ${range ? '<span class="follow-mgr-row__range">参考 ' + esc(range) + '</span>' : ""}
+        </div>
+        <button class="icon-btn icon-btn--danger" data-follow-del="${esc(name)}">✕</button>
+      </div>`;
+    }).join("");
     $$("[data-follow-del]").forEach((b) => (b.onclick = async () => {
-      const set = new Set(DATA.followedIndicators || []);
-      set.delete(b.dataset.followDel);
-      DATA.followedIndicators = Array.from(set);
+      DATA.followedIndicators = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== b.dataset.followDel);
       await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
       renderFollowList();
     }));
@@ -1304,11 +1393,14 @@
   async function addFollowIndicator() {
     const v = $("#follow-input").value.trim();
     if (!v) { toast("请输入指标名"); return; }
-    const set = new Set(DATA.followedIndicators || []);
-    set.add(v);
-    DATA.followedIndicators = Array.from(set);
+    const unit = $("#follow-unit").value.trim();
+    const range = $("#follow-range").value.trim();
+    const existing = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== v);
+    DATA.followedIndicators = [...existing, { name: v, unit, range }];
     await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
     $("#follow-input").value = "";
+    $("#follow-unit").value = "";
+    $("#follow-range").value = "";
     renderFollowList();
     toast("已添加关注：" + v);
   }
@@ -1589,7 +1681,10 @@
   // 药单内 药品条目 弹窗（药单只记 药名/厂家/别名/数量；新药可填全属性建档药箱）
   const MED_PICK_NEW = "__new__";
   function medPickOptions() {
-    return (DATA.cabinet || []).map((c) => ({ name: c.name, spec: c.spec || "", manufacturer: c.manufacturer || "", alias: c.alias || "" }));
+    const map = {};
+    (DATA.cabinet || []).forEach((c) => { if (c.name) map[c.name] = { name: c.name }; });
+    (DATA.orders || []).forEach((o) => (o.medicines || []).forEach((m) => { if (m.name) map[m.name] = { name: m.name }; }));
+    return Object.values(map);
   }
   let medItemMode = "pick"; // pick=选择/输入（4 字段） new=新药全属性 edit=编辑条目
   function setMedItemFull(visible) {
@@ -1658,10 +1753,15 @@
       if (!v) { $("#meditem-f-name").disabled = false; return; }
       const found = medPickOptions().find((o) => o.name === v);
       if (!found) return;
+      const info = latestMedInfo(v);
       $("#meditem-f-name").value = found.name;
       $("#meditem-f-name").disabled = true;
-      $("#meditem-f-manufacturer").value = found.manufacturer || "";
-      $("#meditem-f-alias").value = found.alias || "";
+      $("#meditem-f-manufacturer").value = info.manufacturer || "";
+      $("#meditem-f-alias").value = info.alias || "";
+      $("#meditem-f-packspec").value = info.spec || "";
+      $("#meditem-f-packcount").value = 0;
+      $("#meditem-f-qty").value = 0;
+      $("#meditem-f-price").value = info.price || 0;
     };
     const updateQtyFromSpec = () => {
       const per = parseSpecQty($("#meditem-f-packspec").value.trim());
@@ -1760,9 +1860,14 @@
     const tb = $("#report-table tbody");
     if (!tb) return;
     const meta = DATA.indicatorMeta || {};
+    const allNames = new Set();
+    (DATA.reports || []).forEach((rp) => (rp.indicators || []).forEach((ind) => { if (ind.name) allNames.add(ind.name); }));
+    (DATA.followedIndicators || []).forEach((f) => { const n = typeof f === "string" ? f : f.name; if (n) allNames.add(n); });
+    const dl = $("#report-ind-suggestions");
+    if (dl) dl.innerHTML = Array.from(allNames).map((n) => `<option value="${esc(n)}">`).join("");
     tb.innerHTML = reportDraft.indicators
       .map((ind, i) => `<tr data-i="${i}">
-        <td><input data-f="name" value="${esc(ind.name)}" placeholder="如：血糖"/></td>
+        <td><input data-f="name" value="${esc(ind.name)}" placeholder="如：血糖" list="report-ind-suggestions"/></td>
         <td><input data-f="value" value="${esc(ind.value)}" placeholder="数值"/></td>
         <td><input data-f="unit" value="${esc(ind.unit)}" placeholder="如：mmol/L"/></td>
         <td><input data-f="range" value="${esc(ind.range)}" placeholder="参考范围"/></td>
@@ -2333,7 +2438,7 @@
     // 关注指标 管理（标题右侧齿轮）
     $("#follow-manage-btn").onclick = () => openFollowModal();
     $("#follow-add").onclick = addFollowIndicator;
-    $("#follow-done").onclick = () => { $("#follow-modal").hidden = true; renderExamFollow($("#exam-follow")); renderExamTrend($("#exam-trend")); };
+    $("#follow-done").onclick = () => { $("#follow-modal").hidden = true; renderFollowListMe(); renderExamTrend($("#exam-trend")); };
     $("#follow-input").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowIndicator(); });
 
     // 药箱 / 药单
@@ -2411,7 +2516,7 @@
   let examViewSeries = [];
   let trendTabIndex = 0;
   function openExamView(idx) {
-    const followed = DATA.followedIndicators || [];
+    const followed = (DATA.followedIndicators || []).map((f) => typeof f === "string" ? f : f.name);
     examViewSeries = collectSeries().filter((s) => followed.includes(s.name));
     examViewSeries.sort((a, b) => {
       const fa = followed.indexOf(a.name);

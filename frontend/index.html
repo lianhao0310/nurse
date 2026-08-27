@@ -85,8 +85,6 @@
 
             <div id="exam-pane" hidden>
               <button class="btn btn-primary block" id="btn-add-report">＋ 添加自测报告</button>
-              <div class="block-head"><h2>⭐ 关注指标</h2><button type="button" class="icon-btn block-head__btn" id="follow-manage-btn" title="管理关注指标">⚙</button></div>
-              <div id="exam-follow" class="exam-follow"></div>
               <div class="block-head"><h2>📈 关注指标趋势</h2></div>
               <div id="exam-trend" class="exam-trend"></div>
               <div class="block-head"><h2>🧾 检查结果明细</h2></div>
@@ -185,6 +183,17 @@
                 <button class="btn btn-ghost btn-sm" id="btn-add-reminder" type="button">＋ 新增</button>
               </div>
               <div id="reminders-list" class="reminders-list"></div>
+            </div>
+
+            <div class="me-card">
+              <div class="me-card__head">
+                <div class="me-card__head-l">
+                  <div class="me-card__title">⭐ 关注指标</div>
+                  <div class="me-card__sub" id="follow-sub"></div>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="follow-manage-btn" type="button">＋ 新增</button>
+              </div>
+              <div id="follow-list-me" class="follow-list-me"></div>
             </div>
 
             <div class="me-card">
@@ -415,6 +424,7 @@
                 <thead><tr><th>指标</th><th>数值</th><th>单位</th><th>参考</th><th></th></tr></thead>
                 <tbody></tbody>
               </table></div>
+              <datalist id="report-ind-suggestions"></datalist>
               <button class="btn btn-ghost btn-sm" id="report-ind-add" type="button">＋ 添加指标</button>
             </div>
             <div class="capture-actions">
@@ -448,7 +458,12 @@
             <button class="modal__close" data-close="follow">✕</button>
           </div>
           <div class="modal__body">
-            <label class="field"><span>新增关注指标</span><input type="text" id="follow-input" placeholder="输入或选择指标名" list="follow-suggestions" /><datalist id="follow-suggestions"></datalist></label>
+            <div class="row2">
+              <label class="field"><span>指标</span><input type="text" id="follow-input" placeholder="输入或选择指标名" list="follow-suggestions" /></label>
+              <label class="field"><span>单位</span><input type="text" id="follow-unit" placeholder="如：mmol/L" /></label>
+            </div>
+            <label class="field"><span>参考值</span><input type="text" id="follow-range" placeholder="如：3.9-6.1" /></label>
+            <datalist id="follow-suggestions"></datalist>
             <button class="btn btn-primary block" id="follow-add">＋ 添加关注</button>
             <div class="detail-sec"><h4>已关注</h4><div id="follow-list" class="follow-mgr-list"></div></div>
             <div class="capture-actions">

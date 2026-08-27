@@ -375,7 +375,11 @@
         data.indicatorMeta = meta;
       }
       if (Array.isArray(obj.followedIndicators)) {
-        data.followedIndicators = obj.followedIndicators.filter((x) => x && typeof x === "string" && x.trim());
+        data.followedIndicators = obj.followedIndicators.map((x) => {
+          if (typeof x === "string") return { name: x.trim(), unit: "", range: "" };
+          if (x && typeof x === "object" && x.name) return { name: String(x.name).trim(), unit: x.unit || "", range: x.range || "" };
+          return null;
+        }).filter(Boolean);
       }
     }
     return data;
@@ -707,7 +711,11 @@
   // 关注指标（按指标名称）
   async function setFollowedIndicators(arr) {
     const data = await load();
-    data.followedIndicators = Array.isArray(arr) ? arr.filter((x) => x && typeof x === "string" && x.trim()) : [];
+    data.followedIndicators = Array.isArray(arr) ? arr.map((x) => {
+      if (typeof x === "string") return { name: x.trim(), unit: "", range: "" };
+      if (x && typeof x === "object" && x.name) return { name: String(x.name).trim(), unit: x.unit || "", range: x.range || "" };
+      return null;
+    }).filter(Boolean) : [];
     await save(data);
     return data.followedIndicators;
   }
