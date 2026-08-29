@@ -244,3 +244,49 @@ test("导出→清空→导入 往返保持数据一致", async () => {
   assert.strictEqual(restored.records.length, 1, "应恢复 1 条记录");
   assert.strictEqual(restored.records[0].transcript, "测试往返", "记录内容应一致");
 });
+
+test("importJSON 保留 followedIndicators", async () => {
+  await NurseStorage.setFollowedIndicators([{ name: "血糖", unit: "mmol/L", range: "3.9-6.1" }]);
+  const json = await NurseStorage.exportJSON();
+  global.window.localStorage.clear();
+  await NurseStorage.importJSON(json);
+  const data = await NurseStorage.load();
+  assert.ok(data.followedIndicators && data.followedIndicators.length === 1, "应恢复 1 个关注指标");
+  assert.strictEqual(data.followedIndicators[0].name, "血糖");
+  assert.strictEqual(data.followedIndicators[0].unit, "mmol/L");
+});
+
+test("importJSON 空备份不覆盖现有数据", async () => {
+  await NurseStorage.upsertOrder({ source: "市医院", medicines: [{ name: "氨氯地平", qty: 10 }] });
+  await NurseStorage.appendRecord({ hospital: "市医院", visitDate: "2026-08-23", transcript: "已有", manual: true });
+  const before = await NurseStorage.load();
+  assert.ok(before.orders.length === 1, "导入前应有 1 条药单");
+
+  await NurseStorage.importJSON(JSON.stringify({ version: 3, records: [], orders: [], reports: [], cabinet: [] }));
+  const after = await NurseStorage.load();
+  assert.strictEqual(after.orders.length, 1, "空备份不应清空现有药单");
+  assert.strictEqual(after.records.length, 1, "空备份不应清空现有记录");
+});
+
+test("全量数据导出导入往返一致（含关注指标+设置）", async () => {
+  await NurseStorage.upsertOrder({ source: "市医院", medicines: [{ name: "氨氯地平", qty: 30 }, { name: "缬沙坦", qty: 10 }] });
+  await NurseStorage.upsertReport({ title: "血常规", date: "2026-08-23", kind: "self", indicators: [{ name: "血糖", value: "5.5", unit: "mmol/L" }, { name: "血压", value: "130/80", abnormal: true }] });
+  await NurseStorage.appendRecord({ hospital: "市医院", visitDate: "2026-08-23", transcript: "全量测试", manual: true });
+  await NurseStorage.setFollowedIndicators([{ name: "血糖", unit: "mmol/L", range: "3.9-6.1" }, { name: "血压", unit: "mmHg", range: "90-140" }]);
+
+  const json = await NurseStorage.exportJSON();
+  global.window.localStorage.clear();
+  await NurseStorage.importJSON(json);
+  const restored = await NurseStorage.load();
+
+  assert.strictEqual(restored.orders.length, 1, "药单");
+  assert.strictEqual(restored.orders[0].medicines.length, 2, "药品");
+  assert.strictEqual(restored.reports.length, 1, "报告");
+  assert.strictEqual(restored.reports[0].indicators.length, 2, "指标");
+  assert.strictEqual(restored.records.length, 1, "记录");
+  assert.strictEqual(restored.records[0].transcript, "全量测试", "记录内容");
+  assert.ok(restored.cabinet.length >= 2, "药箱应有药品");
+  assert.strictEqual(restored.followedIndicators.length, 2, "关注指标");
+  assert.strictEqual(restored.followedIndicators[0].name, "血糖", "关注指标名");
+  assert.strictEqual(restored.followedIndicators[1].range, "90-140", "关注指标参考值");
+});

@@ -757,10 +757,11 @@
     cur.records.forEach((r) => (map[r.id] = r));
     incoming.records.forEach((r) => (map[r.id] = r));
     cur.records = Object.values(map).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    cur.orders = incoming.orders.length ? incoming.orders : cur.orders;
-    cur.reports = incoming.reports.length ? incoming.reports : cur.reports;
-    cur.cabinet = incoming.cabinet.length ? incoming.cabinet : cur.cabinet;
-    cur.indicatorMeta = Object.keys(incoming.indicatorMeta || {}).length ? incoming.indicatorMeta : cur.indicatorMeta;
+    if (incoming.orders.length) cur.orders = incoming.orders;
+    if (incoming.reports.length) cur.reports = incoming.reports;
+    if (incoming.cabinet.length) cur.cabinet = incoming.cabinet;
+    if (Object.keys(incoming.indicatorMeta || {}).length) cur.indicatorMeta = incoming.indicatorMeta;
+    if (incoming.followedIndicators && incoming.followedIndicators.length) cur.followedIndicators = incoming.followedIndicators;
     cur.settings = _mergeSettings(cur.settings, incoming.settings);
     await save(cur);
     return cur;

@@ -2156,7 +2156,22 @@
   }
   async function importData(file) {
     try {
-      const text = await file.text();
+      const text = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsText(file);
+      });
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.records)) {
+        toast("导入失败：文件格式不正确");
+        return;
+      }
+      const hasData = (parsed.records && parsed.records.length) || (parsed.orders && parsed.orders.length) || (parsed.reports && parsed.reports.length) || (parsed.cabinet && parsed.cabinet.length);
+      if (!hasData) {
+        toast("备份文件中无数据，已取消导入");
+        return;
+      }
       await NurseStorage.importJSON(text);
       DATA = await NurseStorage.load();
       applySettingsUI();
@@ -2164,7 +2179,7 @@
       renderRecords();
       renderCabinet();
       toast("已导入并恢复");
-    } catch (e) { toast("导入失败：文件格式不正确"); }
+    } catch (e) { console.error("import failed:", e); toast("导入失败：文件格式不正确"); }
   }
 
   // ===================== 滑动删除（通用） =====================
