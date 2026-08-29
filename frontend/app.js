@@ -1122,17 +1122,17 @@
   // 「添加药单 / 更换药单」：无关联则直接打开新建药单弹窗（保存后自动关联），
   // 已有关联则直接打开该药单的编辑弹窗
   async function addOrderForRecord(rec) {
-    // 新记录先静默保存，获得 id 供关联；showRecordView 会重新绑定按钮
     if (!rec || !rec.id) {
       const saved = await saveRecordEdit(rec, { silent: true });
       if (!saved || !saved.id) { toast("请先填写问诊记录基本信息"); return; }
       currentRecordId = saved.id;
       showRecordView((DATA.records || []).find((r) => r.id === saved.id));
       const ai = $("#ai-modal"); if (ai) ai.hidden = true;
+      rec = (DATA.records || []).find((r) => r.id === saved.id);
     } else {
       currentRecordId = rec.id;
     }
-    // 已有关联药单 → 直接编辑该药单；否则新建
+    if (!rec.hospital || !rec.visitDate) { toast("请先填写问诊记录的医院和就诊日期"); return; }
     if (rec && rec.orderId) openOrderModal(rec.orderId, true);
     else openOrderModal(null, true);
   }
@@ -1659,8 +1659,9 @@
   async function persistOrder() {
     if (!orderDraft) return false;
     const source = $("#order-f-source").value.trim();
-    if (!source) return false;
+    if (!source) { toast("请先填写问诊记录的医院"); return false; }
     const date = $("#order-f-date").value;
+    if (!date) { toast("请先填写问诊记录的就诊日期"); return false; }
     const medicines = orderDraft.medicines.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer, alias: m.alias, spec: m.spec, packCount: m.packCount, qty: m.qty, price: m.price }));
     const full = {};
     orderDraft.medicines.forEach((m) => { if (m._full) full[m.name] = m._full; });
@@ -2156,12 +2157,21 @@
   }
   async function importData(file) {
     try {
-      const text = await new Promise((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(fr.result);
-        fr.onerror = () => reject(fr.error);
-        fr.readAsText(file);
-      });
+      let text = "";
+      if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
+        try {
+          const res = await Capacitor.Plugins.Filesystem.readFile({ path: file.name, directory: "Documents", encoding: "utf8" });
+          text = res.data;
+        } catch (e) { /* file not in Documents, fall through to FileReader */ }
+      }
+      if (!text) {
+        text = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = () => reject(fr.error);
+          fr.readAsText(file);
+        });
+      }
       const parsed = JSON.parse(text);
       if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.records)) {
         toast("导入失败：文件格式不正确");
