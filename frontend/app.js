@@ -21,6 +21,7 @@
   let recDraft = null; // 编辑问诊记录时的草稿
   let currentRecordId = null;
   let aiModalState = null; // { rec, data, type }
+  let followEditing = null; // 关注指标编辑态：正在编辑的指标名
 
   // 药单 / 药品条目 / 检查报告 / 关注指标 编辑态
   let editingOrderId = null;      // order-modal 当前编辑的药单
@@ -508,36 +509,36 @@
             <textarea id="rec-f-advice" rows="4" placeholder="本次医生医嘱 / 录音转写文字">${esc(recDraft.adviceText)}</textarea>
           </div>
           <div class="rec-edit__row">
-            <button type="button" class="btn btn-ghost" id="rec-mic">🎙 录音</button>
-            <button type="button" class="btn btn-ghost" id="rec-audio-file">📁 上传录音</button>
+            <button type="button" class="btn btn-ghost btn-compact" id="rec-mic">🎙录音</button>
+            <button type="button" class="btn btn-ghost btn-compact" id="rec-audio-file">📁上传</button>
             <input type="file" id="rec-audio-input" accept="audio/*" hidden />
+            ${aiOn ? `<button type="button" class="btn btn-ghost btn-compact ai-sec-btn" id="rec-ai-advice" disabled>🤖分析</button>` : ""}
           </div>
           <div id="rec-audio-preview"></div>
-          ${aiOn ? `<button type="button" class="btn btn-ghost block ai-sec-btn" id="rec-ai-advice" disabled>🤖 AI 分析医嘱</button>` : ""}
         </div>
 
         <div class="detail-sec"><h3>💊 药单</h3>
           <div id="rec-order-link">${renderRelatedOrder(rec)}</div>
           <div class="rec-edit__row">
-            ${!(rec && rec.orderId) ? `<button type="button" class="btn btn-ghost" id="rec-order-add">＋ 添加药单</button>` : ""}
-            <button type="button" class="btn btn-ghost" id="rec-order-img">📷 导入药单图片</button>
-            <button type="button" class="btn btn-ghost" id="rec-order-copy">📋 复制药单</button>
+            ${!(rec && rec.orderId) ? `<button type="button" class="btn btn-ghost btn-compact" id="rec-order-add">＋药单</button>` : ""}
+            <button type="button" class="btn btn-ghost btn-compact" id="rec-order-img">📷拍照</button>
+            <button type="button" class="btn btn-ghost btn-compact" id="rec-order-copy">📋复制</button>
             <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
+            ${aiOn ? `<button type="button" class="btn btn-ghost btn-compact ai-sec-btn" id="rec-ai-order" disabled>🤖分析</button>` : ""}
           </div>
           <div id="rec-order-thumbs" class="thumb-grid"></div>
-          ${aiOn ? `<button type="button" class="btn btn-ghost block ai-sec-btn" id="rec-ai-order" disabled>🤖 AI 分析药单</button>` : ""}
         </div>
 
         <div class="detail-sec"><h3>🧪 检查报告</h3>
           <div id="rec-report-link">${renderRelatedReport(rec)}</div>
           <div class="rec-edit__row">
-            ${!(rec && rec.reportId) ? `<button type="button" class="btn btn-ghost" id="rec-report-add">＋ 添加检查报告</button>` : ""}
-            <button type="button" class="btn btn-ghost" id="rec-report-img">📷 导入报告图片</button>
-            <button type="button" class="btn btn-ghost" id="rec-report-copy">📋 复制报告</button>
+            ${!(rec && rec.reportId) ? `<button type="button" class="btn btn-ghost btn-compact" id="rec-report-add">＋报告</button>` : ""}
+            <button type="button" class="btn btn-ghost btn-compact" id="rec-report-img">📷拍照</button>
+            <button type="button" class="btn btn-ghost btn-compact" id="rec-report-copy">📋复制</button>
             <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
+            ${aiOn ? `<button type="button" class="btn btn-ghost btn-compact ai-sec-btn" id="rec-ai-report" disabled>🤖分析</button>` : ""}
           </div>
           <div id="rec-report-thumbs" class="thumb-grid"></div>
-          ${aiOn ? `<button type="button" class="btn btn-ghost block ai-sec-btn" id="rec-ai-report" disabled>🤖 AI 分析检查报告</button>` : ""}
         </div>
 
         <div class="detail-actions">
@@ -1335,32 +1336,28 @@
       const name = typeof f === "string" ? f : f.name;
       const unit = typeof f === "string" ? "" : (f.unit || "");
       const range = typeof f === "string" ? "" : (f.range || "");
-      const s = byName[name];
-      const latest = s && s.points.length ? s.points[s.points.length - 1] : null;
-      return `<div class="follow-mgr-row">
-        <div class="follow-mgr-row__info">
+      return `<div class="follow-mgr-row swipe-item" data-swipe data-follow-edit="${esc(name)}">
+        <div class="swipe-content follow-mgr-row__info">
           <span class="follow-mgr-row__name">${esc(name)}</span>
+          ${range ? '<span class="follow-mgr-row__range">' + esc(range) + '</span>' : ""}
           ${unit ? '<span class="follow-mgr-row__unit">' + esc(unit) + '</span>' : ""}
-          ${range ? '<span class="follow-mgr-row__range">参考 ' + esc(range) + '</span>' : ""}
-          ${latest ? '<span class="follow-mgr-row__val">最新 ' + esc(latest.value + " " + (latest.unit || unit || "")) + '</span>' : '<span class="follow-mgr-row__val">暂无数据</span>'}
         </div>
-        <button class="icon-btn icon-btn--danger" data-follow-del="${esc(name)}">✕</button>
+        <button class="swipe-del" data-swipe-del>删除</button>
       </div>`;
     }).join("");
-    $$("[data-follow-del]").forEach((b) => (b.onclick = async () => {
-      DATA.followedIndicators = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== b.dataset.followDel);
-      await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
-      renderFollowListMe();
-    }));
   }
 
   // 关注指标 管理弹窗
-  function openFollowModal() {
-    $("#follow-input").value = "";
-    $("#follow-unit").value = "";
-    $("#follow-range").value = "";
+  function openFollowModal(editName) {
+    const editing = editName && (DATA.followedIndicators || []).find((f) => (typeof f === "string" ? f : f.name) === editName);
+    followEditing = editing ? editName : null;
+    $("#follow-input").value = editing ? (typeof editing === "string" ? editing : editing.name) : "";
+    $("#follow-unit").value = editing && typeof editing === "object" ? (editing.unit || "") : "";
+    $("#follow-range").value = editing && typeof editing === "object" ? (editing.range || "") : "";
+    $("#follow-add").textContent = editing ? "保存修改" : "＋ 添加关注";
     const allNames = collectSeries().map((s) => s.name);
     const followed = new Set((DATA.followedIndicators || []).map((f) => typeof f === "string" ? f : f.name));
+    if (editing) followed.delete(editName);
     const dl = $("#follow-suggestions");
     if (dl) dl.innerHTML = allNames.filter((n) => !followed.has(n)).map((n) => `<option value="${esc(n)}">`).join("");
     renderFollowList();
@@ -1395,14 +1392,27 @@
     if (!v) { toast("请输入指标名"); return; }
     const unit = $("#follow-unit").value.trim();
     const range = $("#follow-range").value.trim();
-    const existing = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== v);
-    DATA.followedIndicators = [...existing, { name: v, unit, range }];
-    await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
-    $("#follow-input").value = "";
-    $("#follow-unit").value = "";
-    $("#follow-range").value = "";
-    renderFollowList();
-    toast("已添加关注：" + v);
+    if (followEditing) {
+      const existing = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== followEditing);
+      DATA.followedIndicators = [...existing, { name: v, unit, range }];
+      await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
+      followEditing = null;
+      $("#follow-input").value = "";
+      $("#follow-unit").value = "";
+      $("#follow-range").value = "";
+      $("#follow-add").textContent = "＋ 添加关注";
+      renderFollowList();
+      toast("已修改：" + v);
+    } else {
+      const existing = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== v);
+      DATA.followedIndicators = [...existing, { name: v, unit, range }];
+      await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
+      $("#follow-input").value = "";
+      $("#follow-unit").value = "";
+      $("#follow-range").value = "";
+      renderFollowList();
+      toast("已添加关注：" + v);
+    }
   }
 
   // 检查报告 明细列表
@@ -2265,6 +2275,18 @@
     }
   }
 
+  async function deleteFollowSwipe(item) {
+    const name = item.dataset.followEdit;
+    if (!name) return;
+    if (confirm("确定删除关注指标「" + name + "」？")) {
+      DATA.followedIndicators = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== name);
+      await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
+      renderFollowListMe();
+      renderExamTrend($("#exam-trend"));
+      toast("已删除");
+    }
+  }
+
   // ===================== 子页签切换 + 左右滑动 =====================
   function switchRecordsTab(tab) {
     $$(".records-subtabs .home-tab").forEach((x) => x.classList.toggle("is-active", x.dataset.rtab === tab));
@@ -2438,8 +2460,13 @@
     // 关注指标 管理（标题右侧齿轮）
     $("#follow-manage-btn").onclick = () => openFollowModal();
     $("#follow-add").onclick = addFollowIndicator;
-    $("#follow-done").onclick = () => { $("#follow-modal").hidden = true; renderFollowListMe(); renderExamTrend($("#exam-trend")); };
+    $("#follow-done").onclick = () => { $("#follow-modal").hidden = true; followEditing = null; renderFollowListMe(); renderExamTrend($("#exam-trend")); };
     $("#follow-input").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowIndicator(); });
+    attachSwipe($("#follow-list-me"), deleteFollowSwipe);
+    $("#follow-list-me").addEventListener("click", (e) => {
+      const item = e.target.closest("[data-follow-edit]");
+      if (item) openFollowModal(item.dataset.followEdit);
+    });
 
     // 药箱 / 药单
     $$(".cab-subtabs .home-tab").forEach((b) => (b.onclick = () => switchCabinetTab(b.dataset.ctab)));

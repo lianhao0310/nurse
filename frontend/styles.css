@@ -1694,7 +1694,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* 记录编辑表单 */
 .rec-edit .field { margin-bottom: 10px; }
-.rec-edit__row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.rec-edit__row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.btn-compact {
+  padding: 5px 8px;
+  font-size: 0.8em;
+  flex: 1 1 0;
+  white-space: nowrap;
+  justify-content: center;
+}
 .textarea-wrap { position: relative; }
 .textarea-wrap textarea { width: 100%; }
 
@@ -2118,21 +2125,19 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   gap: 8px;
 }
 .follow-mgr-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  position: relative;
   background: #f7f8fa;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-weight: 600;
+  overflow: hidden;
 }
 .follow-mgr-row__info {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  flex: 1;
+  padding: 10px 14px;
+  font-weight: 600;
 }
 .follow-mgr-row__name { font-weight: 600; }
 .follow-mgr-row__unit, .follow-mgr-row__range, .follow-mgr-row__val {
