@@ -1355,12 +1355,18 @@
     $("#follow-unit").value = editing && typeof editing === "object" ? (editing.unit || "") : "";
     $("#follow-range").value = editing && typeof editing === "object" ? (editing.range || "") : "";
     $("#follow-add").textContent = editing ? "保存修改" : "＋ 添加关注";
+    const headSpan = $("#follow-modal .modal__head span");
+    if (headSpan) headSpan.textContent = editing ? "编辑关注指标" : "管理关注指标";
+    const listSec = $("#follow-list-sec");
+    const doneSec = $("#follow-done-sec");
+    if (listSec) listSec.hidden = !!editing;
+    if (doneSec) doneSec.hidden = !!editing;
     const allNames = collectSeries().map((s) => s.name);
     const followed = new Set((DATA.followedIndicators || []).map((f) => typeof f === "string" ? f : f.name));
     if (editing) followed.delete(editName);
     const dl = $("#follow-suggestions");
     if (dl) dl.innerHTML = allNames.filter((n) => !followed.has(n)).map((n) => `<option value="${esc(n)}">`).join("");
-    renderFollowList();
+    if (!editing) renderFollowList();
     $("#follow-modal").hidden = false;
   }
   function renderFollowList() {
@@ -1397,11 +1403,9 @@
       DATA.followedIndicators = [...existing, { name: v, unit, range }];
       await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
       followEditing = null;
-      $("#follow-input").value = "";
-      $("#follow-unit").value = "";
-      $("#follow-range").value = "";
-      $("#follow-add").textContent = "＋ 添加关注";
-      renderFollowList();
+      $("#follow-modal").hidden = true;
+      renderFollowListMe();
+      renderExamTrend($("#exam-trend"));
       toast("已修改：" + v);
     } else {
       const existing = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== v);
@@ -2344,6 +2348,7 @@
         else if (id === "order-modal") closeOrderModal();
         else if (id === "med-item-modal") closeMedItemModal();
         else if (id === "cabinet-modal") saveCabinetDrug();
+        else if (id === "follow-modal") { followEditing = null; m.hidden = true; }
         else m.hidden = true;
         return true;
       }

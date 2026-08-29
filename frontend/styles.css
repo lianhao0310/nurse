@@ -2126,8 +2126,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .follow-mgr-row {
   position: relative;
-  background: #f7f8fa;
-  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -2138,6 +2136,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   align-items: center;
   padding: 10px 14px;
   font-weight: 600;
+  background: #f7f8fa;
+  border: 1px solid var(--line);
 }
 .follow-mgr-row__name { font-weight: 600; }
 .follow-mgr-row__unit, .follow-mgr-row__range, .follow-mgr-row__val {
