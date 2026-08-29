@@ -499,6 +499,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .btn.block {
   width: 100%;
   margin-top: 10px;
+  margin-bottom: 12px;
 }
 .me-foot {
   text-align: center;
@@ -1781,11 +1782,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   color: var(--primary-dark);
   padding: 3px 8px;
   border-radius: 20px;
+  margin-right: 6px;
+  margin-bottom: 4px;
 }
 .exam-chip.is-bad { background: #fdecea; color: var(--danger); }
 
-/* 趋势卡内「关注」按钮 */
-.trend-star { font-size: 0.85em; color: #e6901a; background: #fff3e0; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+/* 趋势卡参考值标签 */
+.trend-ref { font-size: 0.82em; color: var(--ink-2); font-weight: 400; }
 
 /* 关注指标模块 */
 .exam-follow { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
@@ -2062,6 +2065,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   color: var(--ink-2);
   padding: 3px 9px;
   border-radius: 999px;
+  margin-right: 6px;
+  margin-bottom: 4px;
 }
 .order-card__foot {
   display: flex;
@@ -2153,11 +2158,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: #f7f8fa;
   border: 1px solid var(--line);
 }
-.follow-mgr-row__name { font-weight: 600; }
+.follow-mgr-row__name { font-weight: 600; margin-right: 6px; }
 .follow-mgr-row__unit, .follow-mgr-row__range, .follow-mgr-row__val {
   font-size: 0.82em;
   color: var(--ink-2);
   font-weight: 400;
+  margin-right: 6px;
 }
 .follow-list-me { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 

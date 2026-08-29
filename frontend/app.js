@@ -1292,10 +1292,10 @@
     });
     el.innerHTML = series.map((s, i) => {
       const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
-      const latest = s.points[s.points.length - 1];
+      const fi = (DATA.followedIndicators || []).find((f) => (typeof f === "string" ? f : f.name) === s.name);
+      const refLabel = fi && typeof fi === "object" && fi.range ? esc(fi.range + (fi.unit || "")) : "";
       return `<div class="trend-card is-followed" data-trend-detail="${i}">
-        <div class="trend-card__head"><b>${esc(s.name)}</b><span class="trend-star">⭐</span></div>
-        <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
+        <div class="trend-card__head"><b>${esc(s.name)}</b>${refLabel ? '<span class="trend-ref">' + refLabel + '</span>' : ""}</div>
         ${chart}
       </div>`;
     }).join("");
@@ -1308,7 +1308,19 @@
   function svgLineChart(s) {
     const W = 320, H = 160, P = 26;
     const vals = s.points.map((p) => p.value);
+    const fi = (DATA.followedIndicators || []).find((f) => (typeof f === "string" ? f : f.name) === s.name);
+    const rangeStr = fi && typeof fi === "object" ? (fi.range || "") : "";
+    const m = rangeStr.match(/^([\d.]+)\s*[-~]\s*([\d.]+)$/);
+    let refLo = m ? parseFloat(m[1]) : null;
+    let refHi = m ? parseFloat(m[2]) : null;
     let min = Math.min(...vals), max = Math.max(...vals);
+    if (refLo !== null && refLo > 0) {
+      min = Math.min(min, refLo);
+      max = Math.max(max, refHi);
+    } else {
+      min = 0;
+      if (max === 0) max = 1;
+    }
     if (min === max) { min -= 1; max += 1; }
     const range = max - min;
     const n = s.points.length;
@@ -1317,11 +1329,18 @@
     const line = xy.map((d) => d.x.toFixed(1) + "," + d.y.toFixed(1)).join(" ");
     const dots = xy.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="3" fill="${d.p.abnormal ? "#e74c3c" : "#2bb673"}"/>`).join("");
     const xlabels = xy.map((d) => `<text x="${d.x.toFixed(1)}" y="${H - 8}" font-size="9" fill="#888" text-anchor="middle">${esc((d.p.date || "").slice(5))}</text>`).join("");
+    let refLine = "";
+    if (refHi !== null && refHi > min && refHi < max) {
+      const refY = (P + (1 - (refHi - min) / range) * (H - 2 * P)).toFixed(1);
+      refLine = `<line x1="${P}" y1="${refY}" x2="${W - P}" y2="${refY}" stroke="#e74c3c" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
+        <text x="${W - P}" y="${(parseFloat(refY) - 3).toFixed(1)}" font-size="8" fill="#e74c3c" text-anchor="end">${esc(String(refHi))}</text>`;
+    }
     return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
       <line x1="${P}" y1="${P}" x2="${P}" y2="${H - P}" stroke="#ddd"/>
       <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="#ddd"/>
       <text x="${P}" y="${P - 8}" font-size="9" fill="#888">${esc(String(max))}</text>
       <text x="${P}" y="${H - P + 14}" font-size="9" fill="#888">${esc(String(min))}</text>
+      ${refLine}
       <polyline points="${line}" fill="none" stroke="#2bb673" stroke-width="2"/>
       ${dots}${xlabels}
     </svg>`;
@@ -1363,19 +1382,14 @@
     $("#follow-input").value = editing ? (typeof editing === "string" ? editing : editing.name) : "";
     $("#follow-unit").value = editing && typeof editing === "object" ? (editing.unit || "") : "";
     $("#follow-range").value = editing && typeof editing === "object" ? (editing.range || "") : "";
-    $("#follow-add").textContent = editing ? "保存修改" : "＋ 添加关注";
+    $("#follow-add").textContent = editing ? "保存修改" : "保存";
     const headSpan = $("#follow-modal .modal__head span");
-    if (headSpan) headSpan.textContent = editing ? "编辑关注指标" : "管理关注指标";
-    const listSec = $("#follow-list-sec");
-    const doneSec = $("#follow-done-sec");
-    if (listSec) listSec.hidden = !!editing;
-    if (doneSec) doneSec.hidden = !!editing;
+    if (headSpan) headSpan.textContent = editing ? "编辑关注指标" : "新增关注指标";
     const allNames = collectSeries().map((s) => s.name);
     const followed = new Set((DATA.followedIndicators || []).map((f) => typeof f === "string" ? f : f.name));
     if (editing) followed.delete(editName);
     const dl = $("#follow-suggestions");
     if (dl) dl.innerHTML = allNames.filter((n) => !followed.has(n)).map((n) => `<option value="${esc(n)}">`).join("");
-    if (!editing) renderFollowList();
     $("#follow-modal").hidden = false;
   }
   function renderFollowList() {
@@ -1420,10 +1434,9 @@
       const existing = (DATA.followedIndicators || []).filter((f) => (typeof f === "string" ? f : f.name) !== v);
       DATA.followedIndicators = [...existing, { name: v, unit, range }];
       await NurseStorage.setFollowedIndicators(DATA.followedIndicators);
-      $("#follow-input").value = "";
-      $("#follow-unit").value = "";
-      $("#follow-range").value = "";
-      renderFollowList();
+      $("#follow-modal").hidden = true;
+      renderFollowListMe();
+      renderExamTrend($("#exam-trend"));
       toast("已添加关注：" + v);
     }
   }
@@ -2539,7 +2552,6 @@
     // 关注指标 管理（标题右侧齿轮）
     $("#follow-manage-btn").onclick = () => openFollowModal();
     $("#follow-add").onclick = addFollowIndicator;
-    $("#follow-done").onclick = () => { $("#follow-modal").hidden = true; followEditing = null; renderFollowListMe(); renderExamTrend($("#exam-trend")); };
     $("#follow-input").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowIndicator(); });
     attachSwipe($("#follow-list-me"), deleteFollowSwipe);
     $("#follow-list-me").addEventListener("click", (e) => {
@@ -2640,11 +2652,11 @@
     if (!examViewSeries.length) { $("#exam-view").hidden = true; goPage("records"); return; }
     const s = examViewSeries[examViewIndex];
     const chart = s.points.length >= 2 ? svgLineChart(s) : singlePoint(s);
-    const latest = s.points[s.points.length - 1];
+    const fi = (DATA.followedIndicators || []).find((f) => (typeof f === "string" ? f : f.name) === s.name);
+    const refLabel = fi && typeof fi === "object" && fi.range ? esc(fi.range + (fi.unit || "")) : "";
     $("#exam-view .view-header__sub").textContent = s.name;
     $("#exam-trend-full").innerHTML = `<div class="trend-card is-followed">
-      <div class="trend-card__head"><b>${esc(s.name)}</b><span class="trend-star">⭐</span></div>
-      <div class="trend-card__val"><span>${esc(latest.value + " " + (s.unit || ""))}</span>${latest.abnormal ? " ⚠️" : ""}<span class="trend-card__date">${esc((latest.date || "").slice(5))}</span></div>
+      <div class="trend-card__head"><b>${esc(s.name)}</b>${refLabel ? '<span class="trend-ref">' + refLabel + '</span>' : ""}</div>
       ${chart}
     </div>`;
     $("#exam-list-full").innerHTML = `<div class="exam-view-swipe">${s.points.map((p) => `<div class="exam-pt ${p.abnormal ? "is-bad" : ""}"><div class="exam-pt__date">${esc(p.date || "")}</div><div class="exam-pt__val">${esc(p.value + " " + (s.unit || ""))}</div>${p.abnormal ? '<span class="tag tag--bad">异常</span>' : ""}</div>`).join("")}</div>`;
