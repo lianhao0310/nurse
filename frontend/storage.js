@@ -167,7 +167,13 @@
     if (patch && typeof patch === "object") {
       for (const k in patch) {
         if (k === "ai" && patch.ai && typeof patch.ai === "object") {
-          out.ai = Object.assign({}, out.ai, patch.ai);
+          out.ai = Object.assign({}, out.ai);
+          if (patch.ai.apiKey || !out.ai.apiKey) {
+            out.ai.enabled = patch.ai.enabled;
+            out.ai.baseUrl = patch.ai.baseUrl || out.ai.baseUrl;
+            out.ai.apiKey = patch.ai.apiKey || out.ai.apiKey;
+            out.ai.model = patch.ai.model || out.ai.model;
+          }
         } else {
           out[k] = patch[k];
         }
@@ -750,19 +756,35 @@
   async function exportJSON() {
     return JSON.stringify(await load(), null, 2);
   }
-  async function importJSON(jsonStr) {
+  async function importJSON(jsonStr, selection) {
     const incoming = _normalize(JSON.parse(jsonStr));
     const cur = await load();
+    const ok = (k) => !selection || selection[k] === true;
     const map = {};
     cur.records.forEach((r) => (map[r.id] = r));
-    incoming.records.forEach((r) => (map[r.id] = r));
+    if (ok("records")) incoming.records.forEach((r) => (map[r.id] = r));
     cur.records = Object.values(map).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    if (incoming.orders.length) cur.orders = incoming.orders;
-    if (incoming.reports.length) cur.reports = incoming.reports;
-    if (incoming.cabinet.length) cur.cabinet = incoming.cabinet;
-    if (Object.keys(incoming.indicatorMeta || {}).length) cur.indicatorMeta = incoming.indicatorMeta;
-    if (incoming.followedIndicators && incoming.followedIndicators.length) cur.followedIndicators = incoming.followedIndicators;
-    cur.settings = _mergeSettings(cur.settings, incoming.settings);
+    if (ok("records")) {
+      const linkedOrders = new Set();
+      const linkedReports = new Set();
+      cur.records.forEach((r) => { if (r.orderId) linkedOrders.add(r.orderId); if (r.reportId) linkedReports.add(r.reportId); });
+      if (!ok("orders") && incoming.orders.length) {
+        const existing = new Set(cur.orders.map((o) => o.id));
+        incoming.orders.forEach((o) => { if (linkedOrders.has(o.id) && !existing.has(o.id)) cur.orders.push(o); });
+      }
+      if (!ok("reports") && incoming.reports.length) {
+        const existing = new Set(cur.reports.map((r) => r.id));
+        incoming.reports.forEach((r) => { if (linkedReports.has(r.id) && !existing.has(r.id)) cur.reports.push(r); });
+      }
+    }
+    if (ok("orders") && incoming.orders.length) cur.orders = incoming.orders;
+    if (ok("reports") && incoming.reports.length) cur.reports = incoming.reports;
+    if (ok("cabinet") && incoming.cabinet.length) cur.cabinet = incoming.cabinet;
+    if (ok("settings")) {
+      if (Object.keys(incoming.indicatorMeta || {}).length) cur.indicatorMeta = incoming.indicatorMeta;
+      if (incoming.followedIndicators && incoming.followedIndicators.length) cur.followedIndicators = incoming.followedIndicators;
+      cur.settings = _mergeSettings(cur.settings, incoming.settings);
+    }
     await save(cur);
     return cur;
   }

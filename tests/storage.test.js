@@ -290,3 +290,102 @@ test("全量数据导出导入往返一致（含关注指标+设置）", async (
   assert.strictEqual(restored.followedIndicators[0].name, "血糖", "关注指标名");
   assert.strictEqual(restored.followedIndicators[1].range, "90-140", "关注指标参考值");
 });
+
+test("导入空AI配置不覆盖现有AI设置", async () => {
+  await NurseStorage.updateSettings({ ai: { enabled: true, baseUrl: "https://my.api/v1", apiKey: "sk-secret", model: "gpt-4o" } });
+  const before = await NurseStorage.load();
+  assert.strictEqual(before.settings.ai.apiKey, "sk-secret", "导入前应有 apiKey");
+
+  const backup = JSON.stringify({ version: 3, records: [{ id: "r1", hospital: "市医院", visitDate: "2026-08-23", transcript: "test", manual: true, createdAt: "2026-08-23T10:00:00Z" }], orders: [], reports: [], cabinet: [], settings: { ai: { enabled: false, baseUrl: "", apiKey: "", model: "" } } });
+  await NurseStorage.importJSON(backup);
+  const after = await NurseStorage.load();
+  assert.strictEqual(after.settings.ai.apiKey, "sk-secret", "空 apiKey 不应覆盖现有值");
+  assert.strictEqual(after.settings.ai.baseUrl, "https://my.api/v1", "空 baseUrl 不应覆盖现有值");
+  assert.strictEqual(after.settings.ai.model, "gpt-4o", "空 model 不应覆盖现有值");
+  assert.strictEqual(after.settings.ai.enabled, true, "enabled 不应被空备份覆盖");
+});
+
+test("首次开启AI时enabled能正常保存", async () => {
+  await NurseStorage.updateSettings({ ai: { enabled: true, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" } });
+  const after = await NurseStorage.load();
+  assert.strictEqual(after.settings.ai.enabled, true, "enabled=true 应保存成功");
+  assert.strictEqual(after.settings.ai.baseUrl, "https://api.openai.com/v1", "baseUrl 应保存");
+});
+
+test("导入非空AI配置覆盖现有AI设置", async () => {
+  await NurseStorage.updateSettings({ ai: { enabled: true, baseUrl: "https://my.api/v1", apiKey: "sk-old", model: "gpt-4o" } });
+  const backup = JSON.stringify({ version: 3, records: [], orders: [], reports: [], cabinet: [], settings: { ai: { enabled: true, baseUrl: "https://new.api/v1", apiKey: "sk-new", model: "gpt-4o-mini" } } });
+  await NurseStorage.importJSON(backup);
+  const after = await NurseStorage.load();
+  assert.strictEqual(after.settings.ai.apiKey, "sk-new", "非空 apiKey 应覆盖");
+  assert.strictEqual(after.settings.ai.baseUrl, "https://new.api/v1", "非空 baseUrl 应覆盖");
+  assert.strictEqual(after.settings.ai.model, "gpt-4o-mini", "非空 model 应覆盖");
+});
+
+test("importJSON selection 仅导入勾选项", async () => {
+  await NurseStorage.appendRecord({ hospital: "原医院", visitDate: "2026-08-23", transcript: "原有记录", manual: true });
+  await NurseStorage.upsertOrder({ source: "原医院", medicines: [{ name: "原药", qty: 5 }] });
+
+  const backup = JSON.stringify({
+    version: 3,
+    records: [{ id: "r-new", hospital: "新医院", visitDate: "2026-08-24", transcript: "新记录", manual: true, createdAt: "2026-08-24T10:00:00Z" }],
+    orders: [{ id: "o-new", source: "新医院", medicines: [{ name: "新药", qty: 10 }] }],
+    reports: [],
+    cabinet: [],
+  });
+
+  await NurseStorage.importJSON(backup, { records: true, orders: false });
+  const after = await NurseStorage.load();
+  assert.ok(after.records.some((r) => r.id === "r-new"), "勾选 records 应导入新记录");
+  assert.ok(!after.orders.some((o) => o.id === "o-new"), "未勾选 orders 且无关联 不应导入新药单");
+  assert.ok(after.orders.some((o) => o.source === "原医院"), "原药单应保留");
+});
+
+test("importJSON selection 全不勾选则不导入任何数据", async () => {
+  await NurseStorage.appendRecord({ hospital: "原医院", visitDate: "2026-08-23", transcript: "原有", manual: true });
+  const before = await NurseStorage.load();
+
+  const backup = JSON.stringify({
+    version: 3,
+    records: [{ id: "r-new", hospital: "新医院", visitDate: "2026-08-24", transcript: "新", manual: true, createdAt: "2026-08-24T10:00:00Z" }],
+    orders: [], reports: [], cabinet: [],
+  });
+
+  await NurseStorage.importJSON(backup, { records: false, orders: false, reports: false, cabinet: false, settings: false });
+  const after = await NurseStorage.load();
+  assert.strictEqual(after.records.length, before.records.length, "全不勾选不应改变记录数");
+  assert.ok(!after.records.some((r) => r.id === "r-new"), "新记录不应被导入");
+});
+
+test("导入问诊记录时强制带关联药单和报告", async () => {
+  const backup = JSON.stringify({
+    version: 3,
+    records: [{ id: "r1", hospital: "新医院", visitDate: "2026-08-24", transcript: "关联测试", manual: true, createdAt: "2026-08-24T10:00:00Z", orderId: "o1", reportId: "rp1" }],
+    orders: [{ id: "o1", source: "新医院", medicines: [{ name: "关联药", qty: 10 }] }],
+    reports: [{ id: "rp1", title: "关联报告", date: "2026-08-24", kind: "self", indicators: [] }],
+    cabinet: [],
+  });
+
+  await NurseStorage.importJSON(backup, { records: true, orders: false, reports: false });
+  const after = await NurseStorage.load();
+  assert.ok(after.records.some((r) => r.id === "r1"), "问诊记录应导入");
+  assert.ok(after.orders.some((o) => o.id === "o1"), "关联药单应强制导入");
+  assert.ok(after.reports.some((r) => r.id === "rp1"), "关联报告应强制导入");
+});
+
+test("个人配置合并含关注指标和AI设置", async () => {
+  const backup = JSON.stringify({
+    version: 3,
+    records: [],
+    orders: [], reports: [], cabinet: [],
+    followedIndicators: [{ name: "血糖", unit: "mmol/L", range: "3.9-6.1" }],
+    indicatorMeta: { "血糖": { unit: "mmol/L" } },
+    settings: { ai: { enabled: true, baseUrl: "https://api.test/v1", apiKey: "sk-test", model: "gpt-4o" } },
+  });
+
+  await NurseStorage.importJSON(backup, { settings: true });
+  const after = await NurseStorage.load();
+  assert.strictEqual(after.followedIndicators.length, 1, "关注指标应导入");
+  assert.strictEqual(after.followedIndicators[0].name, "血糖", "关注指标名");
+  assert.strictEqual(after.settings.ai.apiKey, "sk-test", "AI设置应导入");
+});

@@ -820,6 +820,20 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   margin: 0 0 6px;
   color: var(--primary-dark);
 }
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 6px;
+}
+.sec-head h3 { margin: 0; }
+.sec-head__btns { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-mini {
+  padding: 4px 8px;
+  font-size: 0.8em;
+  white-space: nowrap;
+  min-height: 0;
+}
 .detail-sec ul {
   margin: 0;
   padding-left: 18px;
@@ -2339,3 +2353,25 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .copy-pick__date { font-size: 0.8em; color: var(--ink-3); flex-shrink: 0; }
 .copy-pick__meta { font-size: 0.82em; color: var(--ink-2); margin-bottom: 6px; }
 .copy-pick__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---- 导入选择清单 ---- */
+.import-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  margin-bottom: 8px;
+  font-size: 0.95em;
+  cursor: pointer;
+}
+.import-item:active { background: #f6f7f9; }
+.import-item input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent, #34c759);
+  flex-shrink: 0;
+}
+.import-item span { color: var(--ink); }

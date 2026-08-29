@@ -498,46 +498,55 @@
     };
     const r = rec || {};
     const aiOn = DATA.settings.ai.enabled && DATA.settings.ai.apiKey;
+    const noOrder = !(rec && rec.orderId);
+    const noReport = !(rec && rec.reportId);
     return `
       <div class="rec-edit">
         <div class="field"><span>医院</span><input type="text" id="rec-f-hospital" value="${esc(r.hospital || "")}" placeholder="如 市第一人民医院" /></div>
         <div class="field"><span>就诊日期</span><input type="date" id="rec-f-date" value="${esc(r.visitDate || TODAY)}" /></div>
         <div class="field"><span>医生</span><input type="text" id="rec-f-doctor" value="${esc(r.doctor || "")}" placeholder="接诊医生" /></div>
 
-        <div class="detail-sec"><h3>📝 医嘱</h3>
+        <div class="detail-sec">
+          <div class="sec-head">
+            <h3>📝 医嘱</h3>
+            <div class="sec-head__btns">
+              <button type="button" class="btn btn-ghost btn-mini" id="rec-mic">🎙录音</button>
+              <button type="button" class="btn btn-ghost btn-mini" id="rec-audio-file">📁上传</button>
+              <input type="file" id="rec-audio-input" accept="audio/*" hidden />
+              ${aiOn ? `<button type="button" class="btn btn-ghost btn-mini ai-sec-btn" id="rec-ai-advice" disabled>🤖分析</button>` : ""}
+            </div>
+          </div>
           <div class="textarea-wrap">
             <textarea id="rec-f-advice" rows="4" placeholder="本次医生医嘱 / 录音转写文字">${esc(recDraft.adviceText)}</textarea>
-          </div>
-          <div class="rec-edit__row">
-            <button type="button" class="btn btn-ghost btn-compact" id="rec-mic">🎙录音</button>
-            <button type="button" class="btn btn-ghost btn-compact" id="rec-audio-file">📁上传</button>
-            <input type="file" id="rec-audio-input" accept="audio/*" hidden />
-            ${aiOn ? `<button type="button" class="btn btn-ghost btn-compact ai-sec-btn" id="rec-ai-advice" disabled>🤖分析</button>` : ""}
           </div>
           <div id="rec-audio-preview"></div>
         </div>
 
-        <div class="detail-sec"><h3>💊 药单</h3>
-          <div id="rec-order-link">${renderRelatedOrder(rec)}</div>
-          <div class="rec-edit__row">
-            ${!(rec && rec.orderId) ? `<button type="button" class="btn btn-ghost btn-compact" id="rec-order-add">＋药单</button>` : ""}
-            <button type="button" class="btn btn-ghost btn-compact" id="rec-order-img">📷拍照</button>
-            <button type="button" class="btn btn-ghost btn-compact" id="rec-order-copy">📋复制</button>
-            <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
-            ${aiOn ? `<button type="button" class="btn btn-ghost btn-compact ai-sec-btn" id="rec-ai-order" disabled>🤖分析</button>` : ""}
+        <div class="detail-sec">
+          <div class="sec-head">
+            <h3>💊 药单</h3>
+            <div class="sec-head__btns">
+              <button type="button" class="btn btn-ghost btn-mini" id="rec-order-img">📷拍照</button>
+              <input type="file" id="rec-order-img-input" accept="image/*" multiple hidden />
+              ${aiOn ? `<button type="button" class="btn btn-ghost btn-mini ai-sec-btn" id="rec-ai-order" disabled>🤖分析</button>` : ""}
+            </div>
           </div>
+          <div id="rec-order-link">${renderRelatedOrder(rec)}</div>
+          ${noOrder ? `<div class="rec-edit__row"><button type="button" class="btn btn-ghost btn-compact" id="rec-order-add">＋药单</button><button type="button" class="btn btn-ghost btn-compact" id="rec-order-copy">📋复制</button></div>` : ""}
           <div id="rec-order-thumbs" class="thumb-grid"></div>
         </div>
 
-        <div class="detail-sec"><h3>🧪 检查报告</h3>
-          <div id="rec-report-link">${renderRelatedReport(rec)}</div>
-          <div class="rec-edit__row">
-            ${!(rec && rec.reportId) ? `<button type="button" class="btn btn-ghost btn-compact" id="rec-report-add">＋报告</button>` : ""}
-            <button type="button" class="btn btn-ghost btn-compact" id="rec-report-img">📷拍照</button>
-            <button type="button" class="btn btn-ghost btn-compact" id="rec-report-copy">📋复制</button>
-            <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
-            ${aiOn ? `<button type="button" class="btn btn-ghost btn-compact ai-sec-btn" id="rec-ai-report" disabled>🤖分析</button>` : ""}
+        <div class="detail-sec">
+          <div class="sec-head">
+            <h3>🧪 检查报告</h3>
+            <div class="sec-head__btns">
+              <button type="button" class="btn btn-ghost btn-mini" id="rec-report-img">📷拍照</button>
+              <input type="file" id="rec-report-img-input" accept="image/*" multiple hidden />
+              ${aiOn ? `<button type="button" class="btn btn-ghost btn-mini ai-sec-btn" id="rec-ai-report" disabled>🤖分析</button>` : ""}
+            </div>
           </div>
+          <div id="rec-report-link">${renderRelatedReport(rec)}</div>
+          ${noReport ? `<div class="rec-edit__row"><button type="button" class="btn btn-ghost btn-compact" id="rec-report-add">＋报告</button><button type="button" class="btn btn-ghost btn-compact" id="rec-report-copy">📋复制</button></div>` : ""}
           <div id="rec-report-thumbs" class="thumb-grid"></div>
         </div>
 
@@ -1913,11 +1922,12 @@
         inp.oninput = () => {
           reportDraft.indicators[i][f] = inp.value;
           if (f === "name") {
-            // 填过相同指标 → 直接填充单位与参考
-            const m = meta[inp.value.trim()];
-            if (m && (m.unit || m.range)) {
-              if (m.unit) { inp.closest("tr").querySelector('[data-f="unit"]').value = m.unit; reportDraft.indicators[i].unit = m.unit; }
-              if (m.range) { inp.closest("tr").querySelector('[data-f="range"]').value = m.range; reportDraft.indicators[i].range = m.range; }
+            const nm = inp.value.trim();
+            const fi = (DATA.followedIndicators || []).find((x) => (typeof x === "string" ? x : x.name) === nm);
+            const src = (fi && typeof fi === "object" && (fi.unit || fi.range)) ? fi : meta[nm];
+            if (src && (src.unit || src.range)) {
+              if (src.unit) { inp.closest("tr").querySelector('[data-f="unit"]').value = src.unit; reportDraft.indicators[i].unit = src.unit; }
+              if (src.range) { inp.closest("tr").querySelector('[data-f="range"]').value = src.range; reportDraft.indicators[i].range = src.range; }
             }
           }
           if (f === "unit" || f === "range") {
@@ -2155,6 +2165,7 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast("已导出备份");
   }
+  let pendingImportText = null;
   async function importData(file) {
     try {
       let text = "";
@@ -2177,19 +2188,52 @@
         toast("导入失败：文件格式不正确");
         return;
       }
-      const hasData = (parsed.records && parsed.records.length) || (parsed.orders && parsed.orders.length) || (parsed.reports && parsed.reports.length) || (parsed.cabinet && parsed.cabinet.length);
-      if (!hasData) {
+      const backupHas = {
+        records: (parsed.records && parsed.records.length) > 0,
+        orders: (parsed.orders && parsed.orders.length) > 0,
+        reports: (parsed.reports && parsed.reports.length) > 0,
+        cabinet: (parsed.cabinet && parsed.cabinet.length) > 0,
+        settings: !!(parsed.settings && parsed.settings.ai && parsed.settings.ai.apiKey) || ((parsed.followedIndicators && parsed.followedIndicators.length) || Object.keys(parsed.indicatorMeta || {}).length) > 0,
+      };
+      const backupEmpty = !Object.values(backupHas).some(Boolean);
+      const curEmpty = !DATA.records.length && !DATA.orders.length && !DATA.reports.length && !DATA.cabinet.length;
+      if (backupEmpty && curEmpty) {
+        toast("原数据和备份文件均无数据，无需导入");
+        return;
+      }
+      if (backupEmpty) {
         toast("备份文件中无数据，已取消导入");
         return;
       }
-      await NurseStorage.importJSON(text);
+      pendingImportText = text;
+      const items = [
+        ["records", "问诊记录", backupHas.records],
+        ["orders", "自建药单", backupHas.orders],
+        ["reports", "自建检查报告", backupHas.reports],
+        ["cabinet", "药箱", backupHas.cabinet],
+        ["settings", "个人配置", backupHas.settings],
+      ].filter(([, , has]) => has);
+      $("#import-list").innerHTML = items.map(([k, label]) =>
+        '<label class="import-item"><input type="checkbox" data-import-key="' + k + '" checked /><span>' + label + "</span></label>"
+      ).join("");
+      $("#import-modal").hidden = false;
+    } catch (e) { console.error("import failed:", e); toast("导入失败：文件格式不正确"); }
+  }
+  async function confirmImport() {
+    const selection = {};
+    $$('#import-list input[type="checkbox"]').forEach((cb) => { selection[cb.dataset.importKey] = cb.checked; });
+    $("#import-modal").hidden = true;
+    if (!Object.values(selection).some(Boolean)) { toast("未勾选任何项，已取消"); return; }
+    try {
+      await NurseStorage.importJSON(pendingImportText, selection);
       DATA = await NurseStorage.load();
       applySettingsUI();
       renderHome();
       renderRecords();
       renderCabinet();
       toast("已导入并恢复");
-    } catch (e) { console.error("import failed:", e); toast("导入失败：文件格式不正确"); }
+    } catch (e) { console.error("import failed:", e); toast("导入失败"); }
+    pendingImportText = null;
   }
 
   // ===================== 滑动删除（通用） =====================
@@ -2362,7 +2406,7 @@
   }
 
   // ===================== 右滑返回 / 关闭弹窗 =====================
-  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal"];
+  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal", "import-modal"];
   function closeTopModal() {
     for (let i = MODAL_IDS.length - 1; i >= 0; i--) {
       const id = MODAL_IDS[i];
@@ -2571,6 +2615,7 @@
     $("#btn-export").onclick = exportData;
     $("#btn-import").onclick = () => $("#import-file").click();
     $("#import-file").onchange = (e) => { if (e.target.files && e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; };
+    $("#import-confirm").onclick = confirmImport;
   }
 
   // ===================== 检查结果 整页趋势视图 =====================
