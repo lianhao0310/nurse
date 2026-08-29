@@ -609,9 +609,9 @@
     attachSwipe($("#rec-report-link"), deleteReportSwipe);
     // 「添加药单 / 添加检查报告」：直接打开新建编辑弹窗，保存后自动关联
     const addOrderBtn = $("#rec-order-add");
-    if (addOrderBtn) addOrderBtn.onclick = () => addOrderForRecord(rec);
+    if (addOrderBtn) addOrderBtn.onclick = () => addOrderForRecord(_editingRec);
     const addReportBtn = $("#rec-report-add");
-    if (addReportBtn) addReportBtn.onclick = () => addReportForRecord(rec);
+    if (addReportBtn) addReportBtn.onclick = () => addReportForRecord(_editingRec);
     // AI 分析按钮（分区域）：默认置灰，有录音/图片后可用
     function updateAIBtnStates() {
       const adviceBtn = $("#rec-ai-advice");
@@ -624,13 +624,13 @@
     _updateAIBtnStates = updateAIBtnStates;
     updateAIBtnStates();
     const aiAdviceBtn = $("#rec-ai-advice");
-    if (aiAdviceBtn) aiAdviceBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAIAnalyze(saved); };
+    if (aiAdviceBtn) aiAdviceBtn.onclick = async () => { const saved = await saveRecordEdit(_editingRec, { silent: true }); if (saved) runAIAnalyze(saved); };
     const aiOrderBtn = $("#rec-ai-order");
-    if (aiOrderBtn) aiOrderBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runOrderAIAnalyze(saved); };
+    if (aiOrderBtn) aiOrderBtn.onclick = async () => { const saved = await saveRecordEdit(_editingRec, { silent: true }); if (saved) runOrderAIAnalyze(saved); };
     const aiReportBtn = $("#rec-ai-report");
-    if (aiReportBtn) aiReportBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runReportAIAnalyze(saved); };
+    if (aiReportBtn) aiReportBtn.onclick = async () => { const saved = await saveRecordEdit(_editingRec, { silent: true }); if (saved) runReportAIAnalyze(saved); };
     const advBtn = $("#rec-advice-analyze");
-    if (advBtn) advBtn.onclick = async () => { const saved = await saveRecordEdit(rec, { silent: true }); if (saved) runAdviceAnalyze(saved); };
+    if (advBtn) advBtn.onclick = async () => { const saved = await saveRecordEdit(_editingRec, { silent: true }); if (saved) runAdviceAnalyze(saved); };
 
     // 自动保存：修改后 debounce 静默保存
     _editingRec = rec;

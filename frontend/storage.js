@@ -423,26 +423,43 @@
   // ---------------- 记录（问诊历史） ----------------
   async function appendRecord(record) {
     const data = await load();
-    const rec = _withIds({
-      id: _uid("rec_"),
-      createdAt: new Date().toISOString(),
-      visitDate: record.visitDate || "",
-      hospital: record.hospital || "",
-      doctor: record.doctor || "",
-      source: record.source || "text",
-      transcript: record.transcript || "",
-      images: record.images || [],
-      advice: record.advice || { text: "", audio: null },
-      orderId: record.orderId || "",
-      reportId: record.reportId || "",
-      result: record.result || null,
-      aiAdvice: record.aiAdvice || null,
-      rxImages: record.rxImages || [],
-      examImages: record.examImages || [],
-      manual: !!record.manual,
-      status: record.status || "done",
-    });
-    data.records.unshift(rec);
+    const hospital = (record.hospital || "").trim();
+    const visitDate = record.visitDate || "";
+    let rec = null;
+    if (hospital && visitDate) {
+      rec = data.records.find((r) => r.hospital === hospital && r.visitDate === visitDate);
+    }
+    if (rec) {
+      Object.assign(rec, {
+        doctor: record.doctor || rec.doctor || "",
+        transcript: record.transcript || rec.transcript || "",
+        advice: record.advice || rec.advice,
+        rxImages: record.rxImages || rec.rxImages || [],
+        examImages: record.examImages || rec.examImages || [],
+        manual: record.manual !== undefined ? !!record.manual : rec.manual,
+      });
+    } else {
+      rec = _withIds({
+        id: _uid("rec_"),
+        createdAt: new Date().toISOString(),
+        visitDate: visitDate,
+        hospital: hospital,
+        doctor: record.doctor || "",
+        source: record.source || "text",
+        transcript: record.transcript || "",
+        images: record.images || [],
+        advice: record.advice || { text: "", audio: null },
+        orderId: record.orderId || "",
+        reportId: record.reportId || "",
+        result: record.result || null,
+        aiAdvice: record.aiAdvice || null,
+        rxImages: record.rxImages || [],
+        examImages: record.examImages || [],
+        manual: !!record.manual,
+        status: record.status || "done",
+      });
+      data.records.unshift(rec);
+    }
     await save(data);
     return rec;
   }
@@ -463,12 +480,18 @@
   }
   async function deleteRecord(id) {
     const data = await load();
-    const recOrders = data.orders.filter((o) => o.recordId === id);
+    const rec = data.records.find((r) => r.id === id);
+    const orderIds = new Set();
+    const reportIds = new Set();
+    if (rec) {
+      if (rec.orderId) orderIds.add(rec.orderId);
+      if (rec.reportId) reportIds.add(rec.reportId);
+    }
+    data.orders.forEach((o) => { if (o.recordId === id) orderIds.add(o.id); });
+    data.reports.forEach((rp) => { if (rp.recordId === id) reportIds.add(rp.id); });
     data.records = data.records.filter((r) => r.id !== id);
-    data.orders = data.orders.filter((o) => o.recordId !== id);
-    data.reports = data.reports.filter((rp) => rp.recordId !== id);
-    // 级联删除关联药单时同步回退药箱库存 / 清理无引用药品
-    recOrders.forEach((o) => _removeOrderFromCabinet(data, o));
+    data.orders = data.orders.filter((o) => !orderIds.has(o.id));
+    data.reports = data.reports.filter((rp) => !reportIds.has(rp.id));
     await save(data);
   }
 
@@ -560,14 +583,10 @@
   }
   async function deleteOrder(id) {
     const data = await load();
-    const order = data.orders.find((x) => x.id === id) || null;
     data.orders = data.orders.filter((x) => x.id !== id);
-    // 同步清理关联问诊记录的 orderId
     data.records.forEach((r) => {
       if (r.orderId === id) r.orderId = "";
     });
-    // 回退药箱库存 / 清理无引用药品
-    if (order) _removeOrderFromCabinet(data, order);
     await save(data);
   }
 

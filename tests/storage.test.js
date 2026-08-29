@@ -56,15 +56,15 @@ test("updateOrder 改数量按差额调整库存", async () => {
   assert.strictEqual(Number(cab.qty), 25, "库存应为调整后 25");
 });
 
-test("deleteOrder 回退库存并清理无引用药品", async () => {
+test("deleteOrder 不删除药箱药品", async () => {
   const o = await NurseStorage.upsertOrder({
     source: "市医院",
     medicines: [{ name: "缬沙坦", qty: 20 }],
   });
   await NurseStorage.deleteOrder(o.id);
   const data = await NurseStorage.load();
-  assert.strictEqual(data.orders.length, 0);
-  assert.ok(!data.cabinet.find((c) => c.name === "缬沙坦"), "无引用药品应清理");
+  assert.strictEqual(data.orders.length, 0, "药单应删除");
+  assert.ok(data.cabinet.find((c) => c.name === "缬沙坦"), "药箱药品应保留");
 });
 
 test("upsertReport 归一化指标并过滤空名", async () => {
@@ -450,11 +450,11 @@ test("updateOrder 编辑药单数量同步库存", async () => {
   assert.strictEqual(drug.qty, 15, "药单改 15 后库存应同步为 15");
 });
 
-test("deleteOrder 回退库存并清理无引用药品", async () => {
+test("deleteOrder 不删除药箱药品（保留库存）", async () => {
   const o = await NurseStorage.upsertOrder({ source: "A", medicines: [{ name: "药Y", qty: 8 }] });
   await NurseStorage.deleteOrder(o.id);
   const cabinet = await NurseStorage.getCabinetDrugs();
-  assert.ok(!cabinet.some((c) => c.name === "药Y"), "删除药单后药Y 应从药箱移除");
+  assert.ok(cabinet.some((c) => c.name === "药Y"), "删除药单后药箱药品应保留");
   const orders = await NurseStorage.getOrders();
   assert.ok(!orders.some((x) => x.id === o.id), "药单应已删除");
 });
@@ -719,4 +719,32 @@ test("AI 设置往返：保存→读取→验证所有字段", async () => {
   assert.strictEqual(s.baseUrl, config.baseUrl, "baseUrl 一致");
   assert.strictEqual(s.apiKey, config.apiKey, "apiKey 一致");
   assert.strictEqual(s.model, config.model, "model 一致");
+});
+
+test("appendRecord 医院+日期唯一约束：相同则更新不新建", async () => {
+  const r1 = await NurseStorage.appendRecord({ hospital: "第一医院", visitDate: "2026-03-01", transcript: "第一次", manual: true });
+  const r2 = await NurseStorage.appendRecord({ hospital: "第一医院", visitDate: "2026-03-01", transcript: "第二次", manual: true });
+  assert.strictEqual(r1.id, r2.id, "相同医院+日期应返回同一条记录");
+  const records = await NurseStorage.getRecords();
+  assert.strictEqual(records.length, 1, "不应有重复记录");
+  assert.strictEqual(records[0].transcript, "第二次", "应更新为最新内容");
+});
+
+test("appendRecord 不同医院或日期允许创建多条", async () => {
+  await NurseStorage.appendRecord({ hospital: "A医院", visitDate: "2026-03-01", manual: true });
+  await NurseStorage.appendRecord({ hospital: "B医院", visitDate: "2026-03-01", manual: true });
+  await NurseStorage.appendRecord({ hospital: "A医院", visitDate: "2026-03-02", manual: true });
+  const records = await NurseStorage.getRecords();
+  assert.strictEqual(records.length, 3, "不同医院或日期应允许创建");
+});
+
+test("deleteRecord 按 orderId/reportId 双向关联删除", async () => {
+  const o = await NurseStorage.upsertOrder({ source: "双向", medicines: [{ name: "双药", qty: 3 }] });
+  const rp = await NurseStorage.upsertReport({ title: "双报", date: "2026-03-01", kind: "self", indicators: [] });
+  const rec = await NurseStorage.appendRecord({ hospital: "双医院", visitDate: "2026-03-01", manual: true });
+  await NurseStorage.updateRecord(rec.id, { orderId: o.id, reportId: rp.id });
+  await NurseStorage.deleteRecord(rec.id);
+  const data = await NurseStorage.load();
+  assert.ok(!data.orders.some((x) => x.id === o.id), "通过 orderId 关联的药单应删除");
+  assert.ok(!data.reports.some((x) => x.id === rp.id), "通过 reportId 关联的报告应删除");
 });
