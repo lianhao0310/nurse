@@ -2134,7 +2134,7 @@
   }
   async function exportData() {
     const json = await NurseStorage.exportJSON();
-    const fileName = "nurse-data-" + TODAY + ".json";
+    const fileName = "nurse-data-" + new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + ".json";
     if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
       try {
         await Capacitor.Plugins.Filesystem.writeFile({
