@@ -1330,11 +1330,14 @@
     const dots = xy.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="3" fill="${d.p.abnormal ? "#e74c3c" : "#2bb673"}"/>`).join("");
     const xlabels = xy.map((d) => `<text x="${d.x.toFixed(1)}" y="${H - 8}" font-size="9" fill="#888" text-anchor="middle">${esc((d.p.date || "").slice(5))}</text>`).join("");
     let refLine = "";
-    if (refHi !== null && refHi > min && refHi < max) {
-      const refY = (P + (1 - (refHi - min) / range) * (H - 2 * P)).toFixed(1);
-      refLine = `<line x1="${P}" y1="${refY}" x2="${W - P}" y2="${refY}" stroke="#e74c3c" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
-        <text x="${W - P}" y="${(parseFloat(refY) - 3).toFixed(1)}" font-size="8" fill="#e74c3c" text-anchor="end">${esc(String(refHi))}</text>`;
-    }
+    const addRefLine = (val, color) => {
+      if (val === null || val <= min || val >= max) return;
+      const y = (P + (1 - (val - min) / range) * (H - 2 * P)).toFixed(1);
+      refLine += `<line x1="${P}" y1="${y}" x2="${W - P}" y2="${y}" stroke="${color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
+        <text x="${W - P}" y="${(parseFloat(y) - 3).toFixed(1)}" font-size="8" fill="${color}" text-anchor="end">${esc(String(val))}</text>`;
+    };
+    addRefLine(refLo, "#2bb673");
+    addRefLine(refHi, "#e74c3c");
     return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
       <line x1="${P}" y1="${P}" x2="${P}" y2="${H - P}" stroke="#ddd"/>
       <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="#ddd"/>
@@ -1439,6 +1442,16 @@
       renderExamTrend($("#exam-trend"));
       toast("已添加关注：" + v);
     }
+    for (const rp of DATA.reports || []) {
+      let changed = false;
+      for (const ind of rp.indicators || []) {
+        if (ind.name === v && (ind.unit !== unit || ind.range !== range)) {
+          ind.unit = unit; ind.range = range; changed = true;
+        }
+      }
+      if (changed) await NurseStorage.updateReport(rp.id, { indicators: rp.indicators });
+    }
+    DATA = await NurseStorage.load();
   }
 
   // 检查报告 明细列表
