@@ -168,3 +168,79 @@ test("deleteRecord 级联清理关联药单/报告", async () => {
   assert.ok(!data.records.find((r) => r.id === rec.id));
   assert.ok(!data.orders.find((x) => x.id === o.id), "关联药单应级联删除");
 });
+
+test("exportJSON 输出有效 JSON 且结构完整", async () => {
+  await NurseStorage.upsertOrder({ source: "市医院", medicines: [{ name: "氨氯地平", qty: 10 }] });
+  await NurseStorage.upsertReport({ title: "血常规", date: "2026-08-23", kind: "self", indicators: [{ name: "血糖", value: "5.5" }] });
+  await NurseStorage.appendRecord({ hospital: "市医院", visitDate: "2026-08-23", transcript: "医嘱", manual: true });
+
+  const json = await NurseStorage.exportJSON();
+  assert.ok(typeof json === "string", "导出应为字符串");
+  const parsed = JSON.parse(json);
+  assert.ok(Array.isArray(parsed.records), "导出应含 records");
+  assert.ok(Array.isArray(parsed.orders), "导出应含 orders");
+  assert.ok(Array.isArray(parsed.reports), "导出应含 reports");
+  assert.ok(Array.isArray(parsed.cabinet), "导出应含 cabinet");
+  assert.ok(parsed.orders.length === 1, "应导出 1 条药单");
+  assert.ok(parsed.reports.length === 1, "应导出 1 条报告");
+  assert.ok(parsed.records.length === 1, "应导出 1 条记录");
+});
+
+test("importJSON 导入数据并覆盖药单/报告/药箱", async () => {
+  const backup = JSON.stringify({
+    version: 3,
+    records: [],
+    orders: [{ id: "o1", source: "备份医院", date: "2026-01-01", kind: "custom", medicines: [{ id: "m1", name: "备份药", qty: 5 }] }],
+    reports: [{ id: "r1", title: "备份报告", date: "2026-01-01", kind: "self", indicators: [{ name: "血糖", value: "7" }] }],
+    cabinet: [{ id: "c1", name: "备份药", qty: 5 }],
+    settings: { ai: { enabled: false } },
+  });
+  await NurseStorage.importJSON(backup);
+  const data = await NurseStorage.load();
+  assert.strictEqual(data.orders.length, 1);
+  assert.strictEqual(data.orders[0].source, "备份医院");
+  assert.strictEqual(data.reports.length, 1);
+  assert.strictEqual(data.reports[0].title, "备份报告");
+  assert.strictEqual(data.cabinet.length, 1);
+  assert.strictEqual(data.cabinet[0].name, "备份药");
+});
+
+test("importJSON 按 ID 合并记录（新增+覆盖）", async () => {
+  const rec1 = await NurseStorage.appendRecord({ hospital: "市医院", visitDate: "2026-08-20", transcript: "原记录", manual: true });
+  const backup = JSON.stringify({
+    version: 3,
+    records: [
+      { id: rec1.id, createdAt: rec1.createdAt, hospital: "更新医院", visitDate: "2026-08-20", transcript: "覆盖", manual: true },
+      { id: "new-rec-1", createdAt: "2026-08-25T00:00:00.000Z", hospital: "新医院", visitDate: "2026-08-25", transcript: "新增", manual: true },
+    ],
+    orders: [], reports: [], cabinet: [],
+  });
+  await NurseStorage.importJSON(backup);
+  const data = await NurseStorage.load();
+  assert.strictEqual(data.records.length, 2, "应有 2 条记录");
+  const updated = data.records.find((r) => r.id === rec1.id);
+  assert.strictEqual(updated.hospital, "更新医院", "已有记录应被覆盖");
+  const added = data.records.find((r) => r.id === "new-rec-1");
+  assert.ok(added, "新记录应被添加");
+});
+
+test("导出→清空→导入 往返保持数据一致", async () => {
+  await NurseStorage.upsertOrder({ source: "市医院", medicines: [{ name: "氨氯地平", qty: 10 }, { name: "缬沙坦", qty: 5 }] });
+  await NurseStorage.upsertReport({ title: "血常规", date: "2026-08-23", kind: "self", indicators: [{ name: "血糖", value: "5.5", unit: "mmol/L" }] });
+  await NurseStorage.appendRecord({ hospital: "市医院", visitDate: "2026-08-23", transcript: "测试往返", manual: true });
+
+  const json = await NurseStorage.exportJSON();
+
+  global.window.localStorage.clear();
+  const empty = await NurseStorage.load();
+  assert.strictEqual(empty.orders.length, 0, "清空后应无数据");
+
+  await NurseStorage.importJSON(json);
+  const restored = await NurseStorage.load();
+  assert.strictEqual(restored.orders.length, 1, "应恢复 1 条药单");
+  assert.strictEqual(restored.orders[0].medicines.length, 2, "药单应含 2 种药");
+  assert.strictEqual(restored.reports.length, 1, "应恢复 1 条报告");
+  assert.strictEqual(restored.reports[0].indicators[0].name, "血糖", "报告指标应一致");
+  assert.strictEqual(restored.records.length, 1, "应恢复 1 条记录");
+  assert.strictEqual(restored.records[0].transcript, "测试往返", "记录内容应一致");
+});

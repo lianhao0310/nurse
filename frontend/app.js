@@ -2129,18 +2129,23 @@
   }
   async function exportData() {
     const json = await NurseStorage.exportJSON();
-    if (navigator.share) {
+    const fileName = "nurse-data-" + TODAY + ".json";
+    if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
       try {
-        const file = new File([json], "nurse-data-" + TODAY + ".json", { type: "application/json" });
-        await navigator.share({ title: "Nurse · 健康档案备份", text: "存储到文件即可保存到 iCloud/本机。", files: [file] });
-        toast("已调起分享，请选择「存储到文件」");
+        await Capacitor.Plugins.Filesystem.writeFile({
+          path: fileName,
+          data: json,
+          directory: "Documents",
+          encoding: "utf8",
+        });
+        toast("已保存到「文件」App → Nurse → " + fileName);
         return;
-      } catch (e) { if (e && e.name === "AbortError") return; }
+      } catch (e) { console.error("export writeFile failed:", e); }
     }
     const blob = new Blob([json], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "nurse-data-" + TODAY + ".json";
+    a.download = fileName;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast("已导出备份");

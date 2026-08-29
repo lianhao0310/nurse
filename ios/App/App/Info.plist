@@ -45,6 +45,10 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<!-- iOS 隐私权限声明：WKWebView 中 <input type=file> 选图/相机、getUserMedia 麦克风都依赖这些键，缺失会导致“点了没反应” -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于选择检查报告、处方等图片进行归档与 AI 识别</string>
