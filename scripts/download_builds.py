@@ -148,10 +148,13 @@ def download_platform(token, key):
 
         for f in os.listdir(dest):
             if f.endswith(ext):
+                src = os.path.join(dest, f)
                 new = os.path.join(dest, f"nurse-{head}{ext}")
+                if src == new:
+                    continue
                 if os.path.exists(new):
                     safe_remove(new)
-                os.rename(os.path.join(dest, f), new)
+                os.rename(src, new)
 
         safe_remove(zip_path)
         with open(done, "w") as f:
