@@ -5,7 +5,8 @@
 
 - 同时查找 build-ios.yml 和 build-android.yml 最近一次「成功」的运行
 - 下载各自 artifact 并解压，重命名为 nurse-<commit>.ipa / nurse-<commit>.apk
-- 幂等：已下载过的 run 会跳过（通过 builds/run-<id>/.downloaded-<platform> 标记）
+- 同一次提交的 IPA+APK 放到 builds/nurse-<commit>/ 同一目录
+- 幂等：已下载过的 run 会跳过（通过 .downloaded-<platform> 标记）
 - 鉴权：优先环境变量 GITHUB_PAT，其次仓库根目录 .ipa_config 里的 GITHUB_PAT=
 
 用法：
@@ -112,7 +113,7 @@ def download_platform(token, key):
         if not art:
             continue
 
-        dest = os.path.join(OUT_DIR, f"run-{rid}")
+        dest = os.path.join(OUT_DIR, f"nurse-{head}")
         done = os.path.join(dest, f".downloaded-{key}")
         if os.path.exists(done):
             print(f"  [跳过] run-{rid} ({head}) 已下载过。")
@@ -146,7 +147,6 @@ def download_platform(token, key):
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(dest)
 
-        final_file = None
         for f in os.listdir(dest):
             if f.endswith(ext):
                 src = os.path.join(dest, f)
@@ -156,24 +156,13 @@ def download_platform(token, key):
                 if os.path.exists(new):
                     safe_remove(new)
                 os.rename(src, new)
-                final_file = new
 
         safe_remove(zip_path)
         with open(done, "w") as f:
             f.write(str(rid))
 
-        # 复制到 builds/ 根目录方便统一查看
-        if final_file and os.path.exists(final_file):
-            root_copy = os.path.join(OUT_DIR, f"nurse-{head}{ext}")
-            if os.path.exists(root_copy):
-                safe_remove(root_copy)
-            import shutil
-            shutil.copy2(final_file, root_copy)
-            print(f"  [完成] -> {OUT_DIR}")
-            print(f"          {key}: nurse-{head}{ext}")
-        else:
-            print(f"  [完成] -> {dest}")
-            print(f"          {key}: nurse-{head}{ext}")
+        print(f"  [完成] -> {dest}")
+        print(f"          {key}: nurse-{head}{ext}")
         return True
 
     print(f"  最近的构建运行均没有可下载的 {ext} 产物。")
