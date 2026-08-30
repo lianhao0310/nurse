@@ -2,10 +2,11 @@
   "name": "nurse",
   "version": "1.0.0",
   "private": true,
-  "description": "Nurse App：医患对话录音转写→医嘱/用药提醒/护理任务/饮食禁忌/风险预警（Capacitor iOS 封装，本地运行）",
+  "description": "Nurse App：医患对话录音转写→医嘱/用药提醒/护理任务/饮食禁忌/风险预警（Capacitor iOS/Android 封装，本地运行）",
   "scripts": {
     "sync": "cap sync",
     "open:ios": "cap open ios",
+    "open:android": "cap open android",
     "build:web": "echo '前端为静态资源，无需构建步骤；Capacitor 直接复制 frontend/ 目录'",
     "test": "node --test tests/multi-image.test.js tests/engine.test.js tests/storage.test.js"
   },
@@ -17,6 +18,7 @@
     "@capacitor/share": "^6.0.2"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.1.2",
     "@capacitor/cli": "^6.1.2",
     "@capacitor/ios": "^6.1.2"
   }

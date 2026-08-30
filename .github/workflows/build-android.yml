@@ -1,0 +1,88 @@
+name: Build Android APK
+
+# 在 GitHub 的 Ubuntu runner 上把 Capacitor Android 工程编译为 .apk
+# 触发：推送到 master/main、发布 Release、或手动触发
+#
+# 签名策略：
+#   - 配置了 ANDROID_KEYSTORE_BASE64 等 secrets → 构建签名 release APK（可分发安装）
+#   - 未配置 → 构建 debug APK（自动用 debug keystore 签名，可直接安装调试）
+on:
+  push:
+    branches: [master, main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SIGN_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Capacitor sync (web assets + gradle)
+        run: npx cap sync android
+
+      # ---------- 签名：解码 keystore 并写入 gradle.properties ----------
+      - name: Decode signing keystore
+        if: ${{ env.SIGN_KEYSTORE != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo -n "$ANDROID_KEYSTORE_BASE64" | base64 --decode > $RUNNER_TEMP/release.keystore
+          cat >> android/gradle.properties <<EOF
+          RELEASE_STORE_FILE=$RUNNER_TEMP/release.keystore
+          RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
+          RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS
+          RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          EOF
+
+      # ---------- 构建签名 release APK ----------
+      - name: Build release APK (signed)
+        if: ${{ env.SIGN_KEYSTORE != '' }}
+        run: |
+          cd android
+          ./gradlew assembleRelease -x lint
+          ls -la app/build/outputs/apk/release/
+
+      # ---------- 未配置签名：构建 debug APK（可直接安装调试） ----------
+      - name: Build debug APK (unsigned)
+        if: ${{ env.SIGN_KEYSTORE == '' }}
+        run: |
+          echo "::warning::未配置 Android 签名密钥（ANDROID_KEYSTORE_BASE64 等），将生成 debug APK。可在仓库 Secrets 中配置签名 keystore 后重新运行以获得签名 release 包。"
+          cd android
+          ./gradlew assembleDebug -x lint
+          ls -la app/build/outputs/apk/debug/
+
+      # 无论是否签名，构建成功即上传 .apk 产物（供本机自动下载）
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nurse-android-apk
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 90
