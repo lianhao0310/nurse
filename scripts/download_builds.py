@@ -146,6 +146,7 @@ def download_platform(token, key):
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(dest)
 
+        final_file = None
         for f in os.listdir(dest):
             if f.endswith(ext):
                 src = os.path.join(dest, f)
@@ -155,13 +156,24 @@ def download_platform(token, key):
                 if os.path.exists(new):
                     safe_remove(new)
                 os.rename(src, new)
+                final_file = new
 
         safe_remove(zip_path)
         with open(done, "w") as f:
             f.write(str(rid))
 
-        print(f"  [完成] -> {dest}")
-        print(f"          {key}: nurse-{head}{ext}")
+        # 复制到 builds/ 根目录方便统一查看
+        if final_file and os.path.exists(final_file):
+            root_copy = os.path.join(OUT_DIR, f"nurse-{head}{ext}")
+            if os.path.exists(root_copy):
+                safe_remove(root_copy)
+            import shutil
+            shutil.copy2(final_file, root_copy)
+            print(f"  [完成] -> {OUT_DIR}")
+            print(f"          {key}: nurse-{head}{ext}")
+        else:
+            print(f"  [完成] -> {dest}")
+            print(f"          {key}: nurse-{head}{ext}")
         return True
 
     print(f"  最近的构建运行均没有可下载的 {ext} 产物。")
