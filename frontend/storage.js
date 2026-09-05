@@ -395,7 +395,7 @@
   async function load() {
     if (fsAvailable()) {
       try {
-        const res = await _fs().readFile({ path: FILE_NAME, directory: "Documents", encoding: "utf8" });
+        const res = await _fs().readFile({ path: FILE_NAME, directory: "DATA", encoding: "utf8" });
         return _normalize(JSON.parse(res.data));
       } catch (e) {
         return _empty();
@@ -413,7 +413,7 @@
     data = _normalize(data);
     data.updatedAt = new Date().toISOString();
     if (fsAvailable()) {
-      await _fs().writeFile({ path: FILE_NAME, data: JSON.stringify(data), directory: "Documents", encoding: "utf8" });
+      await _fs().writeFile({ path: FILE_NAME, data: JSON.stringify(data), directory: "DATA", encoding: "utf8" });
     } else {
       window.localStorage.setItem(LS_KEY, JSON.stringify(data));
     }
