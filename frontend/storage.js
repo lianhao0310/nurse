@@ -71,6 +71,15 @@
   function _fs() {
     return window.Capacitor.Plugins.Filesystem;
   }
+  function _dir() {
+    // iOS 用 Documents（用户可见 + iCloud 备份），Android 用 DATA（内部存储无需权限）
+    try {
+      if (window.Capacitor && window.Capacitor.getPlatform) {
+        return window.Capacitor.getPlatform() === "ios" ? "Documents" : "DATA";
+      }
+    } catch (_) {}
+    return "DATA";
+  }
 
   function _uid(prefix) {
     return (prefix || "id_") + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -395,17 +404,13 @@
   async function load() {
     if (fsAvailable()) {
       try {
-        const res = await _fs().readFile({ path: FILE_NAME, directory: "DATA", encoding: "utf8" });
+        const res = await _fs().readFile({ path: FILE_NAME, directory: _dir(), encoding: "utf8" });
         return _normalize(JSON.parse(res.data));
       } catch (e) {
-        // Filesystem 读取失败，fallback localStorage 兜底并迁移到 Filesystem
+        // Filesystem 失败，fallback localStorage
         try {
           const raw = window.localStorage.getItem(LS_KEY);
-          if (raw) {
-            const data = _normalize(JSON.parse(raw));
-            try { await _fs().writeFile({ path: FILE_NAME, data: JSON.stringify(data), directory: "DATA", encoding: "utf8" }); } catch (_) {}
-            return data;
-          }
+          if (raw) return _normalize(JSON.parse(raw));
         } catch (_) {}
         return _empty();
       }
@@ -424,7 +429,7 @@
     const json = JSON.stringify(data);
     // 双写：Filesystem + localStorage 互为兜底，避免存储位置切换丢数据
     if (fsAvailable()) {
-      try { await _fs().writeFile({ path: FILE_NAME, data: json, directory: "DATA", encoding: "utf8" }); } catch (_) {}
+      try { await _fs().writeFile({ path: FILE_NAME, data: json, directory: _dir(), encoding: "utf8" }); } catch (_) {}
     }
     try { window.localStorage.setItem(LS_KEY, json); } catch (_) {}
     return data;

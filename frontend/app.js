@@ -2176,7 +2176,7 @@
         await Capacitor.Plugins.Filesystem.writeFile({
           path: fileName,
           data: json,
-          directory: "DATA",
+          directory: (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA",
           encoding: "utf8",
         });
         toast("已保存到「文件」App → Nurse → " + fileName);
@@ -2197,7 +2197,7 @@
       let text = "";
       if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
         try {
-          const res = await Capacitor.Plugins.Filesystem.readFile({ path: file.name, directory: "DATA", encoding: "utf8" });
+          const res = await Capacitor.Plugins.Filesystem.readFile({ path: file.name, directory: (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA", encoding: "utf8" });
           text = res.data;
         } catch (e) { /* file not in Documents, fall through to FileReader */ }
       }
