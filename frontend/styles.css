@@ -1659,7 +1659,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* ===================== 整页视图（记录详情/编辑、检查结果） ===================== */
 .view {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0; left: 50%; bottom: 0;
+  width: 100%;
+  max-width: 480px;
+  transform: translateX(-50%);
   background: var(--bg);
   z-index: 50;
   display: flex;
