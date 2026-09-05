@@ -398,6 +398,15 @@
         const res = await _fs().readFile({ path: FILE_NAME, directory: "DATA", encoding: "utf8" });
         return _normalize(JSON.parse(res.data));
       } catch (e) {
+        // Filesystem 读取失败，fallback localStorage 兜底并迁移到 Filesystem
+        try {
+          const raw = window.localStorage.getItem(LS_KEY);
+          if (raw) {
+            const data = _normalize(JSON.parse(raw));
+            try { await _fs().writeFile({ path: FILE_NAME, data: JSON.stringify(data), directory: "DATA", encoding: "utf8" }); } catch (_) {}
+            return data;
+          }
+        } catch (_) {}
         return _empty();
       }
     }
@@ -412,11 +421,12 @@
   async function save(data) {
     data = _normalize(data);
     data.updatedAt = new Date().toISOString();
+    const json = JSON.stringify(data);
+    // 双写：Filesystem + localStorage 互为兜底，避免存储位置切换丢数据
     if (fsAvailable()) {
-      await _fs().writeFile({ path: FILE_NAME, data: JSON.stringify(data), directory: "DATA", encoding: "utf8" });
-    } else {
-      window.localStorage.setItem(LS_KEY, JSON.stringify(data));
+      try { await _fs().writeFile({ path: FILE_NAME, data: json, directory: "DATA", encoding: "utf8" }); } catch (_) {}
     }
+    try { window.localStorage.setItem(LS_KEY, json); } catch (_) {}
     return data;
   }
 
