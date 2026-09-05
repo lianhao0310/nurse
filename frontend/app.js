@@ -2505,7 +2505,10 @@
       (e) => {
         if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
         const t = e.target;
-        if (t.closest && t.closest("input, textarea, select, .swipe, .table-wrap")) { tracking = false; return; }
+        const inForm = t.closest && t.closest("input, textarea, select");
+        const viewOpen = !$("#record-view").hidden || !$("#exam-view").hidden;
+        if (inForm && !viewOpen) { tracking = false; return; }
+        if (t.closest && t.closest(".swipe, .table-wrap")) { tracking = false; return; }
         sx = e.touches[0].clientX;
         sy = e.touches[0].clientY;
         tracking = true;
