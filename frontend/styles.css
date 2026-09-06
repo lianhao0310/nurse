@@ -2387,20 +2387,23 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* ============ 首页"问 AI"按钮 ============ */
 .ask-ai-btn {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: calc(100% - 32px);
-  margin: 16px auto 20px;
-  padding: 14px;
+  padding: 12px 28px;
   background: linear-gradient(135deg, #34c759, #30b855);
   color: #fff;
   border: none;
-  border-radius: 16px;
-  font-size: 1.05em;
+  border-radius: 24px;
+  font-size: 1em;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(52, 199, 89, 0.3);
+  box-shadow: 0 4px 14px rgba(52, 199, 89, 0.35);
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
 }
@@ -2416,6 +2419,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
   font-size: 1em;
   font-weight: 600;
   color: var(--ink);

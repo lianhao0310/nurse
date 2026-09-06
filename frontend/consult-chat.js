@@ -10,6 +10,15 @@
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
 
+  const AVATAR_SVG = '<svg viewBox="0 0 64 64" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">'
+    + '<circle cx="32" cy="32" r="31" fill="#e8f5e9"/>'
+    + '<path d="M14 24 Q32 10 50 24 L50 27 Q32 19 14 27 Z" fill="#2d6a4f"/>'
+    + '<ellipse cx="32" cy="33" rx="13" ry="15" fill="#f5deb3"/>'
+    + '<circle cx="26" cy="30" r="1.5" fill="#333"/>'
+    + '<circle cx="38" cy="30" r="1.5" fill="#333"/>'
+    + '<path d="M24 36 Q32 54 40 36 Q37 48 32 54 Q27 48 24 36 Z" fill="#c0c0c0"/>'
+    + '</svg>';
+
   let currentChat = null;
   let isSending = false;
   let recognition = null;
@@ -70,7 +79,7 @@
       if (m.role === "user") {
         return '<div class="chat-msg chat-msg--user"><div class="chat-bubble chat-bubble--user">' + esc(m.content) + "</div></div>";
       }
-      return '<div class="chat-msg chat-msg--ai"><div class="chat-avatar">🤔</div><div class="chat-bubble chat-bubble--ai">' + esc(m.content).replace(/\n/g, "<br>") + "</div></div>";
+      return '<div class="chat-msg chat-msg--ai"><div class="chat-avatar">' + AVATAR_SVG + '</div><div class="chat-bubble chat-bubble--ai">' + esc(m.content).replace(/\n/g, "<br>") + "</div></div>";
     }).join("");
     scrollBottom();
   }
@@ -86,7 +95,7 @@
     const div = document.createElement("div");
     div.className = "chat-msg chat-msg--ai chat-msg--loading";
     div.id = "chat-loading";
-    div.innerHTML = '<div class="chat-avatar">🤔</div><div class="chat-bubble chat-bubble--ai"><span class="chat-typing">思考中<span class="dot">·</span><span class="dot">·</span><span class="dot">·</span></span></div>';
+    div.innerHTML = '<div class="chat-avatar">' + AVATAR_SVG + '</div><div class="chat-bubble chat-bubble--ai"><span class="chat-typing">思考中<span class="dot">·</span><span class="dot">·</span><span class="dot">·</span></span></div>';
     list.appendChild(div);
     scrollBottom();
   }
