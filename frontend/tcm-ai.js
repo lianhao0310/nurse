@@ -14,17 +14,9 @@
 
   const MAX_TURNS = 20;
 
-  // 提取有效配置：优先 tcmAi，未配置则回退 ai
+  // 提取有效配置：使用 ai 配置
   function getConfig(settings) {
     const s = settings || {};
-    const tcm = s.tcmAi || {};
-    if (tcm.enabled && tcm.apiKey) {
-      return {
-        baseUrl: (tcm.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, ""),
-        apiKey: tcm.apiKey,
-        model: tcm.model || "gpt-4o",
-      };
-    }
     const ai = s.ai || {};
     if (ai.enabled && ai.apiKey) {
       return {

@@ -123,11 +123,6 @@
     $("#ai-model").value = s.ai.model || "gpt-4o";
     $("#ai-key").value = s.ai.apiKey || "";
     $("#ai-fields").hidden = !s.ai.enabled;
-    $("#tcm-ai-enabled").checked = !!s.tcmAi.enabled;
-    $("#tcm-ai-baseurl").value = s.tcmAi.baseUrl || "";
-    $("#tcm-ai-model").value = s.tcmAi.model || "";
-    $("#tcm-ai-key").value = s.tcmAi.apiKey || "";
-    $("#tcm-ai-fields").hidden = !s.tcmAi.enabled;
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
     document.body.classList.toggle("large-font", !!s.largeFont);
@@ -2107,21 +2102,10 @@
     $("#ai-fields").hidden = !DATA.settings.ai.enabled;
     toast("AI 设置已保存");
   }
-  function renderTcmAISummary() {
-    const txt = $("#tcm-ai-summary-text");
-    if (!txt) return;
-    const t = DATA.settings.tcmAi || {};
-    if (t.enabled && t.apiKey) { txt.textContent = "已开启 · " + (t.model || "默认"); txt.classList.add("on"); }
-    else { txt.textContent = "未配置（回退 AI 解析）"; txt.classList.remove("on"); }
-  }
-  function openTcmAIEdit() { $("#tcm-ai-summary").hidden = true; $("#tcm-ai-edit").hidden = false; }
-  function closeTcmAIEdit() { $("#tcm-ai-edit").hidden = true; $("#tcm-ai-summary").hidden = false; renderTcmAISummary(); }
-  async function saveTcmAISettings() {
-    await NurseStorage.updateSettings({ tcmAi: { enabled: $("#tcm-ai-enabled").checked, baseUrl: $("#tcm-ai-baseurl").value.trim(), apiKey: $("#tcm-ai-key").value.trim(), model: $("#tcm-ai-model").value.trim() } });
-    DATA = await NurseStorage.load();
-    $("#tcm-ai-fields").hidden = !DATA.settings.tcmAi.enabled;
-    toast("中医模型设置已保存");
-  }
+  function renderTcmAISummary() {}
+  function openTcmAIEdit() {}
+  function closeTcmAIEdit() {}
+  async function saveTcmAISettings() {}
   let timesModalStart = false;
   function openTimesModal(isStart) {
     timesModalStart = !!isStart;
@@ -2454,7 +2438,7 @@
   }
 
   // ===================== 右滑返回 / 关闭弹窗 =====================
-  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal", "import-modal"];
+  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal", "import-modal", "consult-history-modal"];
   function closeTopModal() {
     for (let i = MODAL_IDS.length - 1; i >= 0; i--) {
       const id = MODAL_IDS[i];
@@ -2475,6 +2459,7 @@
   function swipeBackAction() {
     if (!$("#img-lightbox").hidden) { closeLightbox(); return; }
     if (closeTopModal()) return;
+    if (!$("#consult-view").hidden) { if (window.NurseConsultChat) window.NurseConsultChat.close(); return; }
     if (!$("#record-view").hidden) { closeView(); return; }
     if (!$("#exam-view").hidden) { $("#exam-view").hidden = true; goPage("records"); return; }
   }
@@ -2528,7 +2513,7 @@
         if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
         const t = e.target;
         const inForm = t.closest && t.closest("input, textarea, select");
-        const viewOpen = !$("#record-view").hidden || !$("#exam-view").hidden;
+        const viewOpen = !$("#record-view").hidden || !$("#exam-view").hidden || !$("#consult-view").hidden;
         if (inForm && !viewOpen) { tracking = false; return; }
         if (t.closest && t.closest(".swipe, .table-wrap")) { tracking = false; return; }
         sx = e.touches[0].clientX;
@@ -2660,10 +2645,6 @@
     $$("#times-modal [data-close-times]").forEach((el) => (el.onclick = closeTimesModal));
     $("#ai-edit-btn").onclick = openAIEdit;
     $("#ai-done-btn").onclick = () => { saveAISettings(); closeAIEdit(); };
-    $("#tcm-ai-enabled").onchange = saveTcmAISettings;
-    ["#tcm-ai-baseurl", "#tcm-ai-model", "#tcm-ai-key"].forEach((s) => ($(s).onchange = saveTcmAISettings));
-    $("#tcm-ai-edit-btn").onclick = openTcmAIEdit;
-    $("#tcm-ai-done-btn").onclick = () => { saveTcmAISettings(); closeTcmAIEdit(); };
     $("#btn-add-reminder").onclick = () => openReminderModal(null);
     $("#reminders-list").onclick = (e) => { const ed = e.target.closest("[data-rem-edit]"); const del = e.target.closest("[data-rem-del]"); if (ed) openReminderModal(ed.dataset.remEdit); else if (del) deleteReminder(del.dataset.remDel); };
     $("#rem-save").onclick = saveReminder;

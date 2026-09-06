@@ -2410,7 +2410,30 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* ============ AI 问诊聊天页 ============ */
 .consult-view { display: flex; flex-direction: column; height: 100%; background: #f5f6f8; }
 .consult-header { flex-shrink: 0; }
-.consult-actions { display: flex; gap: 6px; margin-left: auto; padding-right: 8px; }
+.consult-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 0 4px;
+}
+.consult-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.consult-icon-btn {
+  width: 32px; height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 1.15em;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+.consult-icon-btn:active { background: #f0f1f3; }
 .consult-body {
   flex: 1;
   overflow-y: auto;
@@ -2523,19 +2546,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   transition: border-color 0.15s;
 }
 .chat-input:focus { border-color: #34c759; background: #fff; }
-.chat-send-btn {
-  padding: 9px 18px;
-  border: none;
-  border-radius: 20px;
-  background: #34c759;
-  color: #fff;
-  font-size: 0.95em;
-  font-weight: 500;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-}
-.chat-send-btn:disabled { opacity: 0.4; }
 
 /* ---- 历史对话列表 ---- */
 .consult-history-list { display: flex; flex-direction: column; gap: 8px; }

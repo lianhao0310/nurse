@@ -70,7 +70,7 @@
           </div>
 
           <button class="ask-ai-btn" id="btn-ask-ai" type="button">
-            <span class="ask-ai-btn__icon">🤔</span>
+            <span class="ask-ai-btn__icon">💬</span>
             <span>问 AI</span>
           </button>
         </section>
@@ -179,41 +179,6 @@
               </div>
             </div>
 
-            <div class="me-card me-card--collapse" id="tcm-ai-card">
-              <div class="me-card__head" id="tcm-ai-summary">
-                <div class="me-card__head-l">
-                  <div class="me-card__title">🤔 中医问诊模型</div>
-                  <div class="me-card__sub" id="tcm-ai-summary-text">未配置（回退 AI 解析）</div>
-                </div>
-                <button class="btn btn-ghost btn-sm" id="tcm-ai-edit-btn" type="button">编辑</button>
-              </div>
-              <div class="me-card__edit" id="tcm-ai-edit" hidden>
-                <p class="me-card__desc">
-                  单独配置"问 AI"中医问诊使用的模型。辨证需更强推理能力，建议用比医嘱解析更大的模型。不配置则回退使用上方的 AI 解析配置。
-                </p>
-                <label class="switch-row">
-                  <span>启用独立中医模型</span>
-                  <input type="checkbox" id="tcm-ai-enabled" />
-                  <span class="switch"></span>
-                </label>
-                <div id="tcm-ai-fields" class="ai-fields" hidden>
-                  <label class="field">
-                    <span>接口地址 (Base URL)</span>
-                    <input type="text" id="tcm-ai-baseurl" placeholder="https://api.openai.com/v1" />
-                  </label>
-                  <label class="field">
-                    <span>模型 (Model)</span>
-                    <input type="text" id="tcm-ai-model" placeholder="如 glm-4-plus / qwen-max" />
-                  </label>
-                  <label class="field">
-                    <span>API Key</span>
-                    <input type="password" id="tcm-ai-key" placeholder="sk-..." autocomplete="off" />
-                  </label>
-                  <p class="hint">留空则回退使用上方 AI 解析的配置。密钥仅保存在本机。</p>
-                </div>
-                <button class="btn btn-primary block" id="tcm-ai-done-btn" type="button">完成</button>
-              </div>
-            </div>
 
             <div class="me-card">
               <div class="me-card__head">
@@ -285,11 +250,11 @@
       <!-- ============ AI 问诊聊天（整页视图） ============ -->
       <section class="view consult-view" id="consult-view" hidden>
         <header class="app-header view-header consult-header">
-          <button class="view-back" id="consult-back">‹ 返回</button>
-          <span id="consult-title">问 AI · 倪师中医</span>
+          <button class="view-back" id="consult-back">‹</button>
+          <span class="consult-title" id="consult-title">问 AI · 倪师中医</span>
           <div class="consult-actions">
-            <button class="btn btn-ghost btn-sm" id="consult-new" type="button">新建</button>
-            <button class="btn btn-ghost btn-sm" id="consult-history" type="button">历史</button>
+            <button class="consult-icon-btn" id="consult-new" type="button" title="新建对话">✚</button>
+            <button class="consult-icon-btn" id="consult-history" type="button" title="历史对话">🕐</button>
           </div>
         </header>
         <div class="consult-body" id="consult-body">
@@ -307,8 +272,7 @@
         </div>
         <div class="chat-input-bar">
           <button class="chat-voice-btn" id="chat-voice" type="button" title="语音输入">🎤</button>
-          <textarea class="chat-input" id="chat-input" rows="1" placeholder="描述症状或提问…"></textarea>
-          <button class="chat-send-btn" id="chat-send" type="button">发送</button>
+          <textarea class="chat-input" id="chat-input" rows="1" placeholder="描述症状或提问…" enterkeyhint="send"></textarea>
         </div>
       </section>
 

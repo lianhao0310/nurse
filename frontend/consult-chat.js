@@ -216,7 +216,6 @@
     }
 
     isSending = true;
-    updateSendBtn();
 
     const userMsg = { role: "user", content: text, ts: new Date().toISOString() };
     currentChat.messages.push(userMsg);
@@ -248,20 +247,12 @@
       await saveCurrent();
     } finally {
       isSending = false;
-      updateSendBtn();
     }
   }
 
   async function saveCurrent() {
     if (!currentChat) return;
     currentChat = await NurseStorage.saveConsultChat(currentChat);
-  }
-
-  function updateSendBtn() {
-    const btn = $("#chat-send");
-    if (!btn) return;
-    btn.disabled = isSending;
-    btn.textContent = isSending ? "…" : "发送";
   }
 
   // ---------------- 语音输入 ----------------
@@ -348,20 +339,15 @@
     if (histBtn) histBtn.onclick = async () => { await renderHistoryList(); const m = $("#consult-history-modal"); if (m) m.hidden = false; };
 
     const input = $("#chat-input");
-    const sendBtn = $("#chat-send");
-    if (sendBtn) sendBtn.onclick = () => {
-      if (!input) return;
-      const text = input.value;
-      input.value = "";
-      autoResize();
-      send(text);
-    };
     if (input) {
       input.addEventListener("input", autoResize);
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          if (sendBtn) sendBtn.click();
+          const text = input.value;
+          input.value = "";
+          autoResize();
+          send(text);
         }
       });
     }

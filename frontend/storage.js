@@ -114,7 +114,6 @@
       lastDecrement: null,
       settings: {
         ai: { enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" },
-        tcmAi: { enabled: false, baseUrl: "", apiKey: "", model: "" },
         notifications: false,
         largeFont: false,
         dailyDone: {},
@@ -134,19 +133,12 @@
   function _normSettings(s) {
     s = s && typeof s === "object" ? s : {};
     const ai = s.ai && typeof s.ai === "object" ? s.ai : {};
-    const tcmAi = s.tcmAi && typeof s.tcmAi === "object" ? s.tcmAi : {};
     return {
       ai: {
         enabled: !!ai.enabled,
         baseUrl: ai.baseUrl || "https://api.openai.com/v1",
         apiKey: ai.apiKey || "",
         model: ai.model || "gpt-4o",
-      },
-      tcmAi: {
-        enabled: !!tcmAi.enabled,
-        baseUrl: tcmAi.baseUrl || "",
-        apiKey: tcmAi.apiKey || "",
-        model: tcmAi.model || "",
       },
       notifications: !!s.notifications,
       largeFont: !!s.largeFont,
@@ -192,12 +184,6 @@
             out.ai.apiKey = patch.ai.apiKey || out.ai.apiKey;
             out.ai.model = patch.ai.model || out.ai.model;
           }
-        } else if (k === "tcmAi" && patch.tcmAi && typeof patch.tcmAi === "object") {
-          out.tcmAi = Object.assign({}, out.tcmAi || {});
-          out.tcmAi.enabled = patch.tcmAi.enabled !== undefined ? !!patch.tcmAi.enabled : !!out.tcmAi.enabled;
-          out.tcmAi.baseUrl = patch.tcmAi.baseUrl !== undefined ? patch.tcmAi.baseUrl : out.tcmAi.baseUrl;
-          out.tcmAi.apiKey = patch.tcmAi.apiKey !== undefined ? patch.tcmAi.apiKey : out.tcmAi.apiKey;
-          out.tcmAi.model = patch.tcmAi.model !== undefined ? patch.tcmAi.model : out.tcmAi.model;
         } else {
           out[k] = patch[k];
         }
