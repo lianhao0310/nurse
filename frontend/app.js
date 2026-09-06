@@ -99,6 +99,7 @@
     DATA.followedIndicators = DATA.followedIndicators || [];
     applySettingsUI();
     bindEvents();
+    if (window.NurseConsultChat) window.NurseConsultChat.init();
     setupSwipeBack();
     setupModalSwipeDown();
     await runDailyDecrement();
@@ -122,6 +123,11 @@
     $("#ai-model").value = s.ai.model || "gpt-4o";
     $("#ai-key").value = s.ai.apiKey || "";
     $("#ai-fields").hidden = !s.ai.enabled;
+    $("#tcm-ai-enabled").checked = !!s.tcmAi.enabled;
+    $("#tcm-ai-baseurl").value = s.tcmAi.baseUrl || "";
+    $("#tcm-ai-model").value = s.tcmAi.model || "";
+    $("#tcm-ai-key").value = s.tcmAi.apiKey || "";
+    $("#tcm-ai-fields").hidden = !s.tcmAi.enabled;
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
     document.body.classList.toggle("large-font", !!s.largeFont);
@@ -1110,6 +1116,7 @@
 
   async function closeView() {
     closeLightbox();
+    if (!$("#consult-view").hidden) { if (window.NurseConsultChat) window.NurseConsultChat.close(); return; }
     if (!$("#record-view").hidden) {
       if (_recAutoSaveTimer) { clearTimeout(_recAutoSaveTimer); _recAutoSaveTimer = null; }
       if (_recAutoSaveDirty && _editingRec) {
@@ -2100,6 +2107,21 @@
     $("#ai-fields").hidden = !DATA.settings.ai.enabled;
     toast("AI 设置已保存");
   }
+  function renderTcmAISummary() {
+    const txt = $("#tcm-ai-summary-text");
+    if (!txt) return;
+    const t = DATA.settings.tcmAi || {};
+    if (t.enabled && t.apiKey) { txt.textContent = "已开启 · " + (t.model || "默认"); txt.classList.add("on"); }
+    else { txt.textContent = "未配置（回退 AI 解析）"; txt.classList.remove("on"); }
+  }
+  function openTcmAIEdit() { $("#tcm-ai-summary").hidden = true; $("#tcm-ai-edit").hidden = false; }
+  function closeTcmAIEdit() { $("#tcm-ai-edit").hidden = true; $("#tcm-ai-summary").hidden = false; renderTcmAISummary(); }
+  async function saveTcmAISettings() {
+    await NurseStorage.updateSettings({ tcmAi: { enabled: $("#tcm-ai-enabled").checked, baseUrl: $("#tcm-ai-baseurl").value.trim(), apiKey: $("#tcm-ai-key").value.trim(), model: $("#tcm-ai-model").value.trim() } });
+    DATA = await NurseStorage.load();
+    $("#tcm-ai-fields").hidden = !DATA.settings.tcmAi.enabled;
+    toast("中医模型设置已保存");
+  }
   let timesModalStart = false;
   function openTimesModal(isStart) {
     timesModalStart = !!isStart;
@@ -2532,6 +2554,8 @@
   function bindEvents() {
     $$(".tabbar__btn").forEach((b) => (b.onclick = () => goPage(b.dataset.page)));
     $$("[data-close]").forEach((el) => (el.onclick = () => closeTopModal()));
+    const askAi = $("#btn-ask-ai");
+    if (askAi) askAi.onclick = () => { if (window.NurseConsultChat) window.NurseConsultChat.open(); };
 
     // 首页页签
     $$(".home-tab").forEach((b) => (b.onclick = () => switchHomeTab(b.dataset.htab)));
@@ -2636,6 +2660,10 @@
     $$("#times-modal [data-close-times]").forEach((el) => (el.onclick = closeTimesModal));
     $("#ai-edit-btn").onclick = openAIEdit;
     $("#ai-done-btn").onclick = () => { saveAISettings(); closeAIEdit(); };
+    $("#tcm-ai-enabled").onchange = saveTcmAISettings;
+    ["#tcm-ai-baseurl", "#tcm-ai-model", "#tcm-ai-key"].forEach((s) => ($(s).onchange = saveTcmAISettings));
+    $("#tcm-ai-edit-btn").onclick = openTcmAIEdit;
+    $("#tcm-ai-done-btn").onclick = () => { saveTcmAISettings(); closeTcmAIEdit(); };
     $("#btn-add-reminder").onclick = () => openReminderModal(null);
     $("#reminders-list").onclick = (e) => { const ed = e.target.closest("[data-rem-edit]"); const del = e.target.closest("[data-rem-del]"); if (ed) openReminderModal(ed.dataset.remEdit); else if (del) deleteReminder(del.dataset.remDel); };
     $("#rem-save").onclick = saveReminder;

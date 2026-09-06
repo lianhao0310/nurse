@@ -114,6 +114,7 @@
       lastDecrement: null,
       settings: {
         ai: { enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" },
+        tcmAi: { enabled: false, baseUrl: "", apiKey: "", model: "" },
         notifications: false,
         largeFont: false,
         dailyDone: {},
@@ -124,6 +125,7 @@
       orders: [],
       cabinet: [],
       reports: [],
+      consultChats: [],
       indicatorMeta: {},
       followedIndicators: [],
     };
@@ -132,12 +134,19 @@
   function _normSettings(s) {
     s = s && typeof s === "object" ? s : {};
     const ai = s.ai && typeof s.ai === "object" ? s.ai : {};
+    const tcmAi = s.tcmAi && typeof s.tcmAi === "object" ? s.tcmAi : {};
     return {
       ai: {
         enabled: !!ai.enabled,
         baseUrl: ai.baseUrl || "https://api.openai.com/v1",
         apiKey: ai.apiKey || "",
         model: ai.model || "gpt-4o",
+      },
+      tcmAi: {
+        enabled: !!tcmAi.enabled,
+        baseUrl: tcmAi.baseUrl || "",
+        apiKey: tcmAi.apiKey || "",
+        model: tcmAi.model || "",
       },
       notifications: !!s.notifications,
       largeFont: !!s.largeFont,
@@ -183,6 +192,12 @@
             out.ai.apiKey = patch.ai.apiKey || out.ai.apiKey;
             out.ai.model = patch.ai.model || out.ai.model;
           }
+        } else if (k === "tcmAi" && patch.tcmAi && typeof patch.tcmAi === "object") {
+          out.tcmAi = Object.assign({}, out.tcmAi || {});
+          out.tcmAi.enabled = patch.tcmAi.enabled !== undefined ? !!patch.tcmAi.enabled : !!out.tcmAi.enabled;
+          out.tcmAi.baseUrl = patch.tcmAi.baseUrl !== undefined ? patch.tcmAi.baseUrl : out.tcmAi.baseUrl;
+          out.tcmAi.apiKey = patch.tcmAi.apiKey !== undefined ? patch.tcmAi.apiKey : out.tcmAi.apiKey;
+          out.tcmAi.model = patch.tcmAi.model !== undefined ? patch.tcmAi.model : out.tcmAi.model;
         } else {
           out[k] = patch[k];
         }
@@ -394,6 +409,21 @@
           if (typeof x === "string") return { name: x.trim(), unit: "", range: "" };
           if (x && typeof x === "object" && x.name) return { name: String(x.name).trim(), unit: x.unit || "", range: x.range || "" };
           return null;
+        }).filter(Boolean);
+      }
+      if (Array.isArray(obj.consultChats)) {
+        data.consultChats = obj.consultChats.map((c) => {
+          if (!c || typeof c !== "object") return null;
+          return {
+            id: c.id || _uid("chat_"),
+            title: c.title || "新对话",
+            createdAt: c.createdAt || new Date().toISOString(),
+            updatedAt: c.updatedAt || new Date().toISOString(),
+            messages: Array.isArray(c.messages) ? c.messages.map((m) => {
+              if (!m || !m.content || !String(m.content).trim()) return null;
+              return { role: m.role === "assistant" ? "assistant" : "user", content: String(m.content), ts: m.ts || new Date().toISOString() };
+            }).filter(Boolean) : [],
+          };
         }).filter(Boolean);
       }
     }
@@ -823,6 +853,47 @@
     return cur;
   }
 
+  // ---------------- AI 问诊历史对话 ----------------
+  async function getConsultChats() {
+    return (await load()).consultChats || [];
+  }
+  async function getConsultChat(id) {
+    return (await load()).consultChats.find((c) => c.id === id) || null;
+  }
+  async function saveConsultChat(chat) {
+    const data = await load();
+    const now = new Date().toISOString();
+    const item = {
+      id: chat.id || _uid("chat_"),
+      title: chat.title || "新对话",
+      createdAt: chat.createdAt || now,
+      updatedAt: now,
+      messages: Array.isArray(chat.messages) ? chat.messages.map((m) => {
+        if (!m || !m.content || !String(m.content).trim()) return null;
+        return { role: m.role === "assistant" ? "assistant" : "user", content: String(m.content), ts: m.ts || now };
+      }).filter(Boolean) : [],
+    };
+    const exist = data.consultChats.find((c) => c.id === item.id);
+    if (exist) Object.assign(exist, item);
+    else data.consultChats.unshift(item);
+    await save(data);
+    return item;
+  }
+  async function deleteConsultChat(id) {
+    const data = await load();
+    data.consultChats = (data.consultChats || []).filter((c) => c.id !== id);
+    await save(data);
+  }
+  async function newConsultChat() {
+    const now = new Date().toISOString();
+    const item = { id: _uid("chat_"), title: "新对话", createdAt: now, updatedAt: now, messages: [] };
+    const data = await load();
+    data.consultChats = data.consultChats || [];
+    data.consultChats.unshift(item);
+    await save(data);
+    return item;
+  }
+
   return {
     FILE_NAME,
     isNative: fsAvailable,
@@ -858,5 +929,10 @@
     exportJSON,
     importJSON,
     drugNames,
+    getConsultChats,
+    getConsultChat,
+    saveConsultChat,
+    deleteConsultChat,
+    newConsultChat,
   };
 });

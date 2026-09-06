@@ -582,5 +582,72 @@
     };
   }
 
-  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice, transcribeAudio, analyzeReport, analyzePrescription };
+  // 通用多轮对话流式调用（纯文本，不强制 JSON），供 tcm-ai.js 等复用
+  // messages: [{role:"system"|"user"|"assistant", content:string}]
+  // config:  { baseUrl, apiKey, model }
+  // onChunk: (fullText) => void  增量回调
+  // options: { temperature }
+  // 返回完整文本
+  async function chatStream(messages, config, onChunk, options) {
+    const baseUrl = (config.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const model = config.model || "gpt-4o";
+    if (!config.apiKey) throw new Error("未配置 API Key");
+    const body = {
+      model,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
+      stream: true,
+    };
+    let resp;
+    try {
+      resp = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + config.apiKey },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      const msg = String(e && e.message ? e.message : e);
+      if (/Failed to fetch|NetworkError|CORS|cross-origin/i.test(msg)) {
+        throw new Error("网络或跨域(CORS)错误：请确认该接口允许浏览器跨域访问。");
+      }
+      throw new Error("请求失败：" + msg);
+    }
+    if (!resp.ok) {
+      let d = "";
+      try { d = await resp.text(); } catch (e) {}
+      if (resp.status === 401) throw new Error("API Key 无效或无权限（401）。");
+      if (resp.status === 404) throw new Error("接口路径不存在（404），请检查 Base URL。");
+      throw new Error("接口返回 " + resp.status + "：" + d.slice(0, 300));
+    }
+    if (resp.body && resp.body.getReader) {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let full = "", buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t || !t.startsWith("data:")) continue;
+          const data = t.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || "";
+            if (delta) { full += delta; if (onChunk) onChunk(full); }
+          } catch (e) {}
+        }
+      }
+      return full;
+    }
+    const data = await resp.json();
+    const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    if (onChunk) onChunk(content || "");
+    return content || "";
+  }
+
+  return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice, transcribeAudio, analyzeReport, analyzePrescription, chatStream };
 });
