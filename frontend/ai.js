@@ -582,7 +582,7 @@
     };
   }
 
-  // 通用多轮对话流式调用（纯文本，不强制 JSON），供 tcm-ai.js 等复用
+  // 通用多轮对话流式调用（纯文本，不强制 JSON），供 consult-chat.js 等复用
   // messages: [{role:"system"|"user"|"assistant", content:string}]
   // config:  { baseUrl, apiKey, model }
   // onChunk: (fullText) => void  增量回调

@@ -18,7 +18,9 @@
  *     orderId: string|null,               // 关联药单（hospital 属性）
  *     reportId: string|null,              // 关联检查报告（hospital 属性）
  *     result: { ... } | null,             // AI分析转化结果
- *     aiAdvice: { diet:[], taboo:[], text } | null,
+ *     aiAdvice: { diet:[], taboo:[], text } | null,   // 旧字段，迁移后删除
+ *     aiAnalysis: string | null,                       // AI 医嘱分析（文本）
+ *     aiAnalysisAt: string | null,                     // AI 分析时间（ISO）
  *     status, manual
  *   } ],
  *   orders: [ {                           // 药单
@@ -321,6 +323,8 @@
       reportId: r.reportId || "",
       result: r.result || null,
       aiAdvice: r.aiAdvice && typeof r.aiAdvice === "object" ? { diet: (r.aiAdvice.diet || []).filter(Boolean), taboo: (r.aiAdvice.taboo || []).filter(Boolean), text: r.aiAdvice.text || "", createdAt: r.aiAdvice.createdAt || "" } : null,
+      aiAnalysis: r.aiAnalysis ? String(r.aiAnalysis) : null,
+      aiAnalysisAt: r.aiAnalysisAt || null,
       manual: !!r.manual,
       status: r.status || "done",
     };
@@ -364,6 +368,22 @@
     return Object.values(map).map(_normCabinetDrug).filter(Boolean);
   }
 
+  // 旧版迁移：aiAdvice → aiAnalysis（文本格式）
+  function _migrateAIAdvice(records) {
+    for (const r of records) {
+      if (r && r.aiAdvice && !r.aiAnalysis) {
+        const a = r.aiAdvice;
+        const parts = [];
+        if (a.text) parts.push(a.text);
+        if (a.diet && a.diet.length) parts.push("饮食建议：" + a.diet.join("；"));
+        if (a.taboo && a.taboo.length) parts.push("禁忌：" + a.taboo.join("；"));
+        r.aiAnalysis = parts.join("\n\n");
+        r.aiAnalysisAt = a.createdAt || null;
+        r.aiAdvice = null;
+      }
+    }
+  }
+
   function _normalize(obj) {
     const data = _empty();
     if (obj && typeof obj === "object") {
@@ -372,6 +392,7 @@
       data.lastDecrement = obj.lastDecrement || null;
       if (Array.isArray(obj.records)) {
         data.records = obj.records.map(_normRecord).filter(Boolean);
+        _migrateAIAdvice(data.records);
       }
       // cabinet（含旧版自动迁移）
       data.cabinet = _migrateCabinet(obj);
@@ -406,8 +427,12 @@
             createdAt: c.createdAt || new Date().toISOString(),
             updatedAt: c.updatedAt || new Date().toISOString(),
             messages: Array.isArray(c.messages) ? c.messages.map((m) => {
-              if (!m || !m.content || !String(m.content).trim()) return null;
-              return { role: m.role === "assistant" ? "assistant" : "user", content: String(m.content), ts: m.ts || new Date().toISOString() };
+              if (!m || (!m.content && !(m.images && m.images.length))) return null;
+              const msg = { role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || ""), ts: m.ts || new Date().toISOString() };
+              if (Array.isArray(m.images) && m.images.length) {
+                msg.images = m.images.map((im) => (im && im.dataUrl ? { dataUrl: im.dataUrl, ocrText: im.ocrText || "" } : null)).filter(Boolean);
+              }
+              return msg;
             }).filter(Boolean) : [],
           };
         }).filter(Boolean);
@@ -484,6 +509,8 @@
         reportId: record.reportId || "",
         result: record.result || null,
         aiAdvice: record.aiAdvice || null,
+        aiAnalysis: record.aiAnalysis || null,
+        aiAnalysisAt: record.aiAnalysisAt || null,
         rxImages: record.rxImages || [],
         examImages: record.examImages || [],
         manual: !!record.manual,

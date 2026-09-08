@@ -21,9 +21,8 @@
 
   let currentChat = null;
   let isSending = false;
-  let recognition = null;
-  let isRecording = false;
   let toastTimer = null;
+  let pendingImages = [];
 
   const EMERGENCY_KEYS = [
     "胸痛", "胸闷持续", "昏迷", "晕厥", "大出血", "吐血", "便血",
@@ -61,6 +60,32 @@
     return !!(window.NurseTCM && window.NurseStorage);
   }
 
+  function readFileAsDataURL(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.readAsDataURL(file);
+    });
+  }
+
+  function renderPendingImages() {
+    const bar = $(".chat-input-bar");
+    let preview = $("#chat-img-preview");
+    if (!pendingImages.length) {
+      if (preview) preview.remove();
+      return;
+    }
+    if (!preview) {
+      preview = document.createElement("div");
+      preview.id = "chat-img-preview";
+      preview.className = "chat-img-preview";
+      bar.insertBefore(preview, bar.firstChild);
+    }
+    preview.innerHTML = pendingImages.map((im, i) => '<div class="chat-img-preview__item"><img src="' + esc(im.dataUrl) + '" /><button data-idx="' + i + '" type="button">✕</button></div>').join("");
+    preview.querySelectorAll("button").forEach((b) => (b.onclick = () => { pendingImages.splice(+b.dataset.idx, 1); renderPendingImages(); }));
+  }
+
   // ---------------- 渲染 ----------------
   function renderMessages() {
     const list = $("#chat-list");
@@ -77,7 +102,10 @@
     empty.hidden = true;
     list.innerHTML = msgs.map((m) => {
       if (m.role === "user") {
-        return '<div class="chat-msg chat-msg--user"><div class="chat-bubble chat-bubble--user">' + esc(m.content) + "</div></div>";
+        const imgHtml = (m.images && m.images.length)
+          ? '<div class="chat-images">' + m.images.map((im) => '<img class="chat-img-thumb" src="' + esc(im.dataUrl) + '" />').join("") + '</div>'
+          : "";
+        return '<div class="chat-msg chat-msg--user">' + imgHtml + '<div class="chat-bubble chat-bubble--user">' + esc(m.content) + "</div></div>";
       }
       return '<div class="chat-msg chat-msg--ai"><div class="chat-avatar">' + AVATAR_SVG + '</div><div class="chat-bubble chat-bubble--ai">' + esc(m.content).replace(/\n/g, "<br>") + "</div></div>";
     }).join("");
@@ -116,8 +144,8 @@
   // ---------------- 历史列表 ----------------
   async function renderHistoryList() {
     const chats = await NurseStorage.getConsultChats();
-    const listEl = $("#consult-history-list");
-    const emptyEl = $("#consult-history-empty");
+    const listEl = $("#consult-list");
+    const emptyEl = $("#consult-empty");
     if (!listEl) return;
     if (!chats.length) {
       listEl.innerHTML = "";
@@ -127,18 +155,59 @@
     if (emptyEl) emptyEl.hidden = true;
     listEl.innerHTML = chats.map((c) => {
       const msgCount = (c.messages || []).length;
-      return '<div class="consult-history-item" data-id="' + c.id + '">'
-        + '<div class="consult-history-item__main">'
-        + '<div class="consult-history-item__title">' + esc(c.title) + "</div>"
-        + '<div class="consult-history-item__meta">' + fmtTime(c.updatedAt) + " · " + msgCount + " 条</div>"
+      const lastMsg = msgCount ? (c.messages[msgCount - 1].content || "").slice(0, 50) : "";
+      return '<div class="consult-card swipe-item" data-id="' + c.id + '" data-swipe>'
+        + '<div class="swipe-content">'
+        + '<div class="consult-card__title">' + esc(c.title) + "</div>"
+        + '<div class="consult-card__summary">' + esc(lastMsg) + "</div>"
+        + '<div class="consult-card__meta">' + fmtTime(c.updatedAt) + " · " + msgCount + " 条</div>"
         + "</div>"
-        + '<button class="consult-history-item__del" data-del="' + c.id + '" type="button">✕</button>'
+        + '<button class="swipe-del" data-del="' + c.id + '" type="button">删除</button>'
         + "</div>";
     }).join("");
   }
 
   // ---------------- 对话操作 ----------------
-  async function open() {
+  async function openTab() {
+    $$(".view").forEach((v) => (v.hidden = v.id !== "consult-view"));
+    $$(".page").forEach((p) => (p.hidden = true));
+    const chats = await NurseStorage.getConsultChats();
+    currentChat = chats.length ? chats[0] : null;
+    pendingImages = [];
+    renderPendingImages();
+    renderMessages();
+    updateTitle();
+  }
+
+  async function showHistory() {
+    const view = $("#consult-view");
+    if (view) view.hidden = true;
+    const page = $("#page-consult");
+    if (page) page.hidden = false;
+    const newBtn = $("#btn-new-consult");
+    if (newBtn) newBtn.hidden = false;
+    await renderHistoryList();
+  }
+
+  function showChatView() {
+    const page = $("#page-consult");
+    if (page) page.hidden = true;
+    const view = $("#consult-view");
+    if (view) view.hidden = false;
+    const newBtn = $("#btn-new-consult");
+    if (newBtn) newBtn.hidden = true;
+  }
+
+  function backFromHistory() {
+    const page = $("#page-consult");
+    if (page) page.hidden = true;
+    const newBtn = $("#btn-new-consult");
+    if (newBtn) newBtn.hidden = true;
+    $$(".page").forEach((p) => (p.hidden = p.id !== "page-home"));
+    $$(".tabbar__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.page === "home"));
+  }
+
+  async function open(isNew) {
     if (!isAvailable()) {
       toast("模块未加载");
       return;
@@ -148,26 +217,22 @@
       toast("需联网并配置 AI 后使用");
       return;
     }
-    $$(".view").forEach((v) => (v.hidden = true));
+    $$(".view").forEach((v) => (v.hidden = v.id !== "consult-view"));
     $$(".page").forEach((p) => (p.hidden = true));
-    const view = $("#consult-view");
-    if (view) view.hidden = false;
-    const chats = await NurseStorage.getConsultChats();
-    if (chats.length) {
-      currentChat = chats[0];
+    if (isNew) {
+      currentChat = null;
     } else {
-      currentChat = await NurseStorage.newConsultChat();
+      const chats = await NurseStorage.getConsultChats();
+      currentChat = chats.length ? chats[0] : null;
     }
+    pendingImages = [];
+    renderPendingImages();
     renderMessages();
     updateTitle();
   }
 
-  function close() {
-    const view = $("#consult-view");
-    if (view) view.hidden = true;
-    if (isRecording) stopVoice();
-    $$(".page").forEach((p) => (p.hidden = p.id !== "page-home"));
-    $$(".tabbar__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.page === "home"));
+  async function close() {
+    await showHistory();
   }
 
   function updateTitle() {
@@ -178,10 +243,12 @@
 
   async function newChat() {
     if (isSending) return;
-    currentChat = await NurseStorage.newConsultChat();
+    currentChat = null;
+    pendingImages = [];
+    renderPendingImages();
     renderMessages();
     updateTitle();
-    toast("已新建对话");
+    showChatView();
   }
 
   async function loadChat(id) {
@@ -189,10 +256,9 @@
     const chat = await NurseStorage.getConsultChat(id);
     if (!chat) return;
     currentChat = chat;
+    showChatView();
     renderMessages();
     updateTitle();
-    const modal = $("#consult-history-modal");
-    if (modal) modal.hidden = true;
   }
 
   async function deleteChat(id) {
@@ -200,7 +266,7 @@
     await NurseStorage.deleteConsultChat(id);
     if (currentChat && currentChat.id === id) {
       const chats = await NurseStorage.getConsultChats();
-      currentChat = chats.length ? chats[0] : await NurseStorage.newConsultChat();
+      currentChat = chats.length ? chats[0] : null;
       renderMessages();
       updateTitle();
     }
@@ -213,9 +279,9 @@
     return EMERGENCY_KEYS.some((k) => t.indexOf(k.toLowerCase()) >= 0);
   }
 
-  async function send(text) {
+  async function send(text, images) {
     text = (text || "").trim();
-    if (!text || isSending) return;
+    if ((!text && !(images && images.length)) || isSending) return;
     if (!currentChat) currentChat = await NurseStorage.newConsultChat();
 
     if (checkEmergency(text)) {
@@ -227,9 +293,10 @@
     isSending = true;
 
     const userMsg = { role: "user", content: text, ts: new Date().toISOString() };
+    if (images && images.length) userMsg.images = images;
     currentChat.messages.push(userMsg);
     if (currentChat.title === "新对话" || !currentChat.title) {
-      currentChat.title = text.slice(0, 20);
+      currentChat.title = text ? text.slice(0, 20) : (images && images.length ? "图片提问" : "新对话");
       updateTitle();
     }
     renderMessages();
@@ -264,72 +331,6 @@
     currentChat = await NurseStorage.saveConsultChat(currentChat);
   }
 
-  // ---------------- 语音输入 ----------------
-  function initVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const btn = $("#chat-voice");
-    if (!btn) return;
-    if (!SR) {
-      btn.hidden = true;
-      return;
-    }
-    btn.onclick = () => {
-      if (isRecording) stopVoice();
-      else startVoice();
-    };
-  }
-
-  function startVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR || isRecording) return;
-    recognition = new SR();
-    recognition.lang = "zh-CN";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    const input = $("#chat-input");
-    let baseText = input ? input.value : "";
-    recognition.onresult = (e) => {
-      let interim = "", final = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final += e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
-      }
-      if (input) input.value = baseText + final + interim;
-      autoResize();
-    };
-    recognition.onend = () => {
-      isRecording = false;
-      const btn = $("#chat-voice");
-      if (btn) { btn.textContent = "🎤"; btn.classList.remove("is-recording"); }
-      const input = $("#chat-input");
-      if (input && input.value.trim()) {
-        const text = input.value;
-        input.value = "";
-        autoResize();
-        send(text);
-      }
-    };
-    recognition.onerror = () => {
-      isRecording = false;
-      const btn = $("#chat-voice");
-      if (btn) { btn.textContent = "🎤"; btn.classList.remove("is-recording"); }
-    };
-    try {
-      recognition.start();
-      isRecording = true;
-      const btn = $("#chat-voice");
-      if (btn) { btn.textContent = "⏹"; btn.classList.add("is-recording"); }
-    } catch (e) {
-      isRecording = false;
-    }
-  }
-
-  function stopVoice() {
-    if (recognition) {
-      try { recognition.stop(); } catch (e) {}
-    }
-  }
-
   // ---------------- 输入框自适应 ----------------
   function autoResize() {
     const input = $("#chat-input");
@@ -344,8 +345,6 @@
     if (back) back.onclick = close;
     const newBtn = $("#consult-new");
     if (newBtn) newBtn.onclick = newChat;
-    const histBtn = $("#consult-history");
-    if (histBtn) histBtn.onclick = async () => { await renderHistoryList(); const m = $("#consult-history-modal"); if (m) m.hidden = false; };
 
     const input = $("#chat-input");
     if (input) {
@@ -356,9 +355,29 @@
           const text = input.value;
           input.value = "";
           autoResize();
-          send(text);
+          send(text, pendingImages.length ? pendingImages.slice() : null);
+          pendingImages = [];
+          renderPendingImages();
         }
       });
+    }
+
+    const imgBtn = $("#chat-image");
+    const imgInput = $("#chat-image-input");
+    if (imgBtn && imgInput) {
+      imgBtn.onclick = () => imgInput.click();
+      imgInput.onchange = async (e) => {
+        const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith("image/"));
+        e.target.value = "";
+        if (!files.length) return;
+        for (const f of files) {
+          try {
+            const dataUrl = await readFileAsDataURL(f);
+            pendingImages.push({ dataUrl, ocrText: "" });
+          } catch (_) {}
+        }
+        renderPendingImages();
+      };
     }
 
     const empty = $("#chat-empty");
@@ -369,18 +388,16 @@
       });
     }
 
-    const histList = $("#consult-history-list");
-    if (histList) {
-      histList.addEventListener("click", (e) => {
+    const listEl = $("#consult-list");
+    if (listEl) {
+      listEl.addEventListener("click", (e) => {
         const del = e.target.closest("[data-del]");
         if (del) { deleteChat(del.dataset.del); return; }
         const item = e.target.closest("[data-id]");
         if (item) loadChat(item.dataset.id);
       });
     }
-
-    initVoice();
   }
 
-  window.NurseConsultChat = { init, open, close, isAvailable, send };
+  window.NurseConsultChat = { init, open, openTab, close, showHistory, backFromHistory, isAvailable, send, renderHistoryList, newChat, deleteChat };
 })();

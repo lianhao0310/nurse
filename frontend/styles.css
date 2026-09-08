@@ -86,6 +86,22 @@ textarea {
   font-size: 0.8em;
   opacity: 0.85;
 }
+.app-header__btn {
+  margin-left: auto;
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  font-size: 1.3em;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.app-header__btn:active { background: rgba(255,255,255,0.35); }
 
 .page {
   padding: 14px 14px 8px;
@@ -1630,6 +1646,30 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-size: 0.92em;
   line-height: 1.5;
 }
+.rec-card__ai {
+  padding: 4px 2px 2px;
+  color: var(--primary-dark);
+  font-size: 0.85em;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-analysis-box {
+  background: var(--primary-soft);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 0.92em;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-analysis-time {
+  font-size: 0.78em;
+  color: var(--ink-3);
+  margin-top: 6px;
+}
 .records-bar {
   display: flex;
   flex-direction: column;
@@ -2385,31 +2425,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .import-item span { color: var(--ink); }
 
-/* ============ 首页"问 AI"按钮 ============ */
-.ask-ai-btn {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 16px);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 28px;
-  background: linear-gradient(135deg, #34c759, #30b855);
-  color: #fff;
-  border: none;
-  border-radius: 24px;
-  font-size: 1em;
-  font-weight: 600;
-  box-shadow: 0 4px 14px rgba(52, 199, 89, 0.35);
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.ask-ai-btn:active { transform: scale(0.97); box-shadow: 0 2px 8px rgba(52, 199, 89, 0.3); }
-.ask-ai-btn__icon { font-size: 1.2em; }
-
 /* ============ AI 问诊聊天页 ============ */
 .consult-view { display: flex; flex-direction: column; height: 100%; background: #f5f6f8; }
 .consult-header { flex-shrink: 0; }
@@ -2524,18 +2539,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: #fff;
   border-top: 1px solid #e5e7eb;
 }
-.chat-voice-btn {
-  width: 38px; height: 38px;
-  border: none;
-  border-radius: 50%;
-  background: #f0f1f3;
-  font-size: 1.2em;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s;
-}
-.chat-voice-btn.is-recording { background: #ff3b30; color: #fff; }
 .chat-input {
   flex: 1;
   border: 1px solid #e5e7eb;
@@ -2550,32 +2553,61 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   transition: border-color 0.15s;
 }
 .chat-input:focus { border-color: #34c759; background: #fff; }
-
-/* ---- 历史对话列表 ---- */
-.consult-history-list { display: flex; flex-direction: column; gap: 8px; }
-.consult-history-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  background: #fff;
-  border-radius: var(--radius-sm, 10px);
-  box-shadow: var(--shadow, 0 1px 3px rgba(0,0,0,0.06));
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.consult-history-item:active { background: #f6f7f9; }
-.consult-history-item__main { flex: 1; min-width: 0; }
-.consult-history-item__title { font-size: 0.95em; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 3px; }
-.consult-history-item__meta { font-size: 0.8em; color: var(--ink-3); }
-.consult-history-item__del {
-  width: 28px; height: 28px;
+.chat-image-btn {
+  width: 38px; height: 38px;
   border: none;
   border-radius: 50%;
   background: #f0f1f3;
-  color: var(--ink-3);
-  font-size: 0.85em;
+  font-size: 1.2em;
   cursor: pointer;
   flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
 }
-.consult-history-item__del:active { background: #ff3b30; color: #fff; }
+.chat-image-btn:active { background: #e4e5e7; }
+.chat-img-preview {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.chat-img-preview__item {
+  position: relative;
+  width: 48px; height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.chat-img-preview__item img { width: 100%; height: 100%; object-fit: cover; }
+.chat-img-preview__item button {
+  position: absolute;
+  top: 0; right: 0;
+  width: 18px; height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 0.7em;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.chat-images {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.chat-img-thumb {
+  width: 80px; height: 80px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+/* ---- 问 AI 历史对话列表 ---- */
+.consult-list { display: flex; flex-direction: column; gap: 8px; }
+.consult-list-back { margin-bottom: 4px; }
+.consult-card { position: relative; overflow: hidden; border-radius: var(--radius); margin-bottom: 0; cursor: pointer; }
+.consult-card .swipe-content { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; }
+.consult-card__title { font-size: 0.95em; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+.consult-card__summary { font-size: 0.85em; color: var(--ink-2); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+.consult-card__meta { font-size: 0.78em; color: var(--ink-3); }

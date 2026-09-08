@@ -136,9 +136,10 @@
     $$(".page").forEach((p) => (p.hidden = p.id !== "page-" + page));
     $$(".tabbar__btn").forEach((b) => b.classList.toggle("is-active", b.dataset.page === page));
     $$(".view").forEach((v) => (v.hidden = true));
+    const newBtn = $("#btn-new-consult");
+    if (newBtn) newBtn.hidden = page !== "consult";
     if (page === "home") {
       setHeader("Nurse", "");
-      applyHomeTab();
       renderHome();
     } else if (page === "records") {
       setHeader("问诊记录", "");
@@ -148,6 +149,11 @@
       renderCabinet();
     } else if (page === "me") {
       setHeader("我的", "");
+    } else if (page === "consult") {
+      setHeader("问 AI", "");
+      if (window.NurseConsultChat && window.NurseConsultChat.renderHistoryList) {
+        window.NurseConsultChat.renderHistoryList();
+      }
     }
   }
 
@@ -164,7 +170,6 @@
     renderHomeAlerts();
     renderMedBlocks(done);
     renderPersonalReminders();
-    renderAISummaryHome();
     scheduleNotifications(done);
   }
 
@@ -257,34 +262,11 @@
     $("#home-reminders-count").textContent = rems.length + " 项";
   }
 
-  // 首页 AI 医嘱页签
-  function renderAISummaryHome() {
-    const box = $("#home-aidvice");
-    if (!box) return;
-    const advices = (DATA.records || [])
-      .filter((r) => r.aiAdvice && ((r.aiAdvice.diet && r.aiAdvice.diet.length) || (r.aiAdvice.taboo && r.aiAdvice.taboo.length) || r.aiAdvice.text))
-      .map((r) => ({ rec: r, a: r.aiAdvice }));
-    if (!advices.length) {
-      box.innerHTML = '<div class="empty-tip">还没有 AI 医嘱建议。在「问诊记录」详情中做「医嘱分析」后，这里会按每次问诊生成一条生活 / 饮食医嘱。</div>';
-      return;
+  // 问 AI 历史对话列表
+  async function renderConsultList() {
+    if (window.NurseConsultChat && window.NurseConsultChat.renderHistoryList) {
+      await window.NurseConsultChat.renderHistoryList();
     }
-    box.innerHTML = advices
-      .map(({ rec, a }) => {
-        const head = (rec.hospital || "问诊记录") + (rec.visitDate ? " · " + rec.visitDate : "");
-        const tags = []
-          .concat((a.diet || []).map((x) => `<span class="tag">${esc(x)}</span>`))
-          .concat((a.taboo || []).map((x) => `<span class="tag tag--bad">${esc(x)}</span>`))
-          .join("");
-        return `<div class="aidvice-card swipe-item" data-rec-id="${esc(rec.id)}" data-swipe>
-          <div class="swipe-content">
-            <div class="aidvice-card__head"><b>${esc(head)}</b>${a.createdAt ? `<span class="aidvice-card__date">${esc(a.createdAt.slice(0, 10))}</span>` : ""}</div>
-            ${a.text ? `<div class="aidvice-card__summary">${esc(a.text)}</div>` : ""}
-            ${tags ? `<div class="aidvice-card__tags">${tags}</div>` : ""}
-          </div>
-          <button class="swipe-del" data-swipe-del>删除</button>
-        </div>`;
-      })
-      .join("");
   }
 
   async function toggleMed(id, slot) {
@@ -412,6 +394,7 @@
                 <span class="rec-card__date">${esc(title)}</span>
               </div>
               <div class="rec-card__summary">👨‍⚕️ ${esc((rec.doctor || "未知医生") + "：" + summary)}</div>
+              ${rec.aiAnalysis ? `<div class="rec-card__ai">🤖 ${esc(rec.aiAnalysis.slice(0, 60))}${rec.aiAnalysis.length > 60 ? "…" : ""}</div>` : ""}
             </div>
             <button class="swipe-del" data-swipe-del>删除</button>
           </div>`;
@@ -550,6 +533,13 @@
           ${noReport ? `<div class="rec-edit__row"><button type="button" class="btn btn-ghost btn-compact" id="rec-report-add">＋报告</button><button type="button" class="btn btn-ghost btn-compact" id="rec-report-copy">📋复制</button></div>` : ""}
           <div id="rec-report-thumbs" class="thumb-grid"></div>
         </div>
+
+        ${rec && rec.aiAnalysis ? `<div class="detail-sec">
+          <div class="sec-head"><h3>🤖 AI 医嘱分析</h3></div>
+          <div class="ai-analysis-box">${esc(rec.aiAnalysis).replace(/\n/g, "<br>")}</div>
+          ${rec.aiAnalysisAt ? `<div class="ai-analysis-time">${esc(rec.aiAnalysisAt.slice(0, 10))}</div>` : ""}
+          <p class="hint">以上 AI 分析仅供参考，不替代医生诊断。</p>
+        </div>` : ""}
 
         <div class="detail-actions">
           ${aiOn ? `<button class="btn btn-ghost block" id="rec-advice-analyze">💡 医嘱分析</button>` : ""}
@@ -1080,7 +1070,7 @@
       </div>
       <div class="field"><span>一句话总结（可修改）</span><input id="adv-text" value="${esc(data.text)}"/></div>
       <div class="capture-actions">
-        <button class="btn btn-primary block" id="ai-save">保存并更新首页</button>
+        <button class="btn btn-primary block" id="ai-save">保存分析</button>
         <button class="btn btn-ghost block" id="ai-cancel">取消</button>
       </div>`;
     const addRow = (id, btn) => {
@@ -1097,16 +1087,21 @@
     const diet = $$("#adv-diet input").map((i) => i.value.trim()).filter(Boolean);
     const taboo = $$("#adv-taboo input").map((i) => i.value.trim()).filter(Boolean);
     const text = $("#adv-text").value.trim();
-    rec.aiAdvice = { diet, taboo, text, createdAt: new Date().toISOString() };
-    await NurseStorage.updateRecord(rec.id, { aiAdvice: rec.aiAdvice });
+    const parts = [];
+    if (text) parts.push(text);
+    if (diet.length) parts.push("饮食建议：" + diet.join("；"));
+    if (taboo.length) parts.push("禁忌：" + taboo.join("；"));
+    rec.aiAnalysis = parts.join("\n\n");
+    rec.aiAnalysisAt = new Date().toISOString();
+    await NurseStorage.updateRecord(rec.id, { aiAnalysis: rec.aiAnalysis, aiAnalysisAt: rec.aiAnalysisAt });
     DATA = await NurseStorage.load();
     aiModalState = null;
     $("#ai-modal").hidden = true;
     const latest = (DATA.records || []).find((r) => r.id === rec.id);
     if (latest) showRecordView(latest);
     else closeView();
-    renderHome();
-    toast("已更新首页 AI 医嘱");
+    renderRecords();
+    toast("已保存 AI 医嘱分析");
   }
 
   async function closeView() {
@@ -2029,12 +2024,6 @@
   }
 
   // ===================== 提醒 / 设置 =====================
-  function applyHomeTab() {
-    $$(".home-tab").forEach((b) => b.classList.toggle("is-active", b.dataset.htab === homeTab));
-    $("#htab-remind").hidden = homeTab !== "remind";
-    $("#htab-aidvice").hidden = homeTab !== "aidvice";
-  }
-  function switchHomeTab(tab) { homeTab = tab; applyHomeTab(); }
 
   function renderRemindersList() {
     const box = $("#reminders-list");
@@ -2102,6 +2091,7 @@
     $("#ai-fields").hidden = !DATA.settings.ai.enabled;
     toast("AI 设置已保存");
   }
+
   function renderTcmAISummary() {}
   function openTcmAIEdit() {}
   function closeTcmAIEdit() {}
@@ -2327,15 +2317,15 @@
       toast("已删除");
     }
   }
-  async function deleteAdviceSwipe(item) {
-    const id = item.dataset.recId;
+  async function deleteConsultSwipe(item) {
+    const id = item.dataset.id;
     if (!id) return;
-    if (confirm("确定删除该 AI 医嘱？")) {
-      const rec = (DATA.records || []).find((r) => r.id === id);
-      if (rec) { rec.aiAdvice = null; await NurseStorage.updateRecord(id, { aiAdvice: null }); }
-      DATA = await NurseStorage.load();
-      renderHome();
-      toast("已删除 AI 医嘱");
+    if (confirm("确定删除这个对话？此操作不可恢复。")) {
+      await NurseStorage.deleteConsultChat(id);
+      if (window.NurseConsultChat && window.NurseConsultChat.renderHistoryList) {
+        await window.NurseConsultChat.renderHistoryList();
+      }
+      toast("已删除");
     }
   }
   async function deleteReportSwipe(item) {
@@ -2438,7 +2428,7 @@
   }
 
   // ===================== 右滑返回 / 关闭弹窗 =====================
-  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal", "import-modal", "consult-history-modal"];
+  const MODAL_IDS = ["ai-modal", "times-modal", "order-modal", "med-item-modal", "report-modal", "copy-pick-modal", "follow-modal", "reminder-modal", "cabinet-modal", "import-modal"];
   function closeTopModal() {
     for (let i = MODAL_IDS.length - 1; i >= 0; i--) {
       const id = MODAL_IDS[i];
@@ -2459,6 +2449,7 @@
   function swipeBackAction() {
     if (!$("#img-lightbox").hidden) { closeLightbox(); return; }
     if (closeTopModal()) return;
+    if (!$("#page-consult").hidden) { if (window.NurseConsultChat) window.NurseConsultChat.backFromHistory(); return; }
     if (!$("#consult-view").hidden) { if (window.NurseConsultChat) window.NurseConsultChat.close(); return; }
     if (!$("#record-view").hidden) { closeView(); return; }
     if (!$("#exam-view").hidden) { $("#exam-view").hidden = true; goPage("records"); return; }
@@ -2513,7 +2504,7 @@
         if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
         const t = e.target;
         const inForm = t.closest && t.closest("input, textarea, select");
-        const viewOpen = !$("#record-view").hidden || !$("#exam-view").hidden || !$("#consult-view").hidden;
+        const viewOpen = !$("#record-view").hidden || !$("#exam-view").hidden || !$("#consult-view").hidden || !$("#page-consult").hidden;
         if (inForm && !viewOpen) { tracking = false; return; }
         if (t.closest && t.closest(".swipe, .table-wrap")) { tracking = false; return; }
         sx = e.touches[0].clientX;
@@ -2539,12 +2530,8 @@
   function bindEvents() {
     $$(".tabbar__btn").forEach((b) => (b.onclick = () => goPage(b.dataset.page)));
     $$("[data-close]").forEach((el) => (el.onclick = () => closeTopModal()));
-    const askAi = $("#btn-ask-ai");
-    if (askAi) askAi.onclick = () => { if (window.NurseConsultChat) window.NurseConsultChat.open(); };
 
-    // 首页页签
-    $$(".home-tab").forEach((b) => (b.onclick = () => switchHomeTab(b.dataset.htab)));
-    $("#home-aidvice").onclick = (e) => { const c = e.target.closest(".aidvice-card"); if (c) openRecord(c.dataset.recId); };
+    // 首页
     $("#home-meds-blocks").onclick = async (e) => {
       const head = e.target.closest(".med-block__head");
       if (head && head.dataset.slot) {
@@ -2566,6 +2553,10 @@
     $("#record-back").onclick = () => closeView();
     $("#exam-back").onclick = () => { $$(".view").forEach((v) => (v.hidden = true)); goPage("records"); };
 
+    // 问 AI
+    const btnNewConsult = $("#btn-new-consult");
+    if (btnNewConsult) btnNewConsult.onclick = () => { if (window.NurseConsultChat) window.NurseConsultChat.newChat(); };
+
     // 检查结果：添加自测报告 / 关注
     $("#btn-add-report").onclick = () => openReportModal(null);
     $("#exam-list").addEventListener("click", (e) => {
@@ -2586,11 +2577,7 @@
 
     // 药箱 / 药单
     $$(".cab-subtabs .home-tab").forEach((b) => (b.onclick = () => switchCabinetTab(b.dataset.ctab)));
-    // 子页签左右滑动切换（首页/问诊/药箱）
-    bindPaneSwipe($("#home-tabs"), [
-      { isActive: () => homeTab === "remind", activate: () => switchHomeTab("remind") },
-      { isActive: () => homeTab === "aidvice", activate: () => switchHomeTab("aidvice") },
-    ]);
+    // 子页签左右滑动切换（问诊/药箱）
     bindPaneSwipe($("#page-records"), [
       { isActive: () => activeTabData(".records-subtabs .home-tab.is-active", "rtab") === "list", activate: () => switchRecordsTab("list") },
       { isActive: () => activeTabData(".records-subtabs .home-tab.is-active", "rtab") === "exam", activate: () => switchRecordsTab("exam") },
@@ -2629,7 +2616,7 @@
 
     // 列表滑动删除
     attachSwipe($("#records-list"), deleteRecordSwipe);
-    attachSwipe($("#home-aidvice"), deleteAdviceSwipe);
+    attachSwipe($("#consult-list"), deleteConsultSwipe);
     attachSwipe($("#exam-list"), deleteReportSwipe);
     attachSwipe($("#orders-list"), deleteOrderSwipe);
     attachSwipe($("#cabinet-list"), deleteCabinetSwipe);

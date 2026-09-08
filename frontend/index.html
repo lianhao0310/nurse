@@ -17,6 +17,7 @@
         <div class="app-header__inner">
           <span id="header-title">Nurse</span>
           <span id="header-sub" class="app-header__sub"></span>
+          <button class="app-header__btn" id="btn-new-consult" type="button" title="新建对话" hidden>＋</button>
         </div>
       </header>
 
@@ -33,12 +34,6 @@
           <div id="home-alerts" class="alerts" hidden></div>
 
           <div class="home-tabs" id="home-tabs">
-            <div class="home-tabs__bar">
-              <button class="home-tab is-active" data-htab="remind">提醒</button>
-              <button class="home-tab" data-htab="aidvice">AI 医嘱</button>
-            </div>
-
-            <!-- 提醒页签 -->
             <div class="home-tab__pane" id="htab-remind">
               <section class="card-block">
                 <div class="block-head">
@@ -56,23 +51,15 @@
                 <div id="home-reminders" class="reminder-list"></div>
               </section>
             </div>
-
-            <!-- AI 医嘱页签 -->
-            <div class="home-tab__pane" id="htab-aidvice" hidden>
-              <section class="card-block">
-                <div class="block-head">
-                  <h2>🤖 AI 医嘱建议</h2>
-                  <span class="block-sub">来自「医嘱分析」</span>
-                </div>
-                <div id="home-aidvice" class="aidvice-box"></div>
-              </section>
-            </div>
           </div>
+        </section>
 
-          <button class="ask-ai-btn" id="btn-ask-ai" type="button">
-            <span class="ask-ai-btn__icon">💬</span>
-            <span>问 AI</span>
-          </button>
+        <!-- ============ 问 AI（历史对话列表） ============ -->
+        <section class="page" id="page-consult" hidden>
+          <div class="page-pad">
+            <div id="consult-list" class="consult-list"></div>
+            <div id="consult-empty" class="empty-tip big" hidden>还没有对话记录。<br />点击右上角「＋」向倪师提问。</div>
+          </div>
         </section>
 
         <!-- ============ 问诊记录 ============ -->
@@ -236,6 +223,9 @@
         <button class="tabbar__btn is-active" data-page="home">
           <span class="tabbar__icon">🏠</span><span>首页</span>
         </button>
+        <button class="tabbar__btn" data-page="consult">
+          <span class="tabbar__icon">💬</span><span>问 AI</span>
+        </button>
         <button class="tabbar__btn" data-page="records">
           <span class="tabbar__icon">📋</span><span>问诊记录</span>
         </button>
@@ -253,8 +243,7 @@
           <button class="view-back" id="consult-back">‹</button>
           <span class="consult-title" id="consult-title">问 AI · 倪师中医</span>
           <div class="consult-actions">
-            <button class="consult-icon-btn" id="consult-new" type="button" title="新建对话">✚</button>
-            <button class="consult-icon-btn" id="consult-history" type="button" title="历史对话">🕐</button>
+            <button class="consult-icon-btn" id="consult-new" type="button" title="新建对话">＋</button>
           </div>
         </header>
         <div class="consult-body" id="consult-body">
@@ -271,25 +260,11 @@
           </div>
         </div>
         <div class="chat-input-bar">
-          <button class="chat-voice-btn" id="chat-voice" type="button" title="语音输入">🎤</button>
+          <button class="chat-image-btn" id="chat-image" type="button" title="发送图片">📷</button>
+          <input type="file" id="chat-image-input" accept="image/*" multiple hidden />
           <textarea class="chat-input" id="chat-input" rows="1" placeholder="描述症状或提问…" enterkeyhint="send"></textarea>
         </div>
       </section>
-
-      <!-- ============ 历史对话列表 弹层 ============ -->
-      <div class="modal" id="consult-history-modal" hidden>
-        <div class="modal__mask" data-close="consult-history"></div>
-        <div class="modal__panel">
-          <div class="modal__head">
-            <span>历史对话</span>
-            <button class="modal__close" data-close="consult-history">✕</button>
-          </div>
-          <div class="modal__body">
-            <div id="consult-history-list" class="consult-history-list"></div>
-            <div id="consult-history-empty" class="empty-tip" hidden>还没有历史对话</div>
-          </div>
-        </div>
-      </div>
 
       <!-- ============ 问诊记录 详情 / 编辑（整页视图） ============ -->
       <section class="view" id="record-view" hidden>
