@@ -4,6 +4,13 @@ const config = {
   appId: "com.nurse.app",
   appName: "Nurse",
   webDir: "frontend",
+  plugins: {
+    CapacitorSQLite: {
+      iosDatabaseLocation: "Library/CapacitorDatabase",
+      androidIsEncryption: false,
+      iosIsEncryption: false,
+    },
+  },
 };
 
 module.exports = config;

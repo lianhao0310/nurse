@@ -38,16 +38,51 @@
     return messages.slice(-MAX_TURNS * 2);
   }
 
+  // 提取最后一条用户消息作为 RAG 查询
+  function _lastUserMessage(messages) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return messages[i].content;
+    }
+    return "";
+  }
+
+  // 构建 system message：精简核心规则 + RAG 检索片段（降级为仅核心规则）
+  async function _buildSystemPrompt(corePrompt, queryText) {
+    try {
+      const rag = (typeof window !== "undefined" && window.NurseRag) || null;
+      const embed = (typeof window !== "undefined" && window.NurseRagEmbed) || null;
+      if (!rag || !embed || !queryText) return corePrompt;
+
+      if (!rag.isReady()) {
+        await rag.init();
+      }
+      const queryVector = await embed.embed(queryText);
+      const chunks = await rag.search(queryVector, { topK: 5 });
+      if (!chunks || !chunks.length) {
+        console.log("[NurseTCM] RAG 检索返回空，仅使用核心规则");
+        return corePrompt;
+      }
+      console.log(`[NurseTCM] RAG 检索命中 ${chunks.length} 条片段，拼接 prompt`);
+      return rag.buildSystemPrompt(corePrompt, chunks);
+    } catch (e) {
+      console.warn("[NurseTCM] RAG 检索失败，降级为仅核心规则:", e.message);
+      return corePrompt;
+    }
+  }
+
   // 多轮对话：messages 为历史 [{role,content}]，返回完整回复文本
   // onChunk(fullText) 流式增量回调
   async function chat(messages, settings, onChunk) {
     const config = getConfig(settings);
     if (!config) throw new Error("AI 未配置：请在设置页开启 AI 并配置 API Key");
-    const prompt = (typeof window !== "undefined" && window.TCM_SKILL_PROMPT) || "";
-    if (!prompt) throw new Error("中医 Skill Prompt 未加载");
-    const fullMessages = [
-      { role: "system", content: prompt },
-    ].concat(_truncate(messages || []).map((m) => ({ role: m.role, content: m.content })));
+    const corePrompt = (typeof window !== "undefined" && window.TCM_SKILL_PROMPT) || "";
+    if (!corePrompt) throw new Error("中医 Skill Prompt 未加载");
+
+    const history = _truncate(messages || []).map((m) => ({ role: m.role, content: m.content }));
+    const queryText = _lastUserMessage(history);
+    const systemPrompt = await _buildSystemPrompt(corePrompt, queryText);
+
+    const fullMessages = [{ role: "system", content: systemPrompt }].concat(history);
     const ai = (typeof window !== "undefined" && window.NurseAI) || null;
     if (!ai || typeof ai.chatStream !== "function") throw new Error("ai.js 未加载");
     return await ai.chatStream(fullMessages, config, onChunk, { temperature: 0.7 });

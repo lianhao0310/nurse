@@ -34,3 +34,9 @@ _run_*.zip
 
 # 构建产物下载目录
 builds/
+
+# 代码图索引（工具产物）
+.codegraph/
+
+# 本地模型缓存（构建脚本用，体积大）
+scripts/_model_cache/
