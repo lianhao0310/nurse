@@ -92,10 +92,12 @@
 
   // ===================== 初始化 =====================
   async function init() {
+    if (window.NurseDB) await NurseDB.init();
     DATA = await NurseStorage.load();
-    DATA.records = DATA.records || [];
-    DATA.orders = DATA.orders || [];
-    DATA.reports = DATA.reports || [];
+    DATA.records = await NurseStorage.getRecords();
+    DATA.orders = await NurseStorage.getOrders();
+    DATA.reports = await NurseStorage.getReports();
+    DATA.consultChats = await NurseStorage.getConsultChats();
     DATA.followedIndicators = DATA.followedIndicators || [];
     applySettingsUI();
     bindEvents();
@@ -375,16 +377,33 @@
   }
 
   // ===================== 问诊记录 =====================
+  let _recSearchKey = "";
+  let _recPage = 1;
+  const _recPageSize = 20;
+  function _filterRecords() {
+    let list = DATA.records || [];
+    if (_recSearchKey) {
+      const kw = _recSearchKey.toLowerCase();
+      list = list.filter((r) =>
+        (r.hospital || "").toLowerCase().includes(kw) ||
+        (r.doctor || "").toLowerCase().includes(kw) ||
+        (r.transcript || "").toLowerCase().includes(kw)
+      );
+    }
+    return list;
+  }
   function renderRecords() {
     const list = $("#records-list");
     const empty = $("#records-empty");
     const examEmpty = $("#exam-empty");
-    if (!DATA.records.length) {
+    const filtered = _filterRecords();
+    const visible = filtered.slice(0, _recPage * _recPageSize);
+    if (!filtered.length) {
       list.innerHTML = "";
       empty.hidden = false;
     } else {
       empty.hidden = true;
-      list.innerHTML = DATA.records
+      list.innerHTML = visible
         .map((rec) => {
           const summary = rec.advice && rec.advice.text ? rec.advice.text : rec.result && rec.result.summary ? rec.result.summary : rec.transcript || "（无医嘱文字）";
           const title = (rec.hospital || "未填医院") + (rec.visitDate ? " · " + rec.visitDate : "");
@@ -401,6 +420,8 @@
         })
         .join("");
     }
+    const noMore = $("#records-no-more");
+    if (noMore) noMore.hidden = visible.length >= filtered.length || !filtered.length;
 
     // 检查结果子页签
     renderExamTrend($("#exam-trend"));
@@ -2165,37 +2186,36 @@
     document.body.classList.toggle("large-font", on);
   }
   async function exportData() {
-    const json = await NurseStorage.exportJSON();
-    const fileName = "nurse-data-" + new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + ".json";
-    if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
-      try {
-        await Capacitor.Plugins.Filesystem.writeFile({
-          path: fileName,
-          data: json,
-          directory: (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA",
-          encoding: "utf8",
-        });
-        toast("已保存到「文件」App → Nurse → " + fileName);
-        return;
-      } catch (e) { console.error("export writeFile failed:", e); }
-    }
-    const blob = new Blob([json], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    toast("已导出备份");
+    const fs = (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) ? Capacitor.Plugins.Filesystem : null;
+    const dir = (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA";
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const backupDir = "nurse-backup-" + ts;
+    try {
+      const dbJson = window.NurseDB ? await NurseDB.exportToJson() : null;
+      if (!dbJson) { toast("导出失败：数据库不可用"); return; }
+      if (fs) {
+        await fs.writeFile({ path: backupDir + "/nurse.db.json", data: dbJson, directory: dir, encoding: "utf8", recursive: true });
+        if (window.NurseImageStore) await NurseImageStore.copyImageDir(backupDir, dir);
+        toast("已保存到「文件」App → Nurse → " + backupDir);
+      } else {
+        const blob = new Blob([dbJson], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = backupDir + ".db.json";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        toast("已导出备份");
+      }
+    } catch (e) { console.error("export failed:", e); toast("导出失败"); }
   }
   let pendingImportText = null;
   async function importData(file) {
     try {
       let text = "";
-      if (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
-        try {
-          const res = await Capacitor.Plugins.Filesystem.readFile({ path: file.name, directory: (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA", encoding: "utf8" });
-          text = res.data;
-        } catch (e) { /* file not in Documents, fall through to FileReader */ }
+      const fs = (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) ? Capacitor.Plugins.Filesystem : null;
+      const dir = (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA";
+      if (fs) {
+        try { const res = await fs.readFile({ path: file.name, directory: dir, encoding: "utf8" }); text = res.data; } catch (_) {}
       }
       if (!text) {
         text = await new Promise((resolve, reject) => {
@@ -2206,49 +2226,28 @@
         });
       }
       const parsed = JSON.parse(text);
-      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.records)) {
+      if (!parsed || typeof parsed !== "object" || !parsed.database || !Array.isArray(parsed.tables)) {
         toast("导入失败：文件格式不正确");
         return;
       }
-      const backupHas = {
-        records: (parsed.records && parsed.records.length) > 0,
-        orders: (parsed.orders && parsed.orders.length) > 0,
-        reports: (parsed.reports && parsed.reports.length) > 0,
-        cabinet: (parsed.cabinet && parsed.cabinet.length) > 0,
-        settings: !!(parsed.settings && parsed.settings.ai && parsed.settings.ai.apiKey) || ((parsed.followedIndicators && parsed.followedIndicators.length) || Object.keys(parsed.indicatorMeta || {}).length) > 0,
-      };
-      const backupEmpty = !Object.values(backupHas).some(Boolean);
-      const curEmpty = !DATA.records.length && !DATA.orders.length && !DATA.reports.length && !DATA.cabinet.length;
-      if (backupEmpty && curEmpty) {
-        toast("原数据和备份文件均无数据，无需导入");
-        return;
-      }
-      if (backupEmpty) {
-        toast("备份文件中无数据，已取消导入");
-        return;
-      }
       pendingImportText = text;
-      const items = [
-        ["records", "问诊记录", backupHas.records],
-        ["orders", "自建药单", backupHas.orders],
-        ["reports", "自建检查报告", backupHas.reports],
-        ["cabinet", "药箱", backupHas.cabinet],
-        ["settings", "个人配置", backupHas.settings],
-      ].filter(([, , has]) => has);
-      $("#import-list").innerHTML = items.map(([k, label]) =>
-        '<label class="import-item"><input type="checkbox" data-import-key="' + k + '" checked /><span>' + label + "</span></label>"
-      ).join("");
-      $("#import-modal").hidden = false;
+      if (!confirm("导入备份将覆盖现有全部数据，确定继续？")) { pendingImportText = null; return; }
+      await confirmImport();
     } catch (e) { console.error("import failed:", e); toast("导入失败：文件格式不正确"); }
   }
   async function confirmImport() {
-    const selection = {};
-    $$('#import-list input[type="checkbox"]').forEach((cb) => { selection[cb.dataset.importKey] = cb.checked; });
-    $("#import-modal").hidden = true;
-    if (!Object.values(selection).some(Boolean)) { toast("未勾选任何项，已取消"); return; }
+    if (!pendingImportText) return;
     try {
-      await NurseStorage.importJSON(pendingImportText, selection);
+      if (window.NurseDB) {
+        await NurseDB.close();
+        await NurseDB.importFromJson(pendingImportText);
+        await NurseDB.init();
+      }
       DATA = await NurseStorage.load();
+      DATA.records = await NurseStorage.getRecords();
+      DATA.orders = await NurseStorage.getOrders();
+      DATA.reports = await NurseStorage.getReports();
+      DATA.consultChats = await NurseStorage.getConsultChats();
       applySettingsUI();
       renderHome();
       renderRecords();
@@ -2640,6 +2639,29 @@
     $("#btn-import").onclick = () => $("#import-file").click();
     $("#import-file").onchange = (e) => { if (e.target.files && e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; };
     $("#import-confirm").onclick = confirmImport;
+
+    const recSearch = $("#records-search");
+    if (recSearch) {
+      let _searchTimer = null;
+      recSearch.addEventListener("input", (e) => {
+        clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(() => {
+          _recSearchKey = (e.target.value || "").trim();
+          _recPage = 1;
+          renderRecords();
+        }, 300);
+      });
+    }
+    const recList = $("#records-list");
+    if (recList) {
+      const recObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          const filtered = _filterRecords();
+          if (_recPage * _recPageSize < filtered.length) { _recPage++; renderRecords(); }
+        }
+      }, { rootMargin: "100px" });
+      recObserver.observe(recList);
+    }
   }
 
   // ===================== 检查结果 整页趋势视图 =====================

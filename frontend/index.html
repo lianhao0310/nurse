@@ -72,7 +72,10 @@
             <button class="rec-add-btn" id="btn-add-record">＋ 新增问诊记录</button>
           </div>
           <div class="page-pad">
+            <input type="search" id="records-search" class="list-search" placeholder="搜索医院/医生/症状…" />
             <div id="records-list" class="records-list"></div>
+            <div id="records-load-more" class="load-more-tip" hidden>正在加载…</div>
+            <div id="records-no-more" class="load-more-tip" hidden>没有更多</div>
             <div id="records-empty" class="empty-tip big" hidden>还没有问诊记录。<br />点右上角「＋」新增一次就诊记录。</div>
 
             <div id="exam-pane" hidden>
@@ -596,6 +599,8 @@
       <!-- ============ 轻提示 ============ -->
       <div id="toast" class="toast" hidden></div>
 
+      <script src="db.js"></script>
+      <script src="image-store.js"></script>
       <script src="storage.js"></script>
       <script src="engine.js"></script>
       <script src="ai.js"></script>

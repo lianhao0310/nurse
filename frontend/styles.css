@@ -2611,3 +2611,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .consult-card__title { font-size: 0.95em; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
 .consult-card__summary { font-size: 0.85em; color: var(--ink-2); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
 .consult-card__meta { font-size: 0.78em; color: var(--ink-3); }
+
+.list-search {
+  width: 100%; box-sizing: border-box;
+  padding: 8px 12px; margin-bottom: 10px;
+  border: 1px solid #e0e3e6; border-radius: var(--radius-sm);
+  font-size: 0.9em; background: #fff; color: var(--ink);
+  outline: none; -webkit-appearance: none;
+}
+.list-search:focus { border-color: var(--primary); }
+.load-more-tip { text-align: center; padding: 10px; color: var(--ink-3); font-size: 0.85em; }
