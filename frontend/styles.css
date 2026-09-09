@@ -1718,7 +1718,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: calc(env(safe-area-inset-top, 0px)) 12px;
+  padding: calc(env(safe-area-inset-top, 0px)) 12px 0;
   min-height: calc(46px + env(safe-area-inset-top, 0px));
 }
 .view-back {
