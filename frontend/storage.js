@@ -354,10 +354,10 @@
     return await getRecord(id);
   }
 
-  async function getRecords() {
+  async function getRecords(withDataUrls) {
     if (_isMemory()) return _memData().records;
     const rows = await DB.query("SELECT * FROM records ORDER BY created_at DESC");
-    return Promise.all(rows.map((r) => _rowToRecord(r, true)));
+    return Promise.all(rows.map((r) => _rowToRecord(r, !!withDataUrls)));
   }
 
   async function getRecord(id) {
@@ -420,10 +420,10 @@
     if (item.images && item.images.length) await _saveImgsToTable("order_images", "order_id", orderId, item.images);
   }
 
-  async function getOrders() {
+  async function getOrders(withDataUrls) {
     if (_isMemory()) return _memData().orders;
     const rows = await DB.query("SELECT * FROM orders ORDER BY date DESC");
-    return Promise.all(rows.map((r) => _rowToOrder(r, true)));
+    return Promise.all(rows.map((r) => _rowToOrder(r, !!withDataUrls)));
   }
   async function getOrder(id) {
     if (_isMemory()) return _memData().orders.find((o) => o.id === id) || null;
@@ -516,10 +516,10 @@
     await _deleteImgsFromTable("report_images", "report_id", reportId);
     if (item.images && item.images.length) await _saveImgsToTable("report_images", "report_id", reportId, item.images);
   }
-  async function getReports() {
+  async function getReports(withDataUrls) {
     if (_isMemory()) return _memData().reports;
     const rows = await DB.query("SELECT * FROM reports ORDER BY date DESC");
-    return Promise.all(rows.map((r) => _rowToReport(r, true)));
+    return Promise.all(rows.map((r) => _rowToReport(r, !!withDataUrls)));
   }
   async function getReport(id) {
     if (_isMemory()) return _memData().reports.find((r) => r.id === id) || null;

@@ -109,6 +109,7 @@
     renderRecords();
     renderCabinet();
     setHeader("Nurse", "");
+    try { const { SplashScreen } = await import("@capacitor/splash-screen"); await SplashScreen.hide(); } catch (_) {}
   }
 
   function setHeader(title, sub) {
@@ -440,9 +441,14 @@
     if (empty) empty.hidden = isExam || (DATA.records || []).length > 0;
   }
 
-  function openRecord(id) {
+  async function openRecord(id) {
     currentRecordId = id || null;
-    const rec = id ? (DATA.records || []).find((r) => r.id === id) : null;
+    let rec = null;
+    if (id) {
+      rec = await NurseStorage.getRecord(id);
+      const idx = (DATA.records || []).findIndex((r) => r.id === id);
+      if (idx >= 0) DATA.records[idx] = rec;
+    }
     showRecordView(rec);
   }
 
@@ -2028,10 +2034,9 @@
   // ===================== 每日扣减（对药箱 cabinet 药品扣减） =====================
   async function runDailyDecrement() {
     const today = dateKey(new Date());
-    const data = await NurseStorage.load();
-    if (data.lastDecrement === today) { DATA.lastDecrement = today; return; }
+    if (DATA.lastDecrement === today) return;
     let changed = false;
-    (data.cabinet || []).forEach((c) => {
+    (DATA.cabinet || []).forEach((c) => {
       if (c.status !== "active") return;
       const dayDose = Number(c.doseAmount || 0) * (c.timeSlots || []).length;
       if (dayDose > 0 && Number(c.qty) > 0) {
@@ -2040,7 +2045,7 @@
         changed = true;
       }
     });
-    if (changed) { data.lastDecrement = today; await NurseStorage.save(data); DATA = data; }
+    if (changed) { DATA.lastDecrement = today; await NurseStorage.save(DATA); }
     else { await NurseStorage.setLastDecrement(today); DATA.lastDecrement = today; }
   }
 

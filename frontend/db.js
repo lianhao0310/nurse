@@ -292,8 +292,10 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
 
   // ---------------- 迁移函数 ----------------
   const migrations = {
-    // 1: 初始建表（init 中直接 execute DDL，此处空占位）
-    1: function () { return Promise.resolve(); },
+    1: async function () {
+      await _connection.execute({ statement: DDL });
+      await _connection.execute({ statement: INDEX_DDL });
+    },
   };
 
   async function _runMigrations() {
@@ -335,11 +337,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
       _connection = conn;
       await conn.open();
 
-      await conn.execute({ statement: DDL });
-      await conn.execute({ statement: INDEX_DDL });
-
-      await _ensureAiSettingsRow();
       await _runMigrations();
+      await _ensureAiSettingsRow();
 
       _ready = true;
       console.log("[NurseDB] 数据库初始化成功");

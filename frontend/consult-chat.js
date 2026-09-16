@@ -1,7 +1,7 @@
 /*
- * Nurse · AI 问诊聊天（倪师中医）
+ * Nurse · AI 问诊聊天
  * ------------------------------------------------------------------
- * 依赖：tcm-ai.js (window.NurseTCM) + storage.js (window.NurseStorage)
+ * 依赖：consult-ai.js (window.NurseConsult) + storage.js (window.NurseStorage)
  * 加载方式：<script src="consult-chat.js"> -> window.NurseConsultChat
  */
 (function () {
@@ -57,7 +57,7 @@
   }
 
   function isAvailable() {
-    return !!(window.NurseTCM && window.NurseStorage);
+    return !!(window.NurseConsult && window.NurseStorage);
   }
 
   function readFileAsDataURL(file) {
@@ -213,7 +213,7 @@
       return;
     }
     const data = await NurseStorage.load();
-    if (!window.NurseTCM.isConfigured(data.settings)) {
+    if (!window.NurseConsult.isConfigured(data.settings)) {
       toast("需联网并配置 AI 后使用");
       return;
     }
@@ -238,7 +238,7 @@
   function updateTitle() {
     const el = $("#consult-title");
     if (!el) return;
-    el.textContent = currentChat && currentChat.title ? currentChat.title : "问 AI · 倪师中医";
+    el.textContent = currentChat && currentChat.title ? currentChat.title : "问 AI";
   }
 
   async function newChat() {
@@ -285,7 +285,7 @@
     if (!currentChat) currentChat = await NurseStorage.newConsultChat();
 
     if (checkEmergency(text)) {
-      if (!confirm("⚠️ 检测到可能为急危重症描述。\n\n中医辨证不能替代急诊。如出现胸痛持续、昏迷、大出血、呼吸困难等，请立即拨打 120 或前往急诊。\n\n是否仍要继续提问？")) {
+      if (!confirm("⚠️ 检测到可能为急危重症描述。\n\nAI 问诊不能替代急诊。如出现胸痛持续、昏迷、大出血、呼吸困难等，请立即拨打 120 或前往急诊。\n\n是否仍要继续提问？")) {
         return;
       }
     }
@@ -307,7 +307,7 @@
     const data = await NurseStorage.load();
     try {
       const history = currentChat.messages.map((m) => ({ role: m.role, content: m.content }));
-      const full = await window.NurseTCM.chat(history, data.settings, (partial) => {
+      const full = await window.NurseConsult.chat(history, data.settings, (partial) => {
         updateLoadingText(partial);
       });
       removeLoading();

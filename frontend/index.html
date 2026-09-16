@@ -58,7 +58,7 @@
         <section class="page" id="page-consult" hidden>
           <div class="page-pad">
             <div id="consult-list" class="consult-list"></div>
-            <div id="consult-empty" class="empty-tip big" hidden>还没有对话记录。<br />点击右上角「＋」向倪师提问。</div>
+            <div id="consult-empty" class="empty-tip big" hidden>还没有对话记录。<br />点击右上角「＋」开始提问。</div>
           </div>
         </section>
 
@@ -244,7 +244,7 @@
       <section class="view consult-view" id="consult-view" hidden>
         <header class="app-header view-header consult-header">
           <button class="view-back" id="consult-back">‹</button>
-          <span class="consult-title" id="consult-title">问 AI · 倪师中医</span>
+          <span class="consult-title" id="consult-title">问 AI</span>
           <div class="consult-actions">
             <button class="consult-icon-btn" id="consult-new" type="button" title="新建对话">＋</button>
           </div>
@@ -253,8 +253,8 @@
           <div class="chat-list" id="chat-list"></div>
           <div class="chat-empty" id="chat-empty">
             <div class="chat-empty__icon"><svg viewBox="0 0 64 64" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="31" fill="#e8f5e9"/><path d="M14 24 Q32 10 50 24 L50 27 Q32 19 14 27 Z" fill="#2d6a4f"/><ellipse cx="32" cy="33" rx="13" ry="15" fill="#f5deb3"/><circle cx="26" cy="30" r="1.5" fill="#333"/><circle cx="38" cy="30" r="1.5" fill="#333"/><path d="M24 36 Q32 54 40 36 Q37 48 32 54 Q27 48 24 36 Z" fill="#c0c0c0"/></svg></div>
-            <div class="chat-empty__title">向倪师提问</div>
-            <div class="chat-empty__desc">描述你的症状，AI 将以倪海厦视角进行中医辨证</div>
+            <div class="chat-empty__title">开始提问</div>
+            <div class="chat-empty__desc">描述你的症状或用药问题，AI 将以慢性病健康管理助手身份为你解答</div>
             <div class="chat-empty__suggest">
               <button class="chat-suggest" data-q="我感冒了，怕冷无汗，脖子疼">感冒怕冷无汗</button>
               <button class="chat-suggest" data-q="最近总是口苦咽干，忽冷忽热">口苦咽干往来寒热</button>
@@ -604,11 +604,7 @@
       <script src="storage.js"></script>
       <script src="engine.js"></script>
       <script src="ai.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
-      <script src="rag-embed.js"></script>
-      <script src="rag-db.js"></script>
-      <script src="tcm-skill.js"></script>
-      <script src="tcm-ai.js"></script>
+      <script src="consult-ai.js"></script>
       <script src="consult-chat.js"></script>
       <script src="imgupload.js"></script>
       <script src="app.js"></script>
