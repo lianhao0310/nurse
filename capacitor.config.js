@@ -10,9 +10,6 @@ const config = {
       androidIsEncryption: false,
       iosIsEncryption: false,
     },
-    SplashScreen: {
-      launchAutoHide: false,
-    },
   },
 };
 
