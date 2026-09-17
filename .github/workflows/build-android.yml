@@ -1,7 +1,7 @@
 name: Build Android APK
 
 # 在 GitHub 的 Ubuntu runner 上把 Capacitor Android 工程编译为 .apk
-# 触发：推送到 master/main、打 tag（v*）、或手动触发
+# 触发：打 tag（v*）或手动触发，避免每次提交触发耗时构建
 # 打 tag 时额外创建 GitHub Release 并上传 APK（Gitee 镜像同步 tag 即可触发）
 #
 # 签名策略：
@@ -9,7 +9,6 @@ name: Build Android APK
 #   - 未配置 → 构建 debug APK（自动用 debug keystore 签名，可直接安装调试）
 on:
   push:
-    branches: [master, main]
     tags: ['v*']
   workflow_dispatch:
 

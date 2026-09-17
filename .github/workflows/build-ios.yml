@@ -1,7 +1,7 @@
 name: Build iOS IPA
 
 # 在 GitHub 的 macOS runner 上把 Capacitor iOS 工程编译为 .ipa
-# 触发：推送到 master/main、打 tag（v*）、或手动触发
+# 触发：打 tag（v*）或手动触发，避免每次提交触发耗时构建
 # 打 tag 时额外创建 GitHub Release 并上传 IPA（Gitee 镜像同步 tag 即可触发）
 #
 # 说明：GitHub Actions 的 `if:` 条件不允许直接引用 secrets 上下文，
@@ -9,7 +9,6 @@ name: Build iOS IPA
 # 各步骤的 if 统一使用 env.SIGN_CERT。
 on:
   push:
-    branches: [master, main]
     tags: ['v*']
   workflow_dispatch:
 
