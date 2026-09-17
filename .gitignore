@@ -40,3 +40,7 @@ builds/
 
 # 本地模型缓存（构建脚本用，体积大）
 scripts/_model_cache/
+
+# Playwright 测试产物
+test-results/
+playwright-report/
