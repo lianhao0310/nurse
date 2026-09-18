@@ -1,14 +1,14 @@
 /*
  * Nurse · 业务数据 SQLite 数据库模块
  * ------------------------------------------------------------------
- * 依赖：@capacitor-community/sqlite（Capacitor 原生 SQLite）
+ * 依赖：@capacitor-community/sqlite（Capacitor 原生 SQLite / Web jeep-sqlite）
  *
  * 功能：
  *   - 管理 nurse.db 连接（createConnection + open + close）
  *   - 建表（25 张表）+ 索引
  *   - schema 版本迁移（PRAGMA user_version）
  *   - query / run / execute 封装
- *   - Web 预览内存模式降级
+ *   - Web 平台通过 initWebStore() 启动 jeep-sqlite Web Component
  *
  * 加载方式：<script src="db.js"> -> window.NurseDB
  */
@@ -326,19 +326,21 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   // ---------------- 初始化 ----------------
   async function init() {
     if (_ready) return true;
-    if (_memoryMode) return false;
 
     try {
       _sqlite = _getCapacitorSQLite();
       if (!_sqlite) {
-        if (_isWebPlatform()) {
-          _memoryMode = true;
-          console.warn("[NurseDB] CapacitorSQLite 不可用，进入内存模式（Web 预览）");
-          return false;
-        }
-        _initError = new Error("CapacitorSQLite 插件未注册，请确认已执行 npx cap sync ios && pod install 并使用 .xcworkspace 构建");
+        _initError = new Error(
+          _isWebPlatform()
+            ? "CapacitorSQLite 插件未注册（Web），请确认 lib/capacitor.js 与 lib/sqlite-plugin.js 已加载"
+            : "CapacitorSQLite 插件未注册，请确认已执行 npx cap sync ios && pod install 并使用 .xcworkspace 构建"
+        );
         console.error("[NurseDB]", _initError.message);
         return false;
+      }
+
+      if (_isWebPlatform()) {
+        await _sqlite.initWebStore();
       }
 
       await _sqlite.createConnection({
@@ -354,17 +356,12 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
       await _ensureAiSettingsRow();
 
       _ready = true;
-      console.log("[NurseDB] 数据库初始化成功");
+      console.log("[NurseDB] 数据库初始化成功" + (_isWebPlatform() ? "（Web）" : ""));
       return true;
     } catch (e) {
       _initError = e;
       _ready = false;
-      if (_isWebPlatform()) {
-        _memoryMode = true;
-        console.warn("[NurseDB] 初始化失败，降级内存模式:", e.message || e);
-        return false;
-      }
-      console.error("[NurseDB] 真机数据库初始化失败:", e);
+      console.error("[NurseDB] 数据库初始化失败:", e);
       return false;
     }
   }

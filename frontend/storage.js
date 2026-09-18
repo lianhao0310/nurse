@@ -3,7 +3,7 @@
  * ------------------------------------------------------------------
  * 数据存储于 nurse.db（@capacitor-community/sqlite），图片存为文件（image-store.js）。
  * 对外 API 与旧版 JSON 存储保持一致，上层 app.js / consult-chat.js 无需改签名。
- * Web 预览（无 SQLite 插件）下使用内存模式，数据不持久化。
+ * Web 平台通过 jeep-sqlite Web Component（sql.js WASM + IndexedDB）持久化。
  *
  * 加载方式：<script src="db.js"><script src="image-store.js"><script src="storage.js">
  *           -> window.NurseStorage
@@ -23,9 +23,7 @@
     return (prefix || "id_") + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
-  function _isMemory() { return DB ? DB.isMemoryMode() : true; }
-
-  // ---------------- 空数据结构（内存模式 + 兼容上层） ----------------
+  // ---------------- 空数据结构（兼容上层） ----------------
   function _empty() {
     return {
       version: 3, updatedAt: null, lastDecrement: null,
@@ -39,9 +37,6 @@
       indicatorMeta: {}, followedIndicators: [],
     };
   }
-
-  let _mem = null;
-  function _memData() { if (!_mem) _mem = _empty(); return _mem; }
 
   // ---------------- 归一化（轻量，保留兼容） ----------------
   const TIME_SLOTS = ["morning", "noon", "evening"];
@@ -291,8 +286,7 @@
 
   // ---------------- load（只加载非列表数据） ----------------
   async function load() {
-    if (_isMemory()) return _memData();
-    if (!(DB && DB.isReady())) { const ok = await DB.init(); if (!ok) return _memData(); }
+    if (!(DB && DB.isReady())) { const ok = await DB.init(); if (!ok) return _empty(); }
 
     const data = _empty();
     try {
@@ -345,28 +339,6 @@
 
   // ---------------- 问诊记录 CRUD ----------------
   async function appendRecord(record) {
-    if (_isMemory()) {
-      const d = _memData();
-      const id = record.id || _uid("rec_");
-      const existing = d.records.find((r) => r.id === id);
-      if (!existing && record.hospital && record.visitDate) {
-        const byKey = d.records.find((r) => r.hospital === record.hospital && r.visitDate === record.visitDate);
-        if (byKey) {
-          Object.assign(byKey, record, { id: byKey.id });
-          return byKey;
-        }
-      }
-      if (existing) { Object.assign(existing, record, { id: existing.id }); return existing; }
-      const rec = {
-        ...record, id,
-        createdAt: record.createdAt || new Date().toISOString(),
-        visitDate: record.visitDate || "", hospital: record.hospital || "", doctor: record.doctor || "",
-        source: record.source || "text", transcript: record.transcript || "",
-        orderId: record.orderId || "", reportId: record.reportId || "",
-        status: record.status || "done", manual: !!record.manual,
-      };
-      d.records.unshift(rec); return rec;
-    }
     const id = record.id || _uid("rec_");
     const existedById = (await DB.query("SELECT id FROM records WHERE id = ?", [id]))[0];
     if (!existedById && record.hospital && record.visitDate) {
@@ -390,20 +362,17 @@
   }
 
   async function getRecords(withDataUrls) {
-    if (_isMemory()) return _memData().records;
     const rows = await DB.query("SELECT * FROM records ORDER BY created_at DESC");
     return Promise.all(rows.map((r) => _rowToRecord(r, !!withDataUrls)));
   }
 
   async function getRecord(id) {
-    if (_isMemory()) return _memData().records.find((r) => r.id === id) || null;
     const row = (await DB.query("SELECT * FROM records WHERE id = ?", [id]))[0];
     if (!row) return null;
     return await _rowToRecord(row, true);
   }
 
   async function updateRecord(id, patch) {
-    if (_isMemory()) { const r = _memData().records.find((x) => x.id === id); if (r) Object.assign(r, patch); return r || null; }
     const row = (await DB.query("SELECT * FROM records WHERE id = ?", [id]))[0];
     if (!row) return null;
     const cur = await _rowToRecord(row, false);
@@ -421,20 +390,6 @@
   }
 
   async function deleteRecord(id) {
-    if (_isMemory()) {
-      const d = _memData();
-      const rec = d.records.find((r) => r.id === id);
-      const ordIds = new Set(d.orders.filter((o) => o.recordId === id).map((o) => o.id));
-      const repIds = new Set(d.reports.filter((r) => r.recordId === id).map((r) => r.id));
-      if (rec) {
-        if (rec.orderId) ordIds.add(rec.orderId);
-        if (rec.reportId) repIds.add(rec.reportId);
-      }
-      d.records = d.records.filter((r) => r.id !== id);
-      for (const oid of ordIds) await deleteOrder(oid);
-      for (const rid of repIds) await deleteReport(rid);
-      return;
-    }
     const recRow = (await DB.query("SELECT order_id, report_id FROM records WHERE id = ?", [id]))[0];
     await _deleteImgsFromTable("record_images", "record_id", id);
     await _deleteResultSubTables(id);
@@ -504,56 +459,14 @@
   }
 
   async function getOrders(withDataUrls) {
-    if (_isMemory()) return _memData().orders;
     const rows = await DB.query("SELECT * FROM orders ORDER BY date DESC");
     return Promise.all(rows.map((r) => _rowToOrder(r, !!withDataUrls)));
   }
   async function getOrder(id) {
-    if (_isMemory()) return _memData().orders.find((o) => o.id === id) || null;
     const row = (await DB.query("SELECT * FROM orders WHERE id = ?", [id]))[0];
     return row ? await _rowToOrder(row, true) : null;
   }
   async function upsertOrder(item) {
-    if (_isMemory()) {
-      const d = _memData();
-      const source = String(item.source || "").trim();
-      if (!source) return null;
-      const id = item.id || _uid("ord_");
-      const existing = d.orders.find((o) => o.id === id);
-      const meds = (item.medicines || []).filter((m) => m && m.name);
-      const it = {
-        ...item, id, source,
-        kind: item.kind === "hospital" ? "hospital" : "custom",
-        recordId: item.recordId || "",
-        medicines: meds.map((m) => ({ ...m, name: String(m.name).trim(), qty: Number(m.qty) || 0 })),
-      };
-      if (existing) {
-        const oldMeds = (existing.medicines || []).filter((m) => m && m.name);
-        Object.assign(existing, it);
-        for (const nm of meds) {
-          const name = String(nm.name).trim();
-          const newQty = Number(nm.qty) || 0;
-          const oldMed = oldMeds.find((m) => String(m.name || "").trim() === name);
-          const oldQty = oldMed ? (Number(oldMed.qty) || 0) : 0;
-          const diff = newQty - oldQty;
-          if (diff === 0) continue;
-          const cab = d.cabinet.find((c) => c.name === name);
-          if (cab) { cab.qty = (Number(cab.qty) || 0) + diff; }
-          else if (newQty > 0) { d.cabinet.unshift({ id: _uid("cab_"), name, qty: newQty, unit: "片", status: "active", doseAmount: 0, doseUnit: "片", timeSlots: [], meal: "any", threshold: 0 }); }
-        }
-      }
-      else {
-        d.orders.unshift(it);
-        for (const m of meds) {
-          const name = String(m.name).trim();
-          const qty = Number(m.qty) || 0;
-          const cab = d.cabinet.find((c) => c.name === name);
-          if (cab) { cab.qty = (Number(cab.qty) || 0) + qty; }
-          else { d.cabinet.unshift({ id: _uid("cab_"), name, qty, unit: "片", status: "active", doseAmount: 0, doseUnit: "片", timeSlots: [], meal: "any", threshold: 0 }); }
-        }
-      }
-      return it;
-    }
     const source = String(item.source || "").trim();
     if (!source) return null;
     const id = item.id || _uid("ord_");
@@ -572,26 +485,6 @@
     return await _rowToOrder((await DB.query("SELECT * FROM orders WHERE id = ?", [id]))[0], false);
   }
   async function updateOrder(id, patch) {
-    if (_isMemory()) {
-      const o = _memData().orders.find((x) => x.id === id);
-      if (!o) return null;
-      if (patch.medicines) {
-        const d = _memData();
-        const oldMeds = o.medicines || [];
-        const newMeds = patch.medicines.filter((m) => m && m.name);
-        for (const nm of newMeds) {
-          const name = String(nm.name).trim();
-          const newQty = Number(nm.qty) || 0;
-          const oldMed = oldMeds.find((m) => String(m.name).trim() === name);
-          const oldQty = oldMed ? (Number(oldMed.qty) || 0) : 0;
-          const cab = d.cabinet.find((c) => c.name === name);
-          if (cab) { cab.qty = (Number(cab.qty) || 0) + (newQty - oldQty); }
-          else if (newQty > 0) { d.cabinet.unshift({ id: _uid("cab_"), name, qty: newQty, unit: "片", status: "active", doseAmount: 0, doseUnit: "片", timeSlots: [], meal: "any", threshold: 0 }); }
-        }
-      }
-      Object.assign(o, patch);
-      return o;
-    }
     const cur = await getOrder(id); if (!cur) return null;
     const merged = Object.assign({}, cur, patch);
     await DB.run(`UPDATE orders SET source=?, date=?, kind=?, record_id=?, ai_generated=? WHERE id=?`,
@@ -601,12 +494,6 @@
     return await _rowToOrder((await DB.query("SELECT * FROM orders WHERE id = ?", [id]))[0], false);
   }
   async function deleteOrder(id) {
-    if (_isMemory()) {
-      const d = _memData();
-      d.orders = d.orders.filter((o) => o.id !== id);
-      for (const r of d.records) { if (r.orderId === id) r.orderId = ""; }
-      return;
-    }
     await _deleteImgsFromTable("order_images", "order_id", id);
     await DB.run("DELETE FROM order_medicines WHERE order_id = ?", [id]);
     await DB.run("DELETE FROM orders WHERE id = ?", [id]);
@@ -625,33 +512,14 @@
     };
   }
   async function getCabinetDrugs() {
-    if (_isMemory()) return _memData().cabinet;
     const rows = await DB.query("SELECT * FROM cabinet_drugs ORDER BY name ASC");
     return Promise.all(rows.map(_rowToCabinetDrug));
   }
   async function getCabinetDrug(id) {
-    if (_isMemory()) return _memData().cabinet.find((c) => c.id === id) || null;
     const row = (await DB.query("SELECT * FROM cabinet_drugs WHERE id = ?", [id]))[0];
     return row ? await _rowToCabinetDrug(row) : null;
   }
   async function upsertCabinetDrug(item) {
-    if (_isMemory()) {
-      const d = _memData();
-      const name = String(item.name || "").trim();
-      if (!name) return null;
-      const existing = d.cabinet.find((c) => c.name === name);
-      const it = {
-        ...item, name,
-        id: item.id || (existing ? existing.id : _uid("cab_")),
-        qty: Number(item.qty) || 0,
-        unit: item.unit || "片", doseUnit: item.doseUnit || "片",
-        timeSlots: _normTimeSlots(item.timeSlots),
-        meal: _normMeal(item.meal), status: _normStatus(item.status),
-        threshold: Number(item.threshold) || 0, doseAmount: Number(item.doseAmount) || 0,
-      };
-      if (existing) { Object.assign(existing, it); return existing; }
-      d.cabinet.unshift(it); return it;
-    }
     const name = String(item.name || "").trim();
     if (!name) return null;
     const existing = (await DB.query("SELECT id FROM cabinet_drugs WHERE name = ?", [name]))[0];
@@ -664,24 +532,11 @@
     return await getCabinetDrug(id);
   }
   async function updateCabinetDrug(id, patch) {
-    if (_isMemory()) { const c = _memData().cabinet.find((x) => x.id === id); if (c) Object.assign(c, patch); return c || null; }
     const cur = await getCabinetDrug(id); if (!cur) return null;
     const merged = Object.assign({}, cur, patch);
     return await upsertCabinetDrug({ ...merged, id });
   }
   async function deleteCabinetDrug(id) {
-    if (_isMemory()) {
-      const d = _memData();
-      const drug = d.cabinet.find((c) => c.id === id);
-      const name = drug ? drug.name : null;
-      d.cabinet = d.cabinet.filter((c) => c.id !== id);
-      if (name) {
-        for (const o of d.orders) {
-          if (o.medicines) o.medicines = o.medicines.filter((m) => String(m.name).trim() !== name);
-        }
-      }
-      return;
-    }
     const drug = await getCabinetDrug(id);
     if (drug) await DB.run("DELETE FROM order_medicines WHERE name = ?", [drug.name]);
     await DB.run("DELETE FROM cabinet_time_slots WHERE drug_id = ?", [id]);
@@ -707,38 +562,20 @@
     if (item.images && item.images.length) await _saveImgsToTable("report_images", "report_id", reportId, item.images);
   }
   async function getReports(withDataUrls) {
-    if (_isMemory()) return _memData().reports;
     const rows = await DB.query("SELECT * FROM reports ORDER BY date DESC");
     return Promise.all(rows.map((r) => _rowToReport(r, !!withDataUrls)));
   }
   async function getReport(id) {
-    if (_isMemory()) return _memData().reports.find((r) => r.id === id) || null;
     const row = (await DB.query("SELECT * FROM reports WHERE id = ?", [id]))[0];
     return row ? await _rowToReport(row, true) : null;
   }
   async function upsertReport(item) {
-    if (_isMemory()) {
-      const d = _memData();
-      const id = item.id || _uid("rep_");
-      const existing = d.reports.find((r) => r.id === id);
-      const inds = (item.indicators || []).filter((x) => x && x.name).map((x) => ({ ...x, name: String(x.name).trim() }));
-      const it = {
-        ...item, id,
-        title: item.title || "检查报告",
-        kind: item.kind === "self" ? "self" : "hospital",
-        recordId: item.recordId || "",
-        indicators: inds,
-      };
-      if (existing) { Object.assign(existing, it); return existing; }
-      d.reports.unshift(it); return it;
-    }
     const id = item.id || _uid("rep_");
     await DB.run(`INSERT OR REPLACE INTO reports (id, title, date, kind, record_id, ai_generated) VALUES (?, ?, ?, ?, ?, ?)`, [id, item.title || "检查报告", item.date || "", item.kind === "self" ? "self" : "hospital", item.recordId || "", item.aiGenerated ? 1 : 0]);
     await _saveReportSubTables(id, item);
     return await _rowToReport((await DB.query("SELECT * FROM reports WHERE id = ?", [id]))[0], false);
   }
   async function updateReport(id, patch) {
-    if (_isMemory()) { const r = _memData().reports.find((x) => x.id === id); if (r) Object.assign(r, patch); return r || null; }
     const cur = await getReport(id); if (!cur) return null;
     const merged = Object.assign({}, cur, patch);
     await DB.run("UPDATE reports SET title=?, date=?, kind=?, record_id=?, ai_generated=? WHERE id=?", [merged.title, merged.date || "", merged.kind, merged.recordId || "", merged.aiGenerated ? 1 : 0, id]);
@@ -746,12 +583,6 @@
     return await _rowToReport((await DB.query("SELECT * FROM reports WHERE id = ?", [id]))[0], false);
   }
   async function deleteReport(id) {
-    if (_isMemory()) {
-      const d = _memData();
-      d.reports = d.reports.filter((r) => r.id !== id);
-      for (const r of d.records) { if (r.reportId === id) r.reportId = ""; }
-      return;
-    }
     await _deleteImgsFromTable("report_images", "report_id", id);
     await DB.run("DELETE FROM report_indicators WHERE report_id = ?", [id]);
     await DB.run("DELETE FROM reports WHERE id = ?", [id]);
@@ -795,17 +626,14 @@
     return out;
   }
   async function getConsultChats() {
-    if (_isMemory()) return _memData().consultChats;
     const rows = await DB.query("SELECT * FROM consult_chats ORDER BY updated_at DESC");
     return Promise.all(rows.map((r) => _rowToChat(r, false)));
   }
   async function getConsultChat(id) {
-    if (_isMemory()) return _memData().consultChats.find((c) => c.id === id) || null;
     const row = (await DB.query("SELECT * FROM consult_chats WHERE id = ?", [id]))[0];
     return row ? await _rowToChat(row, true) : null;
   }
   async function saveConsultChat(chat) {
-    if (_isMemory()) { const d = _memData(); const now = new Date().toISOString(); const id = chat.id || _uid("chat_"); const existing = d.consultChats.find((c) => c.id === id); if (existing) { Object.assign(existing, chat, { id, updatedAt: now }); return existing; } const item = { ...chat, id, updatedAt: now }; d.consultChats.unshift(item); return item; }
     const id = chat.id || _uid("chat_");
     const now = new Date().toISOString();
     await DB.run(`INSERT OR REPLACE INTO consult_chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)`, [id, chat.title || "新对话", chat.createdAt || now, now]);
@@ -820,7 +648,6 @@
     return await _rowToChat((await DB.query("SELECT * FROM consult_chats WHERE id = ?", [id]))[0], false);
   }
   async function deleteConsultChat(id) {
-    if (_isMemory()) { const d = _memData(); d.consultChats = d.consultChats.filter((c) => c.id !== id); return; }
     const msgs = await DB.query("SELECT id FROM consult_messages WHERE chat_id = ?", [id]);
     for (const m of msgs) { await _deleteImgsFromTable("message_images", "message_id", m.id); }
     await DB.run("DELETE FROM consult_messages WHERE chat_id = ?", [id]);
@@ -829,30 +656,12 @@
   async function newConsultChat() {
     const now = new Date().toISOString();
     const item = { id: _uid("chat_"), title: "新对话", createdAt: now, updatedAt: now, messages: [] };
-    if (_isMemory()) { _memData().consultChats.unshift(item); return item; }
     await DB.run("INSERT INTO consult_chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)", [item.id, item.title, now, now]);
     return item;
   }
 
   // ---------------- 设置 ----------------
   async function updateSettings(patch) {
-    if (_isMemory()) {
-      const d = _memData();
-      if (patch && patch.ai && typeof patch.ai === "object") {
-        const ai = patch.ai;
-        d.settings.ai = {
-          enabled: ai.enabled !== undefined ? !!ai.enabled : d.settings.ai.enabled,
-          baseUrl: ai.baseUrl || d.settings.ai.baseUrl || "https://api.openai.com/v1",
-          apiKey: ai.apiKey || d.settings.ai.apiKey || "",
-          model: ai.model || d.settings.ai.model || "gpt-4o",
-        };
-      }
-      if (patch.notifications !== undefined) d.settings.notifications = patch.notifications;
-      if (patch.largeFont !== undefined) d.settings.largeFont = patch.largeFont;
-      if (patch.reminderTimes) d.settings.reminderTimes = _normReminderTimes(patch.reminderTimes);
-      if (Array.isArray(patch.reminders)) d.settings.reminders = patch.reminders;
-      return d.settings;
-    }
     if (patch && patch.ai && typeof patch.ai === "object") {
       const ai = patch.ai;
       await DB.run("UPDATE ai_settings SET enabled=?, base_url=?, api_key=?, model=? WHERE id=1",
@@ -876,22 +685,12 @@
 
   // ---------------- 今日打卡 ----------------
   async function getDone(dateKey) {
-    if (_isMemory()) { const d = (_memData().settings.dailyDone[dateKey] || {}); return { medDoses: d.medDoses || {}, tasks: d.tasks || {} }; }
     const rows = await DB.query("SELECT kind, ref_id, value FROM daily_done WHERE date = ?", [dateKey]);
     const out = { medDoses: {}, tasks: {} };
     for (const r of rows) { if (r.kind === "med") out.medDoses[r.ref_id] = true; else out.tasks[r.ref_id] = true; }
     return out;
   }
   async function setDone(dateKey, kind, id, done) {
-    if (_isMemory()) {
-      const d = _memData();
-      if (!d.settings.dailyDone[dateKey]) d.settings.dailyDone[dateKey] = { medDoses: {}, tasks: {} };
-      const b = d.settings.dailyDone[dateKey][kind] || (d.settings.dailyDone[dateKey][kind] = {});
-      if (done) b[id] = true; else delete b[id];
-      const dates = Object.keys(d.settings.dailyDone).sort();
-      while (dates.length > 7) { delete d.settings.dailyDone[dates.shift()]; }
-      return;
-    }
     const dbKind = kind === "medDoses" ? "med" : "task";
     await DB.run("DELETE FROM daily_done WHERE date = ? AND kind = ? AND ref_id = ?", [dateKey, dbKind, id]);
     if (done) await DB.run("INSERT INTO daily_done (date, kind, ref_id, value) VALUES (?, ?, ?, ?)", [dateKey, dbKind, id, String(done)]);
@@ -901,16 +700,6 @@
 
   // ---------------- 关注指标 ----------------
   async function setFollowedIndicators(arr) {
-    if (_isMemory()) {
-      const out = [];
-      for (const x of (arr || [])) {
-        const name = typeof x === "string" ? x.trim() : (x && x.name ? String(x.name).trim() : "");
-        if (!name) continue;
-        out.push({ name, unit: (x && x.unit) || "", range: (x && x.range) || "" });
-      }
-      _memData().followedIndicators = out;
-      return out;
-    }
     await DB.run("DELETE FROM followed_indicators");
     const out = [];
     for (const x of (arr || [])) { const name = typeof x === "string" ? x.trim() : (x && x.name ? String(x.name).trim() : ""); if (!name) continue;
@@ -919,19 +708,6 @@
     return out;
   }
   async function setIndicatorMeta(map) {
-    if (_isMemory()) {
-      const d = _memData();
-      for (const k in (map || {})) {
-        const v = map[k];
-        if (!v || typeof v !== "object") continue;
-        const cur = d.indicatorMeta[k] || { unit: "", range: "" };
-        const unit = String(v.unit || "") || cur.unit;
-        const range = String(v.range || "") || cur.range;
-        if (!unit && !range) continue;
-        d.indicatorMeta[k] = { unit, range };
-      }
-      return d.indicatorMeta;
-    }
     for (const k in (map || {})) { const v = map[k]; if (!v || typeof v !== "object") continue;
       const cur = (await DB.query("SELECT unit, range FROM indicator_meta WHERE name = ?", [k]))[0] || { unit: "", range: "" };
       const unit = String(v.unit || "") || cur.unit, range = String(v.range || "") || cur.range;
@@ -940,13 +716,11 @@
     return (await load()).indicatorMeta;
   }
   async function setLastDecrement(dateKey) {
-    if (_isMemory()) { _memData().lastDecrement = dateKey; return; }
     await DB.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ["lastDecrement", dateKey]);
   }
 
   // ---------------- 分页查询 ----------------
   async function getRecordsPaged(keyword, page, pageSize) {
-    if (_isMemory()) { return _pagedFilter(_memData().records, keyword, ["hospital", "doctor", "transcript"], page, pageSize, "createdAt"); }
     const ps = pageSize || PAGE_SIZE, off = (page - 1) * ps, kw = "%" + (keyword || "") + "%";
     const where = keyword ? "WHERE hospital LIKE ? OR doctor LIKE ? OR transcript LIKE ?" : "";
     const vals = keyword ? [kw, kw, kw] : [];
@@ -955,7 +729,6 @@
     return { rows: await _batchRowsToRecords(rows), total, hasMore: page * ps < total };
   }
   async function getOrdersPaged(keyword, page, pageSize) {
-    if (_isMemory()) { return _pagedFilter(_memData().orders, keyword, ["source"], page, pageSize, "date"); }
     const ps = pageSize || PAGE_SIZE, off = (page - 1) * ps, kw = "%" + (keyword || "") + "%";
     let sql, vals;
     if (keyword) {
@@ -970,7 +743,6 @@
     return { rows: await Promise.all(rows.map((r) => _rowToOrder(r, false))), total, hasMore: page * ps < total };
   }
   async function getReportsPaged(keyword, page, pageSize) {
-    if (_isMemory()) { return _pagedFilter(_memData().reports, keyword, ["title"], page, pageSize, "date"); }
     const ps = pageSize || PAGE_SIZE, off = (page - 1) * ps, kw = "%" + (keyword || "") + "%";
     const where = keyword ? "WHERE title LIKE ?" : "";
     const vals = keyword ? [kw] : [];
@@ -979,7 +751,6 @@
     return { rows: await Promise.all(rows.map((r) => _rowToReport(r, false))), total, hasMore: page * ps < total };
   }
   async function getConsultChatsPaged(keyword, page, pageSize) {
-    if (_isMemory()) { return _pagedFilter(_memData().consultChats, keyword, ["title"], page, pageSize, "updatedAt"); }
     const ps = pageSize || PAGE_SIZE, off = (page - 1) * ps, kw = "%" + (keyword || "") + "%";
     const where = keyword ? "WHERE title LIKE ?" : "";
     const vals = keyword ? [kw] : [];
@@ -988,22 +759,12 @@
     return { rows: await Promise.all(rows.map((r) => _rowToChat(r, false))), total, hasMore: page * ps < total };
   }
   async function getCabinetDrugsPaged(keyword, page, pageSize) {
-    if (_isMemory()) { return _pagedFilter(_memData().cabinet, keyword, ["name", "alias", "manufacturer"], page, pageSize, "name"); }
     const ps = pageSize || PAGE_SIZE, off = (page - 1) * ps, kw = "%" + (keyword || "") + "%";
     const where = keyword ? "WHERE name LIKE ? OR alias LIKE ? OR manufacturer LIKE ?" : "";
     const vals = keyword ? [kw, kw, kw] : [];
     const total = (await DB.query(`SELECT COUNT(*) AS c FROM cabinet_drugs ${where}`, vals))[0].c;
     const rows = await DB.query(`SELECT * FROM cabinet_drugs ${where} ORDER BY name ASC LIMIT ? OFFSET ?`, [...vals, ps, off]);
     return { rows: await Promise.all(rows.map(_rowToCabinetDrug)), total, hasMore: page * ps < total };
-  }
-
-  function _pagedFilter(arr, keyword, fields, page, pageSize, sortField) {
-    const ps = pageSize || PAGE_SIZE, off = (page - 1) * ps;
-    let filtered = arr;
-    if (keyword) { const kw = keyword.toLowerCase(); filtered = arr.filter((item) => fields.some((f) => String(item[f] || "").toLowerCase().includes(kw))); }
-    filtered = filtered.slice().sort((a, b) => String(b[sortField] || "").localeCompare(String(a[sortField] || "")));
-    const total = filtered.length;
-    return { rows: filtered.slice(off, off + ps), total, hasMore: page * ps < total };
   }
 
   // ---------------- 导出/导入 ----------------
@@ -1090,11 +851,8 @@
 
   async function save(data) { return data; }
 
-  function isNative() { return !_isMemory(); }
-
   async function _resetForTest() {
-    _mem = null;
-    if (!_isMemory() && DB && DB.isReady()) {
+    if (DB && DB.isReady()) {
       const tables = ["record_images", "record_medications", "record_tasks", "record_tags", "record_risks", "record_exam_results", "record_prescriptions", "order_medicines", "order_images", "cabinet_time_slots", "report_indicators", "report_images", "consult_messages", "message_images", "reminders", "daily_done", "records", "orders", "cabinet_drugs", "reports", "consult_chats", "indicator_meta", "followed_indicators", "app_settings"];
       for (const t of tables) await DB.run(`DELETE FROM ${t}`, []);
       await DB.run("INSERT OR REPLACE INTO ai_settings (id, enabled, base_url, api_key, model) VALUES (1, 0, 'https://api.openai.com/v1', '', 'gpt-4o')", []);
@@ -1102,7 +860,7 @@
   }
 
   return {
-    isNative, load, save,
+    load, save,
     appendRecord, getRecords, getRecord, updateRecord, deleteRecord,
     getOrders, getOrder, upsertOrder, updateOrder, deleteOrder,
     getCabinetDrugs, getCabinetDrug, upsertCabinetDrug, updateCabinetDrug, deleteCabinetDrug,

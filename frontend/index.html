@@ -600,6 +600,20 @@
       <!-- ============ 轻提示 ============ -->
       <div id="toast" class="toast" hidden></div>
 
+      <!-- Web 平台 SQLite 依赖（原生端 window.Capacitor 已由 bridge 注入，跳过加载） -->
+      <jeep-sqlite hidden></jeep-sqlite>
+      <script>
+        if (!window.Capacitor) {
+          document.write('<script src="lib/capacitor.js"><\/script>');
+          document.write('<script src="lib/sqlite-plugin.js"><\/script>');
+        }
+      </script>
+      <script type="module">
+        if (!window.Capacitor) {
+          await import("./lib/jeep-sqlite/jeep-sqlite.esm.js");
+        }
+      </script>
+
       <script src="db.js"></script>
       <script src="image-store.js"></script>
       <script src="storage.js"></script>
