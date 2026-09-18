@@ -23,7 +23,6 @@
   const APP_SCHEMA_VERSION = 1;
 
   let _sqlite = null;
-  let _connection = null;
   let _ready = false;
   let _memoryMode = false;
   let _initError = null;
@@ -302,15 +301,15 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   // ---------------- 迁移函数 ----------------
   const migrations = {
     1: async function () {
-      await _connection.execute({ statement: DDL });
-      await _connection.execute({ statement: INDEX_DDL });
+      await _sqlite.execute({ database: DB_NAME, statement: DDL });
+      await _sqlite.execute({ database: DB_NAME, statement: INDEX_DDL });
     },
   };
 
   async function _runMigrations() {
     let curVersion = 0;
     try {
-      const r = await _connection.query({ statement: "PRAGMA user_version", values: [] });
+      const r = await _sqlite.query({ database: DB_NAME, statement: "PRAGMA user_version", values: [] });
       curVersion = (r && r.values && r.values[0]) ? Number(r.values[0].user_version || 0) : 0;
     } catch (_) {}
 
@@ -319,7 +318,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
     for (let v = curVersion + 1; v <= APP_SCHEMA_VERSION; v++) {
       const fn = migrations[v];
       if (fn) await fn();
-      await _connection.run({ statement: "PRAGMA user_version = " + v, values: [] });
+      await _sqlite.run({ database: DB_NAME, statement: "PRAGMA user_version = " + v, values: [] });
     }
     console.log("[NurseDB] schema 迁移完成: v" + curVersion + " → v" + APP_SCHEMA_VERSION);
   }
@@ -342,14 +341,14 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
         return false;
       }
 
-      const conn = await _sqlite.createConnection({
+      await _sqlite.createConnection({
         database: DB_NAME,
-        version: APP_SCHEMA_VERSION,
         encrypted: false,
         mode: "no-encryption",
+        version: APP_SCHEMA_VERSION,
+        readonly: false,
       });
-      _connection = conn;
-      await conn.open();
+      await _sqlite.open({ database: DB_NAME });
 
       await _runMigrations();
       await _ensureAiSettingsRow();
@@ -371,10 +370,11 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   }
 
   async function _ensureAiSettingsRow() {
-    const r = await _connection.query({ statement: "SELECT COUNT(*) AS c FROM ai_settings", values: [] });
+    const r = await _sqlite.query({ database: DB_NAME, statement: "SELECT COUNT(*) AS c FROM ai_settings", values: [] });
     const count = (r && r.values && r.values[0]) ? Number(r.values[0].c) : 0;
     if (count === 0) {
-      await _connection.run({
+      await _sqlite.run({
+        database: DB_NAME,
         statement: "INSERT INTO ai_settings (id, enabled, base_url, api_key, model) VALUES (1, 0, 'https://api.openai.com/v1', '', 'gpt-4o')",
         values: [],
       });
@@ -382,9 +382,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   }
 
   async function close() {
-    if (_connection) {
-      try { await _connection.close(); } catch (_) {}
-      _connection = null;
+    if (_sqlite && _ready) {
+      try { await _sqlite.close({ database: DB_NAME }); } catch (_) {}
     }
     _ready = false;
   }
@@ -392,35 +391,35 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   // ---------------- 查询封装 ----------------
   async function query(statement, values) {
     if (!_ready) await init();
-    if (!_connection) return [];
-    const r = await _connection.query({ statement, values: values || [] });
+    if (!_sqlite || !_ready) return [];
+    const r = await _sqlite.query({ database: DB_NAME, statement, values: values || [] });
     return (r && r.values) || [];
   }
 
   async function run(statement, values) {
     if (!_ready) await init();
-    if (!_connection) return { changes: 0 };
-    const r = await _connection.run({ statement, values: values || [] });
+    if (!_sqlite || !_ready) return { changes: 0 };
+    const r = await _sqlite.run({ database: DB_NAME, statement, values: values || [] });
     return r || { changes: 0 };
   }
 
   async function execute(statement) {
     if (!_ready) await init();
-    if (!_connection) return;
-    await _connection.execute({ statement });
+    if (!_sqlite || !_ready) return;
+    await _sqlite.execute({ database: DB_NAME, statement });
   }
 
   async function beginTransaction() {
-    if (!_connection) return;
-    try { await _connection.beginTransaction(); } catch (_) {}
+    if (!_sqlite || !_ready) return;
+    try { await _sqlite.beginTransaction({ database: DB_NAME }); } catch (_) {}
   }
   async function commitTransaction() {
-    if (!_connection) return;
-    try { await _connection.commitTransaction(); } catch (_) {}
+    if (!_sqlite || !_ready) return;
+    try { await _sqlite.commitTransaction({ database: DB_NAME }); } catch (_) {}
   }
   async function rollbackTransaction() {
-    if (!_connection) return;
-    try { await _connection.rollbackTransaction(); } catch (_) {}
+    if (!_sqlite || !_ready) return;
+    try { await _sqlite.rollbackTransaction({ database: DB_NAME }); } catch (_) {}
   }
 
   async function exportToJson() {

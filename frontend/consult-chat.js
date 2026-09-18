@@ -162,7 +162,7 @@
         + '<div class="consult-card__summary">' + esc(lastMsg) + "</div>"
         + '<div class="consult-card__meta">' + fmtTime(c.updatedAt) + " · " + msgCount + " 条</div>"
         + "</div>"
-        + '<button class="swipe-del" data-del="' + c.id + '" type="button">删除</button>'
+        + '<button class="swipe-del" data-swipe-del type="button">删除</button>'
         + "</div>";
     }).join("");
   }

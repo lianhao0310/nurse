@@ -2348,11 +2348,15 @@
     const id = item.dataset.id;
     if (!id) return;
     if (confirm("确定删除这个对话？此操作不可恢复。")) {
-      await NurseStorage.deleteConsultChat(id);
-      if (window.NurseConsultChat && window.NurseConsultChat.renderHistoryList) {
-        await window.NurseConsultChat.renderHistoryList();
+      if (window.NurseConsultChat && window.NurseConsultChat.deleteChat) {
+        await window.NurseConsultChat.deleteChat(id);
+      } else {
+        await NurseStorage.deleteConsultChat(id);
+        if (window.NurseConsultChat && window.NurseConsultChat.renderHistoryList) {
+          await window.NurseConsultChat.renderHistoryList();
+        }
+        toast("已删除");
       }
-      toast("已删除");
     }
   }
   async function deleteReportSwipe(item) {
