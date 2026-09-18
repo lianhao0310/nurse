@@ -301,8 +301,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   // ---------------- 迁移函数 ----------------
   const migrations = {
     1: async function () {
-      await _sqlite.execute({ database: DB_NAME, statement: DDL });
-      await _sqlite.execute({ database: DB_NAME, statement: INDEX_DDL });
+      await _sqlite.execute({ database: DB_NAME, statements: DDL });
+      await _sqlite.execute({ database: DB_NAME, statements: INDEX_DDL });
     },
   };
 
@@ -406,7 +406,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   async function execute(statement) {
     if (!_ready) await init();
     if (!_sqlite || !_ready) return;
-    await _sqlite.execute({ database: DB_NAME, statement });
+    await _sqlite.execute({ database: DB_NAME, statements: statement });
   }
 
   async function beginTransaction() {
