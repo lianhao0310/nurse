@@ -96,7 +96,8 @@
       const ok = await NurseDB.init();
       if (!ok && !NurseDB.isMemoryMode()) {
         const err = NurseDB.getInitError();
-        alert("数据库初始化失败，数据无法持久化。\n\n" + (err ? (err.message || String(err)) : "未知错误") + "\n\n请确认已执行 pod install 并使用 .xcworkspace 构建。");
+        const isWeb = (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web");
+        alert("数据库初始化失败，数据无法持久化。\n\n" + (err ? (err.message || String(err)) : "未知错误") + (isWeb ? "\n\n请确认 lib/ 目录下的 Web 依赖文件完整。" : "\n\n请确认已执行 pod install 并使用 .xcworkspace 构建。"));
       }
     }
     DATA = await NurseStorage.load();

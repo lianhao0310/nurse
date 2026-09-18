@@ -601,7 +601,7 @@
       <div id="toast" class="toast" hidden></div>
 
       <!-- Web 平台 SQLite 依赖（原生端 window.Capacitor 已由 bridge 注入，跳过加载） -->
-      <jeep-sqlite hidden></jeep-sqlite>
+      <jeep-sqlite hidden wasmpath="assets"></jeep-sqlite>
       <script>
         if (!window.Capacitor) {
           document.write('<script src="lib/capacitor.js"><\/script>');
@@ -609,8 +609,9 @@
         }
       </script>
       <script type="module">
-        if (!window.Capacitor) {
-          await import("./lib/jeep-sqlite/jeep-sqlite.esm.js");
+        if (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web") {
+          try { await import("./lib/jeep-sqlite/jeep-sqlite.esm.js"); }
+          catch (e) { console.error("[NurseDB] jeep-sqlite 加载失败:", e); }
         }
       </script>
 

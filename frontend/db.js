@@ -340,7 +340,10 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
       }
 
       if (_isWebPlatform()) {
-        await _sqlite.initWebStore();
+        await Promise.race([
+          _sqlite.initWebStore(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("initWebStore 超时（10s），jeep-sqlite 可能未加载")), 10000)),
+        ]);
       }
 
       await _sqlite.createConnection({
