@@ -686,6 +686,50 @@ function registerStorageTests(NurseStorage) {
     assert.ok(!data.orders.some((x) => x.id === o.id), "通过 orderId 关联的药单应删除");
     assert.ok(!data.reports.some((x) => x.id === rp.id), "通过 reportId 关联的报告应删除");
   });
+
+  test("saveConsultChat 内存模式 upsert 不产生重复历史记录", async () => {
+    const chat = await NurseStorage.newConsultChat();
+    chat.title = "血压偏高怎么办";
+    chat.messages.push({ role: "user", content: "血压偏高怎么办", ts: new Date().toISOString() });
+    await NurseStorage.saveConsultChat(chat);
+    chat.messages.push({ role: "assistant", content: "建议低盐饮食并规律监测", ts: new Date().toISOString() });
+    await NurseStorage.saveConsultChat(chat);
+    const chats = await NurseStorage.getConsultChats();
+    assert.strictEqual(chats.length, 1, "一次提问多次保存应只产生1条历史记录");
+    assert.strictEqual(chats[0].id, chat.id, "应保留同一 id");
+    assert.strictEqual(chats[0].messages.length, 2, "应保留最新消息列表");
+  });
+
+  test("upsertOrder 已存在药单追加药品同步药箱库存", async () => {
+    const o = await NurseStorage.upsertOrder({
+      source: "市医院", date: "2026-09-18", kind: "hospital",
+      medicines: [{ name: "氨氯地平", qty: 10 }],
+    });
+    let data = await NurseStorage.load();
+    let cabA = data.cabinet.find((c) => c.name === "氨氯地平");
+    assert.strictEqual(Number(cabA.qty), 10, "首药品应入库");
+
+    await NurseStorage.upsertOrder({
+      id: o.id, source: "市医院", date: "2026-09-18", kind: "hospital",
+      medicines: [{ name: "氨氯地平", qty: 10 }, { name: "缬沙坦", qty: 20 }],
+    });
+    data = await NurseStorage.load();
+    cabA = data.cabinet.find((c) => c.name === "氨氯地平");
+    const cabB = data.cabinet.find((c) => c.name === "缬沙坦");
+    assert.strictEqual(Number(cabA.qty), 10, "首药品库存应保持");
+    assert.ok(cabB, "追加药品应入药箱");
+    assert.strictEqual(Number(cabB.qty), 20, "追加药品库存应为 20");
+
+    await NurseStorage.upsertOrder({
+      id: o.id, source: "市医院", date: "2026-09-18", kind: "hospital",
+      medicines: [{ name: "氨氯地平", qty: 15 }, { name: "缬沙坦", qty: 20 }, { name: "美托洛尔", qty: 8 }],
+    });
+    data = await NurseStorage.load();
+    cabA = data.cabinet.find((c) => c.name === "氨氯地平");
+    const cabC = data.cabinet.find((c) => c.name === "美托洛尔");
+    assert.strictEqual(Number(cabA.qty), 15, "修改数量应按差额同步");
+    assert.ok(cabC && Number(cabC.qty) === 8, "再次追加药品应入药箱");
+  });
 }
 
 module.exports = { registerStorageTests };

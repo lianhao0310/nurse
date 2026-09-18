@@ -36,6 +36,15 @@
     return null;
   }
 
+  function _isWebPlatform() {
+    try {
+      if (typeof window !== "undefined" && window.Capacitor && window.Capacitor.getPlatform) {
+        return window.Capacitor.getPlatform() === "web";
+      }
+    } catch (_) {}
+    return true;
+  }
+
   function isMemoryMode() { return _memoryMode; }
   function isReady() { return _ready; }
   function getInitError() { return _initError; }
@@ -323,8 +332,13 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
     try {
       _sqlite = _getCapacitorSQLite();
       if (!_sqlite) {
-        _memoryMode = true;
-        console.warn("[NurseDB] CapacitorSQLite 不可用，进入内存模式（Web 预览）");
+        if (_isWebPlatform()) {
+          _memoryMode = true;
+          console.warn("[NurseDB] CapacitorSQLite 不可用，进入内存模式（Web 预览）");
+          return false;
+        }
+        _initError = new Error("CapacitorSQLite 插件未注册，请确认已执行 npx cap sync ios && pod install 并使用 .xcworkspace 构建");
+        console.error("[NurseDB]", _initError.message);
         return false;
       }
 
@@ -345,9 +359,13 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
       return true;
     } catch (e) {
       _initError = e;
-      _memoryMode = true;
       _ready = false;
-      console.warn("[NurseDB] 初始化失败，降级内存模式:", e.message || e);
+      if (_isWebPlatform()) {
+        _memoryMode = true;
+        console.warn("[NurseDB] 初始化失败，降级内存模式:", e.message || e);
+        return false;
+      }
+      console.error("[NurseDB] 真机数据库初始化失败:", e);
       return false;
     }
   }

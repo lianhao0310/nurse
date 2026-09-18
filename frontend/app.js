@@ -92,7 +92,13 @@
 
   // ===================== 初始化 =====================
   async function init() {
-    if (window.NurseDB) await NurseDB.init();
+    if (window.NurseDB) {
+      const ok = await NurseDB.init();
+      if (!ok && !NurseDB.isMemoryMode()) {
+        const err = NurseDB.getInitError();
+        alert("数据库初始化失败，数据无法持久化。\n\n" + (err ? (err.message || String(err)) : "未知错误") + "\n\n请确认已执行 pod install 并使用 .xcworkspace 构建。");
+      }
+    }
     DATA = await NurseStorage.load();
     DATA.records = await NurseStorage.getRecords();
     DATA.orders = await NurseStorage.getOrders();
@@ -379,6 +385,7 @@
 
   // ===================== 问诊记录 =====================
   let _recSearchKey = "";
+  let _examSearchKey = "";
   let _recPage = 1;
   const _recPageSize = 20;
   function _filterRecords() {
@@ -437,6 +444,10 @@
     $("#records-list").hidden = isExam;
     $("#exam-pane").hidden = !isExam;
     $("#btn-add-record").hidden = isExam;
+    const recSearch = $("#records-search");
+    const examSearch = $("#exam-search");
+    if (recSearch) recSearch.hidden = isExam;
+    if (examSearch) examSearch.hidden = !isExam;
     const empty = $("#records-empty");
     if (empty) empty.hidden = isExam || (DATA.records || []).length > 0;
   }
@@ -1481,7 +1492,19 @@
   // 检查报告 明细列表
   function renderExamList(el) {
     if (!el) return;
-    const entries = (DATA.reports || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    let entries = (DATA.reports || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (_examSearchKey) {
+      const kw = _examSearchKey.toLowerCase();
+      entries = entries.filter((rp) =>
+        (rp.title || "").toLowerCase().includes(kw) ||
+        (rp.date || "").toLowerCase().includes(kw) ||
+        (rp.kind || "").toLowerCase().includes(kw) ||
+        (rp.indicators || []).some((i) =>
+          (i.name || "").toLowerCase().includes(kw) ||
+          String(i.value || "").toLowerCase().includes(kw)
+        )
+      );
+    }
     if (!entries.length) { el.innerHTML = ""; return; }
     el.innerHTML = entries
       .map((rp) => `<div class="exam-entry swipe-item" data-report-id="${esc(rp.id)}" data-swipe>
@@ -2654,6 +2677,17 @@
           _recSearchKey = (e.target.value || "").trim();
           _recPage = 1;
           renderRecords();
+        }, 300);
+      });
+    }
+    const examSearch = $("#exam-search");
+    if (examSearch) {
+      let _examSearchTimer = null;
+      examSearch.addEventListener("input", (e) => {
+        clearTimeout(_examSearchTimer);
+        _examSearchTimer = setTimeout(() => {
+          _examSearchKey = (e.target.value || "").trim();
+          renderExamList($("#exam-list"));
         }, 300);
       });
     }

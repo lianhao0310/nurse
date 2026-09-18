@@ -527,7 +527,21 @@
         recordId: item.recordId || "",
         medicines: meds.map((m) => ({ ...m, name: String(m.name).trim(), qty: Number(m.qty) || 0 })),
       };
-      if (existing) { Object.assign(existing, it); }
+      if (existing) {
+        const oldMeds = (existing.medicines || []).filter((m) => m && m.name);
+        Object.assign(existing, it);
+        for (const nm of meds) {
+          const name = String(nm.name).trim();
+          const newQty = Number(nm.qty) || 0;
+          const oldMed = oldMeds.find((m) => String(m.name || "").trim() === name);
+          const oldQty = oldMed ? (Number(oldMed.qty) || 0) : 0;
+          const diff = newQty - oldQty;
+          if (diff === 0) continue;
+          const cab = d.cabinet.find((c) => c.name === name);
+          if (cab) { cab.qty = (Number(cab.qty) || 0) + diff; }
+          else if (newQty > 0) { d.cabinet.unshift({ id: _uid("cab_"), name, qty: newQty, unit: "片", status: "active", doseAmount: 0, doseUnit: "片", timeSlots: [], meal: "any", threshold: 0 }); }
+        }
+      }
       else {
         d.orders.unshift(it);
         for (const m of meds) {
@@ -544,10 +558,17 @@
     if (!source) return null;
     const id = item.id || _uid("ord_");
     const existed = (await DB.query("SELECT id FROM orders WHERE id = ?", [id]))[0];
+    let oldMeds = [];
+    if (existed) {
+      const oldOrder = await getOrder(id);
+      oldMeds = ((oldOrder && oldOrder.medicines) || []).filter((m) => m && m.name);
+    }
     await DB.run(`INSERT OR REPLACE INTO orders (id, source, date, kind, record_id, ai_generated) VALUES (?, ?, ?, ?, ?, ?)`,
       [id, source, item.date || "", item.kind === "hospital" ? "hospital" : "custom", item.recordId || "", item.aiGenerated ? 1 : 0]);
     await _saveOrderSubTables(id, item);
-    if (!existed) await _syncCabinetForNewOrder((item.medicines || []).filter((m) => m && m.name));
+    const newMeds = (item.medicines || []).filter((m) => m && m.name);
+    if (!existed) await _syncCabinetForNewOrder(newMeds);
+    else await _syncCabinetForUpdateOrder(oldMeds, newMeds);
     return await _rowToOrder((await DB.query("SELECT * FROM orders WHERE id = ?", [id]))[0], false);
   }
   async function updateOrder(id, patch) {
@@ -784,7 +805,7 @@
     return row ? await _rowToChat(row, true) : null;
   }
   async function saveConsultChat(chat) {
-    if (_isMemory()) { const d = _memData(); const now = new Date().toISOString(); const item = { ...chat, id: chat.id || _uid("chat_"), updatedAt: now }; d.consultChats.unshift(item); return item; }
+    if (_isMemory()) { const d = _memData(); const now = new Date().toISOString(); const id = chat.id || _uid("chat_"); const existing = d.consultChats.find((c) => c.id === id); if (existing) { Object.assign(existing, chat, { id, updatedAt: now }); return existing; } const item = { ...chat, id, updatedAt: now }; d.consultChats.unshift(item); return item; }
     const id = chat.id || _uid("chat_");
     const now = new Date().toISOString();
     await DB.run(`INSERT OR REPLACE INTO consult_chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)`, [id, chat.title || "新对话", chat.createdAt || now, now]);
