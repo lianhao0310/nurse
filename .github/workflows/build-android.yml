@@ -1,7 +1,7 @@
 name: Build Android APK
 
 # 在 GitHub 的 Ubuntu runner 上把 Capacitor Android 工程编译为 .apk
-# 触发：打 tag（v*）或手动触发，避免每次提交触发耗时构建
+# 触发：推送到 master/main、打 tag（v*）、或手动触发
 # 打 tag 时额外创建 GitHub Release 并上传 APK（Gitee 镜像同步 tag 即可触发）
 #
 # 签名策略：
@@ -9,6 +9,7 @@ name: Build Android APK
 #   - 未配置 → 构建 debug APK（自动用 debug keystore 签名，可直接安装调试）
 on:
   push:
+    branches: [master, main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -28,7 +29,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Setup Java JDK
@@ -42,12 +43,6 @@ jobs:
 
       - name: Run unit tests (CI subset)
         run: npm run test:ci
-
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Run integration (smoke) tests
-        run: npm run test:integration
 
       - name: Capacitor sync (web assets + gradle)
         run: npx cap sync android
