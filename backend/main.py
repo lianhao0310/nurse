@@ -7,7 +7,7 @@
 import os
 import sys
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -15,6 +15,14 @@ from engine import parse_transcript
 from llm import llm_available, parse_with_llm
 
 app = FastAPI(title="Nurse App 后端", version="1.0")
+
+
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/assets/", "/lib/")):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 FRONTEND_DIR = os.path.abspath(FRONTEND_DIR)

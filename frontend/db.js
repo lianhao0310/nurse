@@ -26,6 +26,7 @@
   let _ready = false;
   let _memoryMode = false;
   let _initError = null;
+  let _initFailed = false;
 
   function _getCapacitorSQLite() {
     if (typeof window !== "undefined" && window.Capacitor) {
@@ -47,6 +48,7 @@
   function isMemoryMode() { return _memoryMode; }
   function isReady() { return _ready; }
   function getInitError() { return _initError; }
+  function isInitFailed() { return _initFailed; }
 
   // ---------------- 建表 DDL ----------------
   const DDL = `
@@ -326,6 +328,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
   // ---------------- 初始化 ----------------
   async function init() {
     if (_ready) return true;
+    if (_initFailed) return false;
 
     try {
       _sqlite = _getCapacitorSQLite();
@@ -364,6 +367,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
     } catch (e) {
       _initError = e;
       _ready = false;
+      _initFailed = true;
       console.error("[NurseDB] 数据库初始化失败:", e);
       return false;
     }
@@ -390,21 +394,21 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
 
   // ---------------- 查询封装 ----------------
   async function query(statement, values) {
-    if (!_ready) await init();
+    if (!_ready && !_initFailed) await init();
     if (!_sqlite || !_ready) return [];
     const r = await _sqlite.query({ database: DB_NAME, statement, values: values || [] });
     return (r && r.values) || [];
   }
 
   async function run(statement, values) {
-    if (!_ready) await init();
+    if (!_ready && !_initFailed) await init();
     if (!_sqlite || !_ready) return { changes: 0 };
     const r = await _sqlite.run({ database: DB_NAME, statement, values: values || [] });
     return r || { changes: 0 };
   }
 
   async function execute(statement) {
-    if (!_ready) await init();
+    if (!_ready && !_initFailed) await init();
     if (!_sqlite || !_ready) return;
     await _sqlite.execute({ database: DB_NAME, statements: statement });
   }
@@ -455,5 +459,6 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
     isMemoryMode,
     isReady,
     getInitError,
+    isInitFailed,
   };
 });
