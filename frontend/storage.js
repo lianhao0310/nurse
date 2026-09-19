@@ -59,18 +59,24 @@
     const hasKind = table === "record_images";
     for (let i = 0; i < images.length; i++) {
       const im = images[i];
-      if (!im || !im.dataUrl) continue;
-      const saved = await IMG.saveImage(im.dataUrl);
-      if (!saved.path) continue;
+      if (!im) continue;
+      let path, name, type;
+      if (im.dataUrl) {
+        const saved = await IMG.saveImage(im.dataUrl);
+        if (!saved.path) continue;
+        path = saved.path; name = saved.name || im.name || "image"; type = saved.type || im.type || "image/jpeg";
+      } else if (im.path) {
+        path = im.path; name = im.name || "image"; type = im.type || "image/jpeg";
+      } else { continue; }
       if (hasKind) {
         await DB.run(
           `INSERT INTO ${table} (${idCol}, kind, path, name, type, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-          [idVal, im.kind || "image", saved.path, saved.name || im.name || "image", saved.type || im.type || "image/jpeg", i]
+          [idVal, im.kind || "image", path, name, type, i]
         );
       } else {
         await DB.run(
           `INSERT INTO ${table} (${idCol}, path, name, type, sort_order) VALUES (?, ?, ?, ?, ?)`,
-          [idVal, saved.path, saved.name || im.name || "image", saved.type || im.type || "image/jpeg", i]
+          [idVal, path, name, type, i]
         );
       }
     }
@@ -80,12 +86,18 @@
     if (!images || !images.length) return;
     for (let i = 0; i < images.length; i++) {
       const im = images[i];
-      if (!im || !im.dataUrl) continue;
-      const saved = await IMG.saveImage(im.dataUrl);
-      if (!saved.path) continue;
+      if (!im) continue;
+      let path, name, type;
+      if (im.dataUrl) {
+        const saved = await IMG.saveImage(im.dataUrl);
+        if (!saved.path) continue;
+        path = saved.path; name = saved.name || "image"; type = saved.type || "image/jpeg";
+      } else if (im.path) {
+        path = im.path; name = im.name || "image"; type = im.type || "image/jpeg";
+      } else { continue; }
       await DB.run(
         `INSERT INTO message_images (message_id, path, name, type, ocr_text, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-        [messageId, saved.path, saved.name || "image", saved.type || "image/jpeg", im.ocrText || "", i]
+        [messageId, path, name, type, im.ocrText || "", i]
       );
     }
   }
@@ -804,6 +816,9 @@
     }
     if (ok("cabinet") && Array.isArray(incoming.cabinet)) {
       for (const c of incoming.cabinet) { if (c && c.name) await upsertCabinetDrug(c); }
+    }
+    if (ok("consultChats") && Array.isArray(incoming.consultChats)) {
+      for (const c of incoming.consultChats) { if (c && c.id) await saveConsultChat(c); }
     }
     if (ok("settings") && incoming.settings) {
       const s = incoming.settings;

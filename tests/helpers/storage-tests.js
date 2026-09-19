@@ -700,6 +700,283 @@ function registerStorageTests(NurseStorage) {
     assert.strictEqual(chats[0].messages.length, 2, "应保留最新消息列表");
   });
 
+  // ---------------- 分页查询 ----------------
+  test("getRecordsPaged 基本分页", async () => {
+    for (let i = 1; i <= 25; i++) {
+      await NurseStorage.appendRecord({ hospital: `医院${i}`, visitDate: `2026-01-${String(i).padStart(2, "0")}`, transcript: `记录${i}`, manual: true });
+    }
+    const page1 = await NurseStorage.getRecordsPaged("", 1, 10);
+    assert.strictEqual(page1.rows.length, 10, "第一页10条");
+    assert.strictEqual(page1.total, 25, "总数25");
+    assert.strictEqual(page1.hasMore, true, "有更多");
+    const page3 = await NurseStorage.getRecordsPaged("", 3, 10);
+    assert.strictEqual(page3.rows.length, 5, "第三页5条");
+    assert.strictEqual(page3.hasMore, false, "无更多");
+  });
+
+  test("getRecordsPaged 关键词搜索", async () => {
+    await NurseStorage.appendRecord({ hospital: "协和医院", visitDate: "2026-01-01", transcript: "高血压", manual: true });
+    await NurseStorage.appendRecord({ hospital: "人民医院", visitDate: "2026-01-02", transcript: "糖尿病", manual: true });
+    const r = await NurseStorage.getRecordsPaged("协和", 1, 10);
+    assert.strictEqual(r.total, 1, "关键词搜索应只匹配1条");
+    assert.strictEqual(r.rows[0].hospital, "协和医院");
+  });
+
+  test("getOrdersPaged 分页和搜索", async () => {
+    for (let i = 1; i <= 15; i++) {
+      await NurseStorage.upsertOrder({ source: `源${i}`, medicines: [{ name: `药${i}`, qty: i }] });
+    }
+    const page1 = await NurseStorage.getOrdersPaged("", 1, 10);
+    assert.strictEqual(page1.rows.length, 10);
+    assert.strictEqual(page1.total, 15);
+    const search = await NurseStorage.getOrdersPaged("药3", 1, 10);
+    assert.strictEqual(search.total, 1, "搜索药3应匹配1条");
+  });
+
+  test("getReportsPaged 分页和搜索", async () => {
+    for (let i = 1; i <= 5; i++) {
+      await NurseStorage.upsertReport({ title: `报告${i}`, date: `2026-01-0${i}`, kind: "self", indicators: [] });
+    }
+    const page = await NurseStorage.getReportsPaged("", 1, 3);
+    assert.strictEqual(page.rows.length, 3);
+    assert.strictEqual(page.total, 5);
+    assert.strictEqual(page.hasMore, true);
+    const search = await NurseStorage.getReportsPaged("报告2", 1, 10);
+    assert.strictEqual(search.total, 1);
+  });
+
+  test("getCabinetDrugsPaged 分页和搜索", async () => {
+    for (let i = 1; i <= 8; i++) {
+      await NurseStorage.upsertCabinetDrug({ name: `药品${i}`, qty: i });
+    }
+    const page = await NurseStorage.getCabinetDrugsPaged("", 1, 5);
+    assert.strictEqual(page.rows.length, 5);
+    assert.strictEqual(page.total, 8);
+    const search = await NurseStorage.getCabinetDrugsPaged("药品3", 1, 10);
+    assert.strictEqual(search.total, 1);
+  });
+
+  test("getConsultChatsPaged 分页", async () => {
+    for (let i = 0; i < 3; i++) {
+      const chat = await NurseStorage.newConsultChat();
+      chat.title = `对话${i}`;
+      await NurseStorage.saveConsultChat(chat);
+    }
+    const page = await NurseStorage.getConsultChatsPaged("", 1, 2);
+    assert.strictEqual(page.rows.length, 2);
+    assert.strictEqual(page.total, 3);
+  });
+
+  // ---------------- AI 聊天完整 CRUD ----------------
+  test("getConsultChat 单条获取", async () => {
+    const chat = await NurseStorage.newConsultChat();
+    chat.title = "测试对话";
+    chat.messages.push({ role: "user", content: "你好", ts: new Date().toISOString() });
+    await NurseStorage.saveConsultChat(chat);
+    const found = await NurseStorage.getConsultChat(chat.id);
+    assert.strictEqual(found.title, "测试对话");
+    assert.strictEqual(found.messages.length, 1);
+    assert.strictEqual(found.messages[0].content, "你好");
+  });
+
+  test("deleteConsultChat 删除聊天及消息", async () => {
+    const chat = await NurseStorage.newConsultChat();
+    chat.messages.push({ role: "user", content: "测试", ts: new Date().toISOString() });
+    await NurseStorage.saveConsultChat(chat);
+    await NurseStorage.deleteConsultChat(chat.id);
+    assert.strictEqual(await NurseStorage.getConsultChat(chat.id), null, "删除后返回 null");
+    const chats = await NurseStorage.getConsultChats();
+    assert.ok(!chats.some((c) => c.id === chat.id), "列表中不应存在");
+  });
+
+  test("saveConsultChat 带图片", async () => {
+    const chat = await NurseStorage.newConsultChat();
+    chat.messages.push({ role: "user", content: "看图", ts: new Date().toISOString(), images: [{ dataUrl: "data:image/jpeg;base64,abc", name: "img.jpg", type: "image/jpeg" }] });
+    await NurseStorage.saveConsultChat(chat);
+    const found = await NurseStorage.getConsultChat(chat.id);
+    assert.ok(found.messages[0].images && found.messages[0].images.length === 1, "应保留图片");
+  });
+
+  test("saveConsultChat 消息排序保持", async () => {
+    const chat = await NurseStorage.newConsultChat();
+    for (let i = 0; i < 5; i++) {
+      chat.messages.push({ role: i % 2 === 0 ? "user" : "assistant", content: `消息${i}`, ts: new Date().toISOString() });
+    }
+    await NurseStorage.saveConsultChat(chat);
+    const found = await NurseStorage.getConsultChat(chat.id);
+    assert.strictEqual(found.messages.length, 5);
+    for (let i = 0; i < 5; i++) {
+      assert.strictEqual(found.messages[i].content, `消息${i}`, `消息${i}顺序正确`);
+    }
+  });
+
+  // ---------------- 记录带图片完整往返 ----------------
+  test("appendRecord 带图片并读回", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "图片医院", visitDate: "2026-01-01", transcript: "带图", manual: true,
+      images: [{ dataUrl: "data:image/jpeg;base64,img1", name: "1.jpg", type: "image/jpeg" }],
+      rxImages: [{ dataUrl: "data:image/jpeg;base64,rx1", name: "rx.jpg", type: "image/jpeg" }],
+      examImages: [{ dataUrl: "data:image/jpeg;base64,ex1", name: "ex.jpg", type: "image/jpeg" }],
+    });
+    const found = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(found.images.length, 1, "应有1张普通图片");
+    assert.strictEqual(found.rxImages.length, 1, "应有1张药单图片");
+    assert.strictEqual(found.examImages.length, 1, "应有1张检查图片");
+    assert.ok(found.images[0].dataUrl, "图片应有 dataUrl");
+  });
+
+  test("getRecords 带 dataUrl", async () => {
+    await NurseStorage.appendRecord({
+      hospital: "H", visitDate: "2026-01-01", manual: true,
+      images: [{ dataUrl: "data:image/jpeg;base64,x", name: "i.jpg", type: "image/jpeg" }],
+    });
+    const list = await NurseStorage.getRecords(true);
+    assert.strictEqual(list.length, 1);
+    assert.ok(list[0].images[0].dataUrl, "列表应带 dataUrl");
+  });
+
+  test("updateRecord 更新图片", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "H", visitDate: "2026-01-01", manual: true,
+      images: [{ dataUrl: "data:image/jpeg;base64,old", name: "old.jpg", type: "image/jpeg" }],
+    });
+    await NurseStorage.updateRecord(rec.id, { images: [{ dataUrl: "data:image/jpeg;base64,new", name: "new.jpg", type: "image/jpeg" }] });
+    const found = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(found.images.length, 1);
+    assert.ok(found.images[0].dataUrl.includes("new"), "图片应更新");
+  });
+
+  test("deleteRecord 清理图片", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "H", visitDate: "2026-01-01", manual: true,
+      images: [{ dataUrl: "data:image/jpeg;base64,del", name: "d.jpg", type: "image/jpeg" }],
+    });
+    await NurseStorage.deleteRecord(rec.id);
+    assert.strictEqual(await NurseStorage.getRecord(rec.id), null);
+  });
+
+  // ---------------- 记录带 AI result ----------------
+  test("appendRecord 带 AI result 并读回", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "AI医院", visitDate: "2026-01-01", transcript: "AI分析", manual: true,
+      result: {
+        engine: "ai",
+        diseases: ["高血压"],
+        medications: [{ id: "m1", name: "氨氯地平", dose: "5mg", freq: "每日一次", time: "morning", note: "", disease: "高血压" }],
+        tasks: [{ id: "t1", type: "life", title: "低盐饮食", detail: "每日盐<5g", freq: "每日", due: "" }],
+        advice: { taboo: ["高盐食物"], diet: ["多吃蔬菜"] },
+        risks: [{ trigger: "血压>180", level: "red", action: "立即就医", disease: "高血压" }],
+        summary: "高血压二期", disclaimer: "仅供参考",
+      },
+    });
+    const found = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(found.result.engine, "ai");
+    assert.strictEqual(found.result.diseases[0], "高血压");
+    assert.strictEqual(found.result.medications.length, 1);
+    assert.strictEqual(found.result.medications[0].name, "氨氯地平");
+    assert.strictEqual(found.result.tasks.length, 1);
+    assert.strictEqual(found.result.tasks[0].title, "低盐饮食");
+    assert.strictEqual(found.result.advice.taboo[0], "高盐食物");
+    assert.strictEqual(found.result.advice.diet[0], "多吃蔬菜");
+    assert.strictEqual(found.result.risks[0].level, "red");
+    assert.strictEqual(found.result.summary, "高血压二期");
+  });
+
+  test("appendRecord 带检查结果 result 并读回", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "检查医院", visitDate: "2026-01-01", transcript: "检查", manual: true,
+      result: {
+        advice: "定期复查",
+        examResults: [{ name: "血糖", value: "6.5", unit: "mmol/L", range: "3.9-6.1", abnormal: true }],
+        prescription: [{ name: "氨氯地平", spec: "5mg", packCount: 2 }],
+      },
+    });
+    const found = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(found.result.advice, "定期复查");
+    assert.strictEqual(found.result.examResults.length, 1);
+    assert.strictEqual(found.result.examResults[0].abnormal, true);
+    assert.strictEqual(found.result.prescription[0].packCount, 2);
+  });
+
+  test("updateRecord 更新 result 替换旧数据", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "H", visitDate: "2026-01-01", manual: true,
+      result: { engine: "ai", diseases: ["高血压"], medications: [{ id: "m1", name: "药A", dose: "", freq: "", time: "", note: "", disease: "" }], tasks: [], advice: { taboo: [], diet: [] }, risks: [], summary: "", disclaimer: "" },
+    });
+    await NurseStorage.updateRecord(rec.id, {
+      result: { engine: "ai", diseases: ["糖尿病"], medications: [{ id: "m2", name: "药B", dose: "", freq: "", time: "", note: "", disease: "" }], tasks: [], advice: { taboo: [], diet: [] }, risks: [], summary: "", disclaimer: "" },
+    });
+    const found = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(found.result.diseases[0], "糖尿病", "diseases 应替换");
+    assert.strictEqual(found.result.medications[0].name, "药B", "medications 应替换");
+    assert.strictEqual(found.result.medications.length, 1, "不应残留旧数据");
+  });
+
+  // ---------------- 其他设置 ----------------
+  test("setLastDecrement 保存和读取", async () => {
+    await NurseStorage.setLastDecrement("2026-01-15");
+    const data = await NurseStorage.load();
+    assert.strictEqual(data.lastDecrement, "2026-01-15");
+  });
+
+  test("reminders 设置往返", async () => {
+    await NurseStorage.updateSettings({
+      reminders: [
+        { id: "rem1", title: "吃药提醒", type: "med", time: "08:00", enabled: true },
+        { id: "rem2", title: "复查提醒", type: "custom", date: "2026-02-01", time: "09:00", enabled: false },
+      ],
+    });
+    const data = await NurseStorage.load();
+    assert.strictEqual(data.settings.reminders.length, 2);
+    assert.strictEqual(data.settings.reminders[0].title, "吃药提醒");
+    assert.strictEqual(data.settings.reminders[0].enabled, true);
+    assert.strictEqual(data.settings.reminders[1].enabled, false);
+  });
+
+  // ---------------- 导出导入图片往返 ----------------
+  test("导出导入图片往返", async () => {
+    await NurseStorage.appendRecord({
+      hospital: "往返医院", visitDate: "2026-01-01", transcript: "图片往返", manual: true,
+      images: [{ dataUrl: "data:image/jpeg;base64,rt", name: "rt.jpg", type: "image/jpeg" }],
+    });
+    const json = await NurseStorage.exportJSON();
+    await NurseStorage._resetForTest();
+    await NurseStorage.importJSON(json);
+    const restored = await NurseStorage.getRecords(true);
+    assert.strictEqual(restored.length, 1);
+    assert.ok(restored[0].images.length > 0, "图片应恢复");
+  });
+
+  test("导出导入 AI result 往返", async () => {
+    await NurseStorage.appendRecord({
+      hospital: "AI往返", visitDate: "2026-01-01", transcript: "AI", manual: true,
+      result: { engine: "ai", diseases: ["高血压"], medications: [{ id: "m1", name: "氨氯地平", dose: "5mg", freq: "", time: "", note: "", disease: "高血压" }], tasks: [], advice: { taboo: ["高盐"], diet: [] }, risks: [], summary: "test", disclaimer: "" },
+    });
+    const json = await NurseStorage.exportJSON();
+    await NurseStorage._resetForTest();
+    await NurseStorage.importJSON(json);
+    const restored = await NurseStorage.getRecords();
+    assert.strictEqual(restored.length, 1);
+    assert.strictEqual(restored[0].result.engine, "ai");
+    assert.strictEqual(restored[0].result.diseases[0], "高血压");
+    assert.strictEqual(restored[0].result.medications[0].name, "氨氯地平");
+  });
+
+  test("导出导入 AI 聊天往返", async () => {
+    const chat = await NurseStorage.newConsultChat();
+    chat.title = "导出测试";
+    chat.messages.push({ role: "user", content: "问题", ts: new Date().toISOString() });
+    chat.messages.push({ role: "assistant", content: "回答", ts: new Date().toISOString() });
+    await NurseStorage.saveConsultChat(chat);
+    const json = await NurseStorage.exportJSON();
+    await NurseStorage._resetForTest();
+    await NurseStorage.importJSON(json);
+    const restored = await NurseStorage.getConsultChats();
+    assert.strictEqual(restored.length, 1);
+    assert.strictEqual(restored[0].title, "导出测试");
+    assert.strictEqual(restored[0].messages.length, 2);
+  });
+
   test("upsertOrder 已存在药单追加药品同步药箱库存", async () => {
     const o = await NurseStorage.upsertOrder({
       source: "市医院", date: "2026-09-18", kind: "hospital",
