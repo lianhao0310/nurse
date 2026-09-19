@@ -10,8 +10,8 @@
     "build:web": "echo '前端为静态资源，无需构建步骤；Capacitor 直接复制 frontend/ 目录'",
     "copy-wasm": "node scripts/copy-wasm.js",
     "postinstall": "node scripts/copy-wasm.js",
-    "test": "node --test tests/multi-image.test.js tests/engine.test.js tests/storage-sqlite.test.js tests/consult-ai.test.js",
-    "test:ci": "node --experimental-sqlite --test tests/multi-image.test.js tests/engine.test.js tests/storage-sqlite.test.js tests/consult-ai.test.js"
+    "test": "node --test tests/multi-image.test.js tests/engine.test.js tests/storage-sqlite.test.js tests/consult-ai.test.js tests/db-ios.test.js",
+    "test:ci": "node --experimental-sqlite --test tests/multi-image.test.js tests/engine.test.js tests/storage-sqlite.test.js tests/consult-ai.test.js tests/db-ios.test.js"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^6.0.2",

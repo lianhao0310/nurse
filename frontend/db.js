@@ -45,6 +45,14 @@
     return true;
   }
 
+  function _filterIosColumns(values) {
+    const rows = values || [];
+    if (rows.length && rows[0] && typeof rows[0] === "object" && "ios_columns" in rows[0]) {
+      rows.shift();
+    }
+    return rows;
+  }
+
   function isMemoryMode() { return _memoryMode; }
   function isReady() { return _ready; }
   function getInitError() { return _initError; }
@@ -312,7 +320,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
     let curVersion = 0;
     try {
       const r = await _sqlite.query({ database: DB_NAME, statement: "PRAGMA user_version", values: [] });
-      curVersion = (r && r.values && r.values[0]) ? Number(r.values[0].user_version || 0) : 0;
+      const rows = _filterIosColumns(r && r.values);
+      curVersion = rows[0] ? Number(rows[0].user_version || 0) : 0;
     } catch (_) {}
 
     if (curVersion >= APP_SCHEMA_VERSION) return;
@@ -375,7 +384,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
 
   async function _ensureAiSettingsRow() {
     const r = await _sqlite.query({ database: DB_NAME, statement: "SELECT COUNT(*) AS c FROM ai_settings", values: [] });
-    const count = (r && r.values && r.values[0]) ? Number(r.values[0].c) : 0;
+    const rows = _filterIosColumns(r && r.values);
+    const count = rows[0] ? Number(rows[0].c) : 0;
     if (count === 0) {
       await _sqlite.run({
         database: DB_NAME,
@@ -397,7 +407,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
     if (!_ready && !_initFailed) await init();
     if (!_sqlite || !_ready) return [];
     const r = await _sqlite.query({ database: DB_NAME, statement, values: values || [] });
-    return (r && r.values) || [];
+    return _filterIosColumns(r && r.values);
   }
 
   async function run(statement, values) {
