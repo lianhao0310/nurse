@@ -6,7 +6,7 @@ const config = {
   webDir: "frontend",
   plugins: {
     CapacitorSQLite: {
-      iosDatabaseLocation: "Library/CapacitorDatabase",
+      iosDatabaseLocation: "Documents",
       androidIsEncryption: false,
       iosIsEncryption: false,
     },
