@@ -2234,7 +2234,8 @@
       const isNative = (typeof Capacitor !== "undefined" && Capacitor.getPlatform && Capacitor.getPlatform() !== "web");
       if (isNative) {
         const fs = Capacitor.Plugins.Filesystem;
-        const { Share } = await import("@capacitor/share");
+        const Share = Capacitor.Plugins.Share;
+        if (!Share) { toast("导出失败：分享插件未安装"); return; }
         await fs.writeFile({ path: filename, data: dbJson, directory: "Cache", encoding: "utf8", recursive: true });
         const uriRes = await fs.getUri({ path: filename, directory: "Cache" });
         try {
