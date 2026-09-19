@@ -846,6 +846,20 @@ function registerStorageTests(NurseStorage) {
     assert.ok(found.images[0].dataUrl.includes("new"), "图片应更新");
   });
 
+  test("updateRecord 同时更新 rxImages 与 examImages 不互删（回归）", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "双图医院", visitDate: "2026-01-01", manual: true,
+    });
+    await NurseStorage.updateRecord(rec.id, {
+      rxImages: [{ dataUrl: "data:image/jpeg;base64,rx1", name: "rx.jpg", type: "image/jpeg" }],
+      examImages: [{ dataUrl: "data:image/jpeg;base64,ex1", name: "ex.jpg", type: "image/jpeg" }],
+    });
+    const found = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(found.rxImages.length, 1, "药单图片应保留，不应被 examImages 分支删除");
+    assert.strictEqual(found.examImages.length, 1, "检查图片应保留");
+    assert.ok(found.rxImages[0].dataUrl, "药单图片应有 dataUrl");
+  });
+
   test("deleteRecord 清理图片", async () => {
     const rec = await NurseStorage.appendRecord({
       hospital: "H", visitDate: "2026-01-01", manual: true,

@@ -116,10 +116,17 @@
     return out;
   }
 
-  async function _deleteImgsFromTable(table, idCol, idVal) {
-    const rows = await _readImgPaths(table, idCol, idVal);
+  async function _deleteImgsFromTable(table, idCol, idVal, kind) {
+    const hasKind = table === "record_images" && kind;
+    const rows = hasKind
+      ? await DB.query(`SELECT path, name, type FROM ${table} WHERE ${idCol} = ? AND kind = ? ORDER BY sort_order`, [idVal, kind])
+      : await _readImgPaths(table, idCol, idVal);
     await IMG.deleteImages(rows.map((r) => r.path));
-    await DB.run(`DELETE FROM ${table} WHERE ${idCol} = ?`, [idVal]);
+    if (hasKind) {
+      await DB.run(`DELETE FROM ${table} WHERE ${idCol} = ? AND kind = ?`, [idVal, kind]);
+    } else {
+      await DB.run(`DELETE FROM ${table} WHERE ${idCol} = ?`, [idVal]);
+    }
   }
 
   // 批量读取图片路径（避免 N+1）
@@ -395,9 +402,9 @@
        (merged.result && merged.result.engine) || null, (merged.result && merged.result.summary) || "", (merged.result && merged.result.disclaimer) || "",
        (merged.result && typeof merged.result.advice === "string") ? merged.result.advice : "", id]);
     if (patch.result !== undefined) { await _deleteResultSubTables(id); await _saveResultSubTables(id, merged.result); }
-    if (patch.images) { await _deleteImgsFromTable("record_images", "record_id", id); if (patch.images.length) await _saveImgsToTable("record_images", "record_id", id, patch.images); }
-    if (patch.rxImages) { await _deleteImgsFromTable("record_images", "record_id", id); if (patch.rxImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.rxImages.map((im) => ({ ...im, kind: "rx" }))); }
-    if (patch.examImages) { await _deleteImgsFromTable("record_images", "record_id", id); if (patch.examImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.examImages.map((im) => ({ ...im, kind: "exam" }))); }
+    if (patch.images) { await _deleteImgsFromTable("record_images", "record_id", id, "image"); if (patch.images.length) await _saveImgsToTable("record_images", "record_id", id, patch.images); }
+    if (patch.rxImages) { await _deleteImgsFromTable("record_images", "record_id", id, "rx"); if (patch.rxImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.rxImages.map((im) => ({ ...im, kind: "rx" }))); }
+    if (patch.examImages) { await _deleteImgsFromTable("record_images", "record_id", id, "exam"); if (patch.examImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.examImages.map((im) => ({ ...im, kind: "exam" }))); }
     return await getRecord(id);
   }
 

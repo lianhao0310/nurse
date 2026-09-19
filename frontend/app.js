@@ -861,8 +861,8 @@
       const res = await NurseAI.analyzeConsult({
         settings: DATA.settings,
         adviceText,
-        examImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages : ((linkedReport && linkedReport.images) || []),
-        rxImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages : ((linkedOrder && linkedOrder.images) || []),
+        examImages: (recDraft && recDraft.reportImages && recDraft.reportImages.length) ? recDraft.reportImages : (rec && rec.examImages && rec.examImages.length ? rec.examImages : (linkedReport && linkedReport.images) || []),
+        rxImages: (recDraft && recDraft.orderImages && recDraft.orderImages.length) ? recDraft.orderImages : (rec && rec.rxImages && rec.rxImages.length ? rec.rxImages : (linkedOrder && linkedOrder.images) || []),
         onChunk: updateAIProgress,
       });
       aiModalState = { rec, data: res, type: "consult" };
@@ -875,7 +875,7 @@
     showAIProgress("🤖 AI 分析药单中…");
     try {
       const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
-      const rxImages = (rec.rxImages && rec.rxImages.length) ? rec.rxImages : ((linkedOrder && linkedOrder.images) || []);
+      const rxImages = (recDraft && recDraft.orderImages && recDraft.orderImages.length) ? recDraft.orderImages : (rec.rxImages && rec.rxImages.length ? rec.rxImages : (linkedOrder && linkedOrder.images) || []);
       if (!rxImages.length) { showAIError("无药单图片", "请先导入药单图片"); return; }
       const res = await NurseAI.analyzePrescription({ settings: DATA.settings, rxImages, onChunk: updateAIProgress });
       const prescription = res.prescription || [];
@@ -910,7 +910,7 @@
     showAIProgress("🤖 AI 分析检查报告中…");
     try {
       const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
-      const examImages = (rec.examImages && rec.examImages.length) ? rec.examImages : ((linkedReport && linkedReport.images) || []);
+      const examImages = (recDraft && recDraft.reportImages && recDraft.reportImages.length) ? recDraft.reportImages : (rec.examImages && rec.examImages.length ? rec.examImages : (linkedReport && linkedReport.images) || []);
       if (!examImages.length) { showAIError("无报告图片", "请先导入检查报告图片"); return; }
       const followedIndicators = DATA.followedIndicators || [];
       if (!followedIndicators.length) { showAIError("未配置关注指标", "请先在「我的 → 关注指标」中添加关注指标"); return; }
@@ -2563,7 +2563,7 @@
         tracking = false;
         const dx = (e.changedTouches ? e.changedTouches[0].clientX : 0) - sx;
         const dy = (e.changedTouches ? e.changedTouches[0].clientY : 0) - sy;
-        if (dx > 80 && Math.abs(dy) < 60) swipeBackAction();
+        if (dx > 45 && Math.abs(dy) < 60) swipeBackAction();
       },
       { passive: true }
     );
