@@ -377,7 +377,9 @@
        (r.result && typeof r.result.advice === "string") ? r.result.advice : ""]);
     await _deleteResultSubTables(id);
     await _saveResultSubTables(id, r.result);
-    await _deleteImgsFromTable("record_images", "record_id", id);
+    await _deleteImgsFromTable("record_images", "record_id", id, "image", _keepPathsFromImgs(r.images));
+    await _deleteImgsFromTable("record_images", "record_id", id, "rx", _keepPathsFromImgs(r.rxImages));
+    await _deleteImgsFromTable("record_images", "record_id", id, "exam", _keepPathsFromImgs(r.examImages));
     if (r.images && r.images.length) await _saveImgsToTable("record_images", "record_id", id, r.images.map((im) => ({ ...im, kind: "image" })).map((im) => im));
     if (r.rxImages && r.rxImages.length) await _saveImgsToTable("record_images", "record_id", id, r.rxImages.map((im) => ({ ...im, kind: "rx" })));
     if (r.examImages && r.examImages.length) await _saveImgsToTable("record_images", "record_id", id, r.examImages.map((im) => ({ ...im, kind: "exam" })));

@@ -612,8 +612,9 @@
   let _recAutoSaveTrigger = null;
   let _updateAIBtnStates = null;
   function renderDraftThumbs() {
-    $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="order" data-idx="${i}">✕</button></div>`).join("");
-    $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="report" data-idx="${i}">✕</button></div>`).join("");
+    const thumbHtml = (im, i, kind) => im.dataUrl ? `<div class="thumb"><img src="${im.dataUrl}"/><button class="thumb__del" data-kind="${kind}" data-idx="${i}">✕</button></div>` : "";
+    $("#rec-order-thumbs").innerHTML = recDraft.orderImages.map((im, i) => thumbHtml(im, i, "order")).join("");
+    $("#rec-report-thumbs").innerHTML = recDraft.reportImages.map((im, i) => thumbHtml(im, i, "report")).join("");
     $$("#rec-order-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.orderImages.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
     $$("#rec-report-thumbs .thumb__del").forEach((b) => (b.onclick = () => { recDraft.reportImages.splice(+b.dataset.idx, 1); renderDraftThumbs(); }));
     $$("#rec-order-thumbs .thumb img, #rec-report-thumbs .thumb img").forEach((img) => (img.onclick = () => openLightbox(img.src)));
