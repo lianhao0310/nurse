@@ -898,7 +898,7 @@
       }
       DATA = await NurseStorage.load();
       $("#ai-modal").hidden = true;
-      const latest = (DATA.records || []).find((r) => r.id === rec.id);
+      const latest = await NurseStorage.getRecord(rec.id);
       if (latest && !$("#record-view").hidden) showRecordView(latest);
       renderRecords(); renderCabinet(); renderHome();
       toast("药单 AI 分析已保存");
@@ -926,7 +926,7 @@
       }
       DATA = await NurseStorage.load();
       $("#ai-modal").hidden = true;
-      const latest = (DATA.records || []).find((r) => r.id === rec.id);
+      const latest = await NurseStorage.getRecord(rec.id);
       if (latest && !$("#record-view").hidden) showRecordView(latest);
       renderRecords(); renderHome();
       toast("检查报告 AI 分析已保存");
