@@ -602,7 +602,7 @@
 
       <!-- SQLite 依赖：capacitor.js 无条件加载（原生端复用已有 window.Capacitor，无害）；
            sqlite-plugin.js / jeep-sqlite 仅 Web 平台加载，避免覆盖原生 SQLite proxy -->
-      <jeep-sqlite hidden wasmpath="assets"></jeep-sqlite>
+      <jeep-sqlite hidden wasmpath="assets" autosave></jeep-sqlite>
       <script src="lib/capacitor.js" onerror="void(0)"></script>
       <script>
         if (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web") {
