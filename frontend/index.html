@@ -600,13 +600,20 @@
       <!-- ============ 轻提示 ============ -->
       <div id="toast" class="toast" hidden></div>
 
-      <!-- SQLite 依赖（原生端已由 bridge 注入，重复加载无害：capacitor.js 复用已有对象，plugin.js 仅发警告） -->
+      <!-- SQLite 依赖：capacitor.js 无条件加载（原生端复用已有 window.Capacitor，无害）；
+           sqlite-plugin.js / jeep-sqlite 仅 Web 平台加载，避免覆盖原生 SQLite proxy -->
       <jeep-sqlite hidden wasmpath="assets"></jeep-sqlite>
       <script src="lib/capacitor.js" onerror="void(0)"></script>
-      <script src="lib/sqlite-plugin.js" onerror="void(0)"></script>
+      <script>
+        if (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web") {
+          document.write('<script src="lib/sqlite-plugin.js"><\/script>');
+        }
+      </script>
       <script type="module">
-        try { await import("./lib/jeep-sqlite/jeep-sqlite.esm.js"); }
-        catch (e) { console.warn("[NurseDB] jeep-sqlite 加载失败:", e.message); }
+        if (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web") {
+          try { await import("./lib/jeep-sqlite/jeep-sqlite.esm.js"); }
+          catch (e) { console.warn("[NurseDB] jeep-sqlite 加载失败:", e.message); }
+        }
       </script>
 
       <script src="db.js"></script>
