@@ -2226,22 +2226,28 @@
     document.body.classList.toggle("large-font", on);
   }
   async function exportData() {
-    const fs = (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) ? Capacitor.Plugins.Filesystem : null;
-    const dir = (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA";
-    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const backupDir = "nurse-backup-" + ts;
     try {
       const dbJson = window.NurseDB ? await NurseDB.exportToJson() : null;
       if (!dbJson) { toast("导出失败：数据库不可用"); return; }
-      if (fs) {
-        await fs.writeFile({ path: backupDir + "/nurse.db.json", data: dbJson, directory: dir, encoding: "utf8", recursive: true });
-        if (window.NurseImageStore) await NurseImageStore.copyImageDir(backupDir, dir);
-        toast("已保存到「文件」App → Nurse → " + backupDir);
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const filename = "nurse-backup-" + ts + ".db.json";
+      const isNative = (typeof Capacitor !== "undefined" && Capacitor.getPlatform && Capacitor.getPlatform() !== "web");
+      if (isNative) {
+        const fs = Capacitor.Plugins.Filesystem;
+        const { Share } = await import("@capacitor/share");
+        await fs.writeFile({ path: filename, data: dbJson, directory: "Cache", encoding: "utf8", recursive: true });
+        const uriRes = await fs.getUri({ path: filename, directory: "Cache" });
+        try {
+          await Share.share({ title: "护士数据备份", dialogTitle: "保存备份到「文件」App", files: [uriRes.uri] });
+          toast("请在分享菜单选「存储到文件」，保存到「我的 iPhone」任意位置");
+        } finally {
+          try { await fs.deleteFile({ path: filename, directory: "Cache" }); } catch (_) {}
+        }
       } else {
         const blob = new Blob([dbJson], { type: "application/json" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = backupDir + ".db.json";
+        a.download = filename;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         toast("已导出备份");
@@ -2251,20 +2257,12 @@
   let pendingImportText = null;
   async function importData(file) {
     try {
-      let text = "";
-      const fs = (typeof Capacitor !== "undefined" && Capacitor.Plugins && Capacitor.Plugins.Filesystem) ? Capacitor.Plugins.Filesystem : null;
-      const dir = (Capacitor.getPlatform && Capacitor.getPlatform() === "ios") ? "Documents" : "DATA";
-      if (fs) {
-        try { const res = await fs.readFile({ path: file.name, directory: dir, encoding: "utf8" }); text = res.data; } catch (_) {}
-      }
-      if (!text) {
-        text = await new Promise((resolve, reject) => {
-          const fr = new FileReader();
-          fr.onload = () => resolve(fr.result);
-          fr.onerror = () => reject(fr.error);
-          fr.readAsText(file);
-        });
-      }
+      const text = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsText(file);
+      });
       const parsed = JSON.parse(text);
       if (!parsed || typeof parsed !== "object" || !parsed.database || !Array.isArray(parsed.tables)) {
         toast("导入失败：文件格式不正确");
