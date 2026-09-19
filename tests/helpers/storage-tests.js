@@ -860,6 +860,45 @@ function registerStorageTests(NurseStorage) {
     assert.ok(found.rxImages[0].dataUrl, "药单图片应有 dataUrl");
   });
 
+  test("updateRecord 传入仅有 path 无 dataUrl 的图片不删原文件（回归·AI分析后图片消失）", async () => {
+    const rec = await NurseStorage.appendRecord({
+      hospital: "路径医院", visitDate: "2026-01-01", manual: true,
+      rxImages: [{ dataUrl: "data:image/jpeg;base64,keepRx", name: "rx.jpg", type: "image/jpeg" }],
+      examImages: [{ dataUrl: "data:image/jpeg;base64,keepEx", name: "ex.jpg", type: "image/jpeg" }],
+    });
+    const list = await NurseStorage.getRecords(false);
+    const saved = list.find((r) => r.id === rec.id);
+    const rxPath = saved.rxImages[0].path;
+    const exPath = saved.examImages[0].path;
+    const rxImgs = saved.rxImages.map((im) => ({ path: im.path, name: im.name, type: im.type }));
+    const exImgs = saved.examImages.map((im) => ({ path: im.path, name: im.name, type: im.type }));
+    await NurseStorage.updateRecord(rec.id, { rxImages: rxImgs, examImages: exImgs });
+    const after = await NurseStorage.getRecord(rec.id);
+    assert.strictEqual(after.rxImages.length, 1, "药单图片不应丢失");
+    assert.strictEqual(after.examImages.length, 1, "检查图片不应丢失");
+    assert.ok(after.rxImages[0].dataUrl, "药单图片文件应仍存在可读");
+    assert.ok(after.examImages[0].dataUrl, "检查图片文件应仍存在可读");
+    const afterList = await NurseStorage.getRecords(false);
+    const afterRec = afterList.find((r) => r.id === rec.id);
+    assert.strictEqual(afterRec.rxImages[0].path, rxPath, "药单图片 path 不变");
+    assert.strictEqual(afterRec.examImages[0].path, exPath, "检查图片 path 不变");
+  });
+
+  test("updateOrder 传入仅有 path 无 dataUrl 的图片不删原文件（回归）", async () => {
+    const o = await NurseStorage.upsertOrder({ source: "药单", date: "2026-01-01", kind: "hospital", medicines: [{ name: "阿司匹林", qty: 1 }] });
+    await NurseStorage.updateOrder(o.id, { images: [{ dataUrl: "data:image/jpeg;base64,ord1", name: "o.jpg", type: "image/jpeg" }] });
+    const orders = await NurseStorage.getOrders(false);
+    const saved = orders.find((x) => x.id === o.id);
+    const ordPath = saved.images[0].path;
+    await NurseStorage.updateOrder(o.id, { images: saved.images.map((im) => ({ path: im.path, name: im.name, type: im.type })) });
+    const after = await NurseStorage.getOrder(o.id);
+    assert.strictEqual(after.images.length, 1, "药单图片不应丢失");
+    assert.ok(after.images[0].dataUrl, "药单图片文件应仍存在可读");
+    const afterOrders = await NurseStorage.getOrders(false);
+    const afterOrd = afterOrders.find((x) => x.id === o.id);
+    assert.strictEqual(afterOrd.images[0].path, ordPath, "药单图片 path 不变");
+  });
+
   test("deleteRecord 清理图片", async () => {
     const rec = await NurseStorage.appendRecord({
       hospital: "H", visitDate: "2026-01-01", manual: true,

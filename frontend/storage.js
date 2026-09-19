@@ -116,12 +116,16 @@
     return out;
   }
 
-  async function _deleteImgsFromTable(table, idCol, idVal, kind) {
+  function _keepPathsFromImgs(imgs) {
+    return (imgs || []).filter((im) => im && im.path && !im.dataUrl).map((im) => im.path);
+  }
+  async function _deleteImgsFromTable(table, idCol, idVal, kind, keepPaths) {
     const hasKind = table === "record_images" && kind;
+    const keep = new Set(keepPaths || []);
     const rows = hasKind
       ? await DB.query(`SELECT path, name, type FROM ${table} WHERE ${idCol} = ? AND kind = ? ORDER BY sort_order`, [idVal, kind])
       : await _readImgPaths(table, idCol, idVal);
-    await IMG.deleteImages(rows.map((r) => r.path));
+    await IMG.deleteImages(rows.map((r) => r.path).filter((p) => !keep.has(p)));
     if (hasKind) {
       await DB.run(`DELETE FROM ${table} WHERE ${idCol} = ? AND kind = ?`, [idVal, kind]);
     } else {
@@ -402,9 +406,9 @@
        (merged.result && merged.result.engine) || null, (merged.result && merged.result.summary) || "", (merged.result && merged.result.disclaimer) || "",
        (merged.result && typeof merged.result.advice === "string") ? merged.result.advice : "", id]);
     if (patch.result !== undefined) { await _deleteResultSubTables(id); await _saveResultSubTables(id, merged.result); }
-    if (patch.images) { await _deleteImgsFromTable("record_images", "record_id", id, "image"); if (patch.images.length) await _saveImgsToTable("record_images", "record_id", id, patch.images); }
-    if (patch.rxImages) { await _deleteImgsFromTable("record_images", "record_id", id, "rx"); if (patch.rxImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.rxImages.map((im) => ({ ...im, kind: "rx" }))); }
-    if (patch.examImages) { await _deleteImgsFromTable("record_images", "record_id", id, "exam"); if (patch.examImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.examImages.map((im) => ({ ...im, kind: "exam" }))); }
+    if (patch.images) { await _deleteImgsFromTable("record_images", "record_id", id, "image", _keepPathsFromImgs(patch.images)); if (patch.images.length) await _saveImgsToTable("record_images", "record_id", id, patch.images); }
+    if (patch.rxImages) { await _deleteImgsFromTable("record_images", "record_id", id, "rx", _keepPathsFromImgs(patch.rxImages)); if (patch.rxImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.rxImages.map((im) => ({ ...im, kind: "rx" }))); }
+    if (patch.examImages) { await _deleteImgsFromTable("record_images", "record_id", id, "exam", _keepPathsFromImgs(patch.examImages)); if (patch.examImages.length) await _saveImgsToTable("record_images", "record_id", id, patch.examImages.map((im) => ({ ...im, kind: "exam" }))); }
     return await getRecord(id);
   }
 
@@ -447,7 +451,7 @@
       await DB.run(`INSERT INTO order_medicines (id, order_id, name, manufacturer, alias, spec, pack_count, qty, price, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [m.id || _uid("med_"), orderId, String(m.name).trim(), m.manufacturer || "", m.alias || "", m.spec || "", Number(m.packCount) || 0, Number(m.qty) || 0, Number(m.price) || 0, i]);
     }
-    await _deleteImgsFromTable("order_images", "order_id", orderId);
+    await _deleteImgsFromTable("order_images", "order_id", orderId, null, _keepPathsFromImgs(item.images));
     if (item.images && item.images.length) await _saveImgsToTable("order_images", "order_id", orderId, item.images);
   }
 
@@ -577,7 +581,7 @@
     const inds = item.indicators || [];
     for (let i = 0; i < inds.length; i++) { const x = inds[i]; if (!x || !x.name) continue;
       await DB.run("INSERT INTO report_indicators (report_id, name, value, unit, range, abnormal, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", [reportId, String(x.name).trim(), x.value === 0 || x.value ? String(x.value) : "", x.unit || "", x.range || "", x.abnormal ? 1 : 0, i]); }
-    await _deleteImgsFromTable("report_images", "report_id", reportId);
+    await _deleteImgsFromTable("report_images", "report_id", reportId, null, _keepPathsFromImgs(item.images));
     if (item.images && item.images.length) await _saveImgsToTable("report_images", "report_id", reportId, item.images);
   }
   async function getReports(withDataUrls) {
