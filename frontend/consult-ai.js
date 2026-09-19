@@ -57,16 +57,94 @@
     return messages.slice(-MAX_TURNS * 2);
   }
 
-  async function chat(messages, settings, onChunk) {
+  function _fmtTimeSlots(slots) {
+    const map = { morning: "早", noon: "午", evening: "晚" };
+    return (slots || []).map((s) => map[s] || s).join("/") || "未设置";
+  }
+
+  function _fmtMeal(meal) {
+    if (meal === "before") return "餐前";
+    if (meal === "after") return "餐后";
+    return "不限餐次";
+  }
+
+  function buildPatientContext(data) {
+    if (!data) return "";
+    const parts = [];
+
+    const drugs = (data.cabinet || []).filter((d) => d && d.status === "active");
+    if (drugs.length) {
+      const lines = drugs.map((d) => {
+        const name = d.name || "未知药品";
+        const spec = d.spec ? " " + d.spec : "";
+        const dose = d.doseAmount ? "，每次" + d.doseAmount + (d.doseUnit || "片") : "";
+        const times = "，" + _fmtTimeSlots(d.timeSlots) + _fmtMeal(d.meal) + "服用";
+        const disease = d.disease ? "（病种：" + d.disease + "）" : "";
+        return "- " + name + spec + dose + times + disease;
+      });
+      parts.push("当前用药：\n" + lines.join("\n"));
+    }
+
+    const reports = (data.reports || [])
+      .filter((r) => r && r.indicators && r.indicators.length)
+      .slice()
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+      .slice(0, 3);
+    if (reports.length) {
+      const lines = reports.map((r) => {
+        const date = r.date || "未注明日期";
+        const inds = (r.indicators || []).slice(0, 30).map((ind) => {
+          const nm = ind.name || "未知指标";
+          const val = ind.value != null && ind.value !== "" ? " " + ind.value + (ind.unit || "") : " 无数据";
+          const rng = ind.range ? "（参考" + ind.range : "（无参考范围";
+          const abn = ind.abnormal ? " ↑异常" : "";
+          return nm + val + rng + abn + "）";
+        });
+        return "- " + date + "：" + inds.join("，");
+      });
+      parts.push("最近检查指标（最近3次）：\n" + lines.join("\n"));
+    }
+
+    const followed = (data.followedIndicators || []).slice(0, 10);
+    if (followed.length) {
+      const allReports = (data.reports || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      const lines = [];
+      for (const f of followed) {
+        const fName = f.name;
+        if (!fName) continue;
+        let found = null;
+        for (const r of allReports) {
+          const ind = (r.indicators || []).find((i) => i.name === fName && i.value != null && i.value !== "");
+          if (ind) { found = { ind: ind, date: r.date }; break; }
+        }
+        if (found) {
+          const rng = f.range || found.ind.range || "无参考范围";
+          const abn = found.ind.abnormal ? " ↑异常" : "";
+          lines.push("- " + fName + "：" + found.ind.value + (found.ind.unit || "") + "（最近 " + (found.date || "未注明") + "，参考" + rng + abn + "）");
+        }
+      }
+      if (lines.length) parts.push("关注指标最新值：\n" + lines.join("\n"));
+    }
+
+    if (!parts.length) return "";
+    return "【用户病情】\n" + parts.join("\n");
+  }
+
+  async function chat(messages, settings, onChunk, data) {
     const config = getConfig(settings);
     if (!config) throw new Error("AI 未配置：请在设置页开启 AI 并配置 API Key");
 
     const history = _truncate(messages || []).map((m) => ({ role: m.role, content: m.content }));
-    const fullMessages = [{ role: "system", content: GENERAL_SKILL_PROMPT }].concat(history);
+    let systemContent = GENERAL_SKILL_PROMPT;
+    if (settings && settings.aiChatPatientContext !== false && data) {
+      const ctx = buildPatientContext(data);
+      if (ctx) systemContent = GENERAL_SKILL_PROMPT + "\n\n" + ctx;
+    }
+    const fullMessages = [{ role: "system", content: systemContent }].concat(history);
     const ai = (typeof window !== "undefined" && window.NurseAI) || null;
     if (!ai || typeof ai.chatStream !== "function") throw new Error("ai.js 未加载");
     return await ai.chatStream(fullMessages, config, onChunk, { temperature: 0.7 });
   }
 
-  return { isConfigured, getConfig, chat, GENERAL_SKILL_PROMPT };
+  return { isConfigured, getConfig, chat, buildPatientContext, GENERAL_SKILL_PROMPT };
 });

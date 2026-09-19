@@ -309,7 +309,7 @@
       const history = currentChat.messages.map((m) => ({ role: m.role, content: m.content }));
       const full = await window.NurseConsult.chat(history, data.settings, (partial) => {
         updateLoadingText(partial);
-      });
+      }, data);
       removeLoading();
       const aiMsg = { role: "assistant", content: full || "（回复为空）", ts: new Date().toISOString() };
       currentChat.messages.push(aiMsg);

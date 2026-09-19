@@ -146,6 +146,7 @@
     $("#ai-fields").hidden = !s.ai.enabled;
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
+    $("#opt-ai-context").checked = s.aiChatPatientContext !== false;
     document.body.classList.toggle("large-font", !!s.largeFont);
     renderAISummary();
     renderRemindersList();
@@ -2231,6 +2232,11 @@
     DATA = await NurseStorage.load();
     document.body.classList.toggle("large-font", on);
   }
+  async function toggleAiContext() {
+    const on = $("#opt-ai-context").checked;
+    await NurseStorage.updateSettings({ aiChatPatientContext: on });
+    DATA = await NurseStorage.load();
+  }
   async function exportData() {
     try {
       const dbJson = window.NurseDB ? await NurseDB.exportToJson() : null;
@@ -2675,6 +2681,7 @@
     ["#ai-baseurl", "#ai-model", "#ai-key"].forEach((s) => ($(s).onchange = saveAISettings));
     $("#opt-notify").onchange = toggleNotify;
     $("#opt-large").onchange = toggleLarge;
+    $("#opt-ai-context").onchange = toggleAiContext;
     $("#times-save").onclick = saveTimesModal;
     $("#times-cancel").onclick = closeTimesModal;
     $$("#times-modal [data-close-times]").forEach((el) => (el.onclick = closeTimesModal));
