@@ -436,12 +436,11 @@
   // ---------------- 药单 CRUD ----------------
   async function _rowToOrder(row, withDataUrls) {
     const meds = await DB.query("SELECT id, name, manufacturer, alias, spec, pack_count, qty, price FROM order_medicines WHERE order_id = ? ORDER BY sort_order", [row.id]);
-    const images = withDataUrls ? await _readImgDataUrls("order_images", "order_id", row.id) : await _readImgPaths("order_images", "order_id", row.id);
     return {
       id: row.id, source: row.source, date: row.date || "", kind: row.kind || "custom",
       recordId: row.record_id || "", aiGenerated: !!row.ai_generated,
       medicines: meds.map((m) => ({ id: m.id, name: m.name, manufacturer: m.manufacturer || "", alias: m.alias || "", spec: m.spec || "", packCount: Number(m.pack_count) || 0, qty: Number(m.qty) || 0, price: Number(m.price) || 0 })),
-      images,
+      images: [],
     };
   }
 
@@ -453,8 +452,6 @@
       await DB.run(`INSERT INTO order_medicines (id, order_id, name, manufacturer, alias, spec, pack_count, qty, price, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [m.id || _uid("med_"), orderId, String(m.name).trim(), m.manufacturer || "", m.alias || "", m.spec || "", Number(m.packCount) || 0, Number(m.qty) || 0, Number(m.price) || 0, i]);
     }
-    await _deleteImgsFromTable("order_images", "order_id", orderId, null, _keepPathsFromImgs(item.images));
-    if (item.images && item.images.length) await _saveImgsToTable("order_images", "order_id", orderId, item.images);
   }
 
   async function _syncCabinetForNewOrder(meds) {
@@ -519,7 +516,6 @@
     return await _rowToOrder((await DB.query("SELECT * FROM orders WHERE id = ?", [id]))[0], false);
   }
   async function deleteOrder(id) {
-    await _deleteImgsFromTable("order_images", "order_id", id);
     await DB.run("DELETE FROM order_medicines WHERE order_id = ?", [id]);
     await DB.run("DELETE FROM orders WHERE id = ?", [id]);
     await DB.run("UPDATE records SET order_id = '' WHERE order_id = ?", [id]);
@@ -571,11 +567,10 @@
   // ---------------- 检查报告 CRUD ----------------
   async function _rowToReport(row, withDataUrls) {
     const inds = await DB.query("SELECT name, value, unit, range, abnormal FROM report_indicators WHERE report_id = ? ORDER BY sort_order", [row.id]);
-    const images = withDataUrls ? await _readImgDataUrls("report_images", "report_id", row.id) : await _readImgPaths("report_images", "report_id", row.id);
     return {
       id: row.id, title: row.title || "检查报告", date: row.date || "", kind: row.kind || "hospital",
       recordId: row.record_id || "", aiGenerated: !!row.ai_generated,
-      indicators: inds.map((i) => ({ name: i.name, value: i.value, unit: i.unit, range: i.range, abnormal: !!i.abnormal })), images,
+      indicators: inds.map((i) => ({ name: i.name, value: i.value, unit: i.unit, range: i.range, abnormal: !!i.abnormal })), images: [],
     };
   }
   async function _saveReportSubTables(reportId, item) {
@@ -583,8 +578,6 @@
     const inds = item.indicators || [];
     for (let i = 0; i < inds.length; i++) { const x = inds[i]; if (!x || !x.name) continue;
       await DB.run("INSERT INTO report_indicators (report_id, name, value, unit, range, abnormal, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", [reportId, String(x.name).trim(), x.value === 0 || x.value ? String(x.value) : "", x.unit || "", x.range || "", x.abnormal ? 1 : 0, i]); }
-    await _deleteImgsFromTable("report_images", "report_id", reportId, null, _keepPathsFromImgs(item.images));
-    if (item.images && item.images.length) await _saveImgsToTable("report_images", "report_id", reportId, item.images);
   }
   async function getReports(withDataUrls) {
     const rows = await DB.query("SELECT * FROM reports ORDER BY date DESC");
@@ -608,7 +601,6 @@
     return await _rowToReport((await DB.query("SELECT * FROM reports WHERE id = ?", [id]))[0], false);
   }
   async function deleteReport(id) {
-    await _deleteImgsFromTable("report_images", "report_id", id);
     await DB.run("DELETE FROM report_indicators WHERE report_id = ?", [id]);
     await DB.run("DELETE FROM reports WHERE id = ?", [id]);
     await DB.run("UPDATE records SET report_id = '' WHERE report_id = ?", [id]);
@@ -881,7 +873,7 @@
 
   async function _resetForTest() {
     if (DB && DB.isReady()) {
-      const tables = ["record_images", "record_medications", "record_tasks", "record_tags", "record_risks", "record_exam_results", "record_prescriptions", "order_medicines", "order_images", "cabinet_time_slots", "report_indicators", "report_images", "consult_messages", "message_images", "reminders", "daily_done", "records", "orders", "cabinet_drugs", "reports", "consult_chats", "indicator_meta", "followed_indicators", "app_settings"];
+      const tables = ["record_images", "record_medications", "record_tasks", "record_tags", "record_risks", "record_exam_results", "record_prescriptions", "order_medicines", "cabinet_time_slots", "report_indicators", "consult_messages", "message_images", "reminders", "daily_done", "records", "orders", "cabinet_drugs", "reports", "consult_chats", "indicator_meta", "followed_indicators", "app_settings"];
       for (const t of tables) await DB.run(`DELETE FROM ${t}`, []);
       await DB.run("INSERT OR REPLACE INTO ai_settings (id, enabled, base_url, api_key, model) VALUES (1, 0, 'https://api.openai.com/v1', '', 'gpt-4o')", []);
     }

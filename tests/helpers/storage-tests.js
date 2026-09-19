@@ -76,18 +76,17 @@ function registerStorageTests(NurseStorage) {
     const srcOrder = await NurseStorage.upsertOrder({
       source: "市医院", date: "2026-08-20", kind: "hospital", recordId: rec1.id,
       medicines: [{ name: "氨氯地平", qty: 10 }, { name: "缬沙坦", qty: 5 }],
-      images: [{ name: "rx.jpg", type: "image/jpeg", dataUrl: "data:image/jpeg;base64,xxx" }],
     });
-    await NurseStorage.updateRecord(rec1.id, { orderId: srcOrder.id });
-    const srcOrderFull = await NurseStorage.getOrder(srcOrder.id, true);
+    await NurseStorage.updateRecord(rec1.id, { orderId: srcOrder.id, rxImages: [{ name: "rx.jpg", type: "image/jpeg", dataUrl: "data:image/jpeg;base64,xxx" }] });
+    const srcRec = await NurseStorage.getRecord(rec1.id);
+    const copyImages = srcRec.rxImages.map((im) => ({ name: im.name, type: im.type, dataUrl: im.dataUrl }));
     const copyItem = {
       source: "市医院", date: "2026-08-23", kind: "hospital", recordId: rec2.id,
       medicines: srcOrder.medicines.map((m) => ({ name: m.name, qty: m.qty })),
-      images: srcOrderFull.images.map((im) => ({ name: im.name, type: im.type, dataUrl: im.dataUrl })),
     };
     const copyOrder = await NurseStorage.upsertOrder(copyItem);
     await NurseStorage.updateOrder(srcOrder.id, { recordId: "" });
-    await NurseStorage.updateRecord(rec2.id, { orderId: copyOrder.id, rxImages: copyItem.images });
+    await NurseStorage.updateRecord(rec2.id, { orderId: copyOrder.id, rxImages: copyImages });
     const data = await NurseStorage.load();
     const old = data.orders.find((x) => x.id === srcOrder.id);
     const copy = data.orders.find((x) => x.id === copyOrder.id);
@@ -96,8 +95,8 @@ function registerStorageTests(NurseStorage) {
     assert.ok(copy, "新副本应存在");
     assert.strictEqual(copy.recordId, rec2.id, "副本应关联到本次记录");
     assert.strictEqual(copy.medicines.length, 2, "副本应含全部药品");
-    assert.ok(copy.images.length === 1, "副本应含图片");
     const r2 = data.records.find((x) => x.id === rec2.id);
+    assert.ok(r2.rxImages.length === 1, "副本应含图片（存于 record_images）");
     assert.strictEqual(r2.orderId, copyOrder.id, "本次记录应指向副本");
   });
 
@@ -882,21 +881,6 @@ function registerStorageTests(NurseStorage) {
     const afterRec = afterList.find((r) => r.id === rec.id);
     assert.strictEqual(afterRec.rxImages[0].path, rxPath, "药单图片 path 不变");
     assert.strictEqual(afterRec.examImages[0].path, exPath, "检查图片 path 不变");
-  });
-
-  test("updateOrder 传入仅有 path 无 dataUrl 的图片不删原文件（回归）", async () => {
-    const o = await NurseStorage.upsertOrder({ source: "药单", date: "2026-01-01", kind: "hospital", medicines: [{ name: "阿司匹林", qty: 1 }] });
-    await NurseStorage.updateOrder(o.id, { images: [{ dataUrl: "data:image/jpeg;base64,ord1", name: "o.jpg", type: "image/jpeg" }] });
-    const orders = await NurseStorage.getOrders(false);
-    const saved = orders.find((x) => x.id === o.id);
-    const ordPath = saved.images[0].path;
-    await NurseStorage.updateOrder(o.id, { images: saved.images.map((im) => ({ path: im.path, name: im.name, type: im.type })) });
-    const after = await NurseStorage.getOrder(o.id);
-    assert.strictEqual(after.images.length, 1, "药单图片不应丢失");
-    assert.ok(after.images[0].dataUrl, "药单图片文件应仍存在可读");
-    const afterOrders = await NurseStorage.getOrders(false);
-    const afterOrd = afterOrders.find((x) => x.id === o.id);
-    assert.strictEqual(afterOrd.images[0].path, ordPath, "药单图片 path 不变");
   });
 
   test("deleteRecord 清理图片", async () => {

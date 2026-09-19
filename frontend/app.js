@@ -527,8 +527,8 @@
     recDraft = {
       adviceText: (rec && rec.advice && rec.advice.text) || "",
       audio: (rec && rec.advice && rec.advice.audio) || null,
-      orderImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages.slice() : (linkedOrder ? (linkedOrder.images || []).slice() : []),
-      reportImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages.slice() : (linkedReport ? (linkedReport.images || []).slice() : []),
+      orderImages: (rec && rec.rxImages && rec.rxImages.length) ? rec.rxImages.slice() : [],
+      reportImages: (rec && rec.examImages && rec.examImages.length) ? rec.examImages.slice() : [],
     };
     const r = rec || {};
     const aiOn = DATA.settings.ai.enabled && DATA.settings.ai.apiKey;
@@ -789,20 +789,18 @@
       saved = await NurseStorage.appendRecord(Object.assign({ source: "text", transcript: payload.advice.text, manual: true, status: "done" }, payload));
       currentRecordId = saved.id;
     }
-    // 同步药单 / 检查报告的图片到关联实体（空数组也写入以覆盖删除）
+    // 同步药单 / 检查报告的属性到关联实体（图片统一存 record_images，不再同步到 order/report）
     if (saved.orderId) {
       const o = (DATA.orders || []).find((x) => x.id === saved.orderId);
-      const oPatch = { images: recDraft.orderImages };
-      // 医院药单：来源/日期随问诊记录同步
-      if (o && o.kind === "hospital") { oPatch.source = payload.hospital || o.source; oPatch.date = payload.visitDate || o.date; }
-      await NurseStorage.updateOrder(saved.orderId, oPatch);
+      if (o && o.kind === "hospital") {
+        await NurseStorage.updateOrder(saved.orderId, { source: payload.hospital || o.source, date: payload.visitDate || o.date });
+      }
     }
     if (saved.reportId) {
       const rp = (DATA.reports || []).find((x) => x.id === saved.reportId);
-      const rPatch = { images: recDraft.reportImages };
-      // 医院报告：标题/日期随问诊记录同步
-      if (rp && rp.kind === "hospital") { rPatch.title = payload.hospital || rp.title; rPatch.date = payload.visitDate || rp.date; }
-      await NurseStorage.updateReport(saved.reportId, rPatch);
+      if (rp && rp.kind === "hospital") {
+        await NurseStorage.updateReport(saved.reportId, { title: payload.hospital || rp.title, date: payload.visitDate || rp.date });
+      }
     }
     DATA = await NurseStorage.load();
     if (!opts.silent) {
@@ -862,8 +860,8 @@
       const res = await NurseAI.analyzeConsult({
         settings: DATA.settings,
         adviceText,
-        examImages: (recDraft && recDraft.reportImages && recDraft.reportImages.length) ? recDraft.reportImages : (rec && rec.examImages && rec.examImages.length ? rec.examImages : (linkedReport && linkedReport.images) || []),
-        rxImages: (recDraft && recDraft.orderImages && recDraft.orderImages.length) ? recDraft.orderImages : (rec && rec.rxImages && rec.rxImages.length ? rec.rxImages : (linkedOrder && linkedOrder.images) || []),
+        examImages: (recDraft && recDraft.reportImages && recDraft.reportImages.length) ? recDraft.reportImages : (rec && rec.examImages || []),
+        rxImages: (recDraft && recDraft.orderImages && recDraft.orderImages.length) ? recDraft.orderImages : (rec && rec.rxImages || []),
         onChunk: updateAIProgress,
       });
       aiModalState = { rec, data: res, type: "consult" };
@@ -876,7 +874,7 @@
     showAIProgress("🤖 AI 分析药单中…");
     try {
       const linkedOrder = rec.orderId ? (DATA.orders || []).find((o) => o.id === rec.orderId) : null;
-      const rxImages = (recDraft && recDraft.orderImages && recDraft.orderImages.length) ? recDraft.orderImages : (rec.rxImages && rec.rxImages.length ? rec.rxImages : (linkedOrder && linkedOrder.images) || []);
+      const rxImages = (recDraft && recDraft.orderImages && recDraft.orderImages.length) ? recDraft.orderImages : (rec.rxImages || []);
       if (!rxImages.length) { showAIError("无药单图片", "请先导入药单图片"); return; }
       const res = await NurseAI.analyzePrescription({ settings: DATA.settings, rxImages, onChunk: updateAIProgress });
       const prescription = res.prescription || [];
@@ -911,7 +909,7 @@
     showAIProgress("🤖 AI 分析检查报告中…");
     try {
       const linkedReport = rec.reportId ? (DATA.reports || []).find((rp) => rp.id === rec.reportId) : null;
-      const examImages = (recDraft && recDraft.reportImages && recDraft.reportImages.length) ? recDraft.reportImages : (rec.examImages && rec.examImages.length ? rec.examImages : (linkedReport && linkedReport.images) || []);
+      const examImages = (recDraft && recDraft.reportImages && recDraft.reportImages.length) ? recDraft.reportImages : (rec.examImages || []);
       if (!examImages.length) { showAIError("无报告图片", "请先导入检查报告图片"); return; }
       const followedIndicators = DATA.followedIndicators || [];
       if (!followedIndicators.length) { showAIError("未配置关注指标", "请先在「我的 → 关注指标」中添加关注指标"); return; }
@@ -1212,13 +1210,19 @@
   // 从历史药单/报告中选一个，复制内容（药品/指标 + 图片）创建新副本并关联到当前问诊记录；
   // 若当前记录已有关联，先解除旧关联（保留旧实体），再关联新副本。
   let copyPickKind = null;
+  function _copyImgCount(x, isOrder) {
+    if (!x.recordId) return 0;
+    const r = findRecord(x.recordId);
+    if (!r) return 0;
+    return isOrder ? (r.rxImages || []).length : (r.examImages || []).length;
+  }
   function openCopyPicker(kind) {
     copyPickKind = kind;
     const isOrder = kind === "order";
     const rec = currentRecordId ? findRecord(currentRecordId) : null;
     const curId = isOrder ? (rec && rec.orderId) : (rec && rec.reportId);
     const list = isOrder ? (DATA.orders || []) : (DATA.reports || []);
-    const candidates = list.filter((x) => x.id !== curId && (isOrder ? ((x.medicines || []).length || (x.images || []).length) : ((x.indicators || []).length || (x.images || []).length)));
+    const candidates = list.filter((x) => x.id !== curId && (isOrder ? ((x.medicines || []).length || _copyImgCount(x, true)) : ((x.indicators || []).length || _copyImgCount(x, false))));
     $("#copy-pick-title").textContent = isOrder ? "复制已有药单" : "复制已有检查报告";
     if (!candidates.length) {
       $("#copy-pick-list").innerHTML = '<div class="empty-tip" style="padding:18px;text-align:center">暂无可复制的' + (isOrder ? "药单" : "检查报告") + "</div>";
@@ -1226,7 +1230,7 @@
       $("#copy-pick-list").innerHTML = candidates.map((x) => {
         if (isOrder) {
           const cnt = (x.medicines || []).length;
-          const imgCnt = (x.images || []).length;
+          const imgCnt = _copyImgCount(x, true);
           return `<div class="copy-pick-item" data-id="${esc(x.id)}">
             <div class="copy-pick__title"><b>${esc(x.source || "未填来源")}</b><span class="copy-pick__date">${esc(x.date || "")}</span></div>
             <div class="copy-pick__meta">共 ${cnt} 种药品${imgCnt ? " · " + imgCnt + " 张图" : ""}</div>
@@ -1234,7 +1238,7 @@
           </div>`;
         }
         const inds = x.indicators || [];
-        const imgCnt = (x.images || []).length;
+        const imgCnt = _copyImgCount(x, false);
         return `<div class="copy-pick-item" data-id="${esc(x.id)}">
           <div class="copy-pick__title"><b>${esc(x.date || "")}</b>${x.title ? `<span class="copy-pick__date">${esc(x.title)}</span>` : ""}</div>
           <div class="copy-pick__meta">${inds.length} 项指标${imgCnt ? " · " + imgCnt + " 张图" : ""}</div>
@@ -1260,7 +1264,10 @@
     if (!rec) { toast("当前问诊记录不存在"); return; }
     const src = (isOrder ? (DATA.orders || []) : (DATA.reports || [])).find((x) => x.id === sourceId);
     if (!src) { toast("源数据不存在"); return; }
-    const srcImages = (src.images || []).map((im) => ({ name: im.name, type: im.type, dataUrl: im.dataUrl }));
+    const srcRec = src.recordId ? findRecord(src.recordId) : null;
+    const srcImages = isOrder
+      ? (srcRec && srcRec.rxImages ? srcRec.rxImages.slice() : [])
+      : (srcRec && srcRec.examImages ? srcRec.examImages.slice() : []);
     if (isOrder) {
       if (rec.orderId && rec.orderId !== sourceId) {
         const old = (DATA.orders || []).find((o) => o.id === rec.orderId);
@@ -1272,7 +1279,6 @@
         kind: "hospital",
         recordId: recId,
         medicines: (src.medicines || []).map((m) => ({ name: m.name, manufacturer: m.manufacturer, alias: m.alias, spec: m.spec, packCount: m.packCount, qty: m.qty, price: m.price })),
-        images: srcImages,
       };
       const savedOrder = await NurseStorage.upsertOrder(newItem);
       if (savedOrder && savedOrder.id) {
@@ -1294,7 +1300,6 @@
         kind: "hospital",
         recordId: recId,
         indicators: (src.indicators || []).map((x) => ({ name: x.name, value: x.value, unit: x.unit, range: x.range, abnormal: x.abnormal })),
-        images: srcImages,
       };
       const savedReport = await NurseStorage.upsertReport(newItem);
       if (savedReport && savedReport.id) {

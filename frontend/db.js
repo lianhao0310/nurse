@@ -164,14 +164,6 @@ CREATE TABLE IF NOT EXISTS order_medicines (
   price REAL DEFAULT 0,
   sort_order INTEGER DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS order_images (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id TEXT NOT NULL,
-  path TEXT NOT NULL,
-  name TEXT DEFAULT '',
-  type TEXT DEFAULT 'image/jpeg',
-  sort_order INTEGER DEFAULT 0
-);
 CREATE TABLE IF NOT EXISTS cabinet_drugs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -210,14 +202,6 @@ CREATE TABLE IF NOT EXISTS report_indicators (
   unit TEXT DEFAULT '',
   range TEXT DEFAULT '',
   abnormal INTEGER DEFAULT 0,
-  sort_order INTEGER DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS report_images (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  report_id TEXT NOT NULL,
-  path TEXT NOT NULL,
-  name TEXT DEFAULT '',
-  type TEXT DEFAULT 'image/jpeg',
   sort_order INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS consult_chats (
@@ -299,9 +283,7 @@ CREATE INDEX IF NOT EXISTS idx_record_tags_rid ON record_tags(record_id);
 CREATE INDEX IF NOT EXISTS idx_record_risks_rid ON record_risks(record_id);
 CREATE INDEX IF NOT EXISTS idx_record_exam_rid ON record_exam_results(record_id);
 CREATE INDEX IF NOT EXISTS idx_record_rx_rid ON record_prescriptions(record_id);
-CREATE INDEX IF NOT EXISTS idx_order_images_oid ON order_images(order_id);
 CREATE INDEX IF NOT EXISTS idx_report_ind_rid ON report_indicators(report_id);
-CREATE INDEX IF NOT EXISTS idx_report_images_rid ON report_images(report_id);
 CREATE INDEX IF NOT EXISTS idx_msg_images_mid ON message_images(message_id);
 CREATE INDEX IF NOT EXISTS idx_msgs_chat_id ON consult_messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_cabinet_ts_did ON cabinet_time_slots(drug_id);
