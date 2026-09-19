@@ -92,22 +92,33 @@
 
   // ===================== 初始化 =====================
   async function init() {
+    bindEvents();
     if (window.NurseDB) {
-      const ok = await NurseDB.init();
-      if (!ok && !NurseDB.isMemoryMode()) {
-        const err = NurseDB.getInitError();
-        const isWeb = (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web");
-        alert("数据库初始化失败，数据无法持久化。\n\n" + (err ? (err.message || String(err)) : "未知错误") + (isWeb ? "\n\n请确认 lib/ 目录下的 Web 依赖文件完整。" : "\n\n请确认已执行 pod install 并使用 .xcworkspace 构建。"));
+      try {
+        const ok = await Promise.race([
+          NurseDB.init(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("init 超时（15s）")), 15000)),
+        ]);
+        if (!ok && !NurseDB.isMemoryMode()) {
+          const err = NurseDB.getInitError();
+          const isWeb = (window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "web");
+          alert("数据库初始化失败，数据无法持久化。\n\n" + (err ? (err.message || String(err)) : "未知错误") + (isWeb ? "\n\n请确认 lib/ 目录下的 Web 依赖文件完整。" : "\n\n请确认已执行 pod install 并使用 .xcworkspace 构建。"));
+        }
+      } catch (e) {
+        console.error("[nurse] NurseDB.init() threw:", e);
       }
     }
-    DATA = await NurseStorage.load();
-    DATA.records = await NurseStorage.getRecords();
-    DATA.orders = await NurseStorage.getOrders();
-    DATA.reports = await NurseStorage.getReports();
-    DATA.consultChats = await NurseStorage.getConsultChats();
-    DATA.followedIndicators = DATA.followedIndicators || [];
+    try {
+      DATA = await NurseStorage.load();
+      DATA.records = await NurseStorage.getRecords();
+      DATA.orders = await NurseStorage.getOrders();
+      DATA.reports = await NurseStorage.getReports();
+      DATA.consultChats = await NurseStorage.getConsultChats();
+      DATA.followedIndicators = DATA.followedIndicators || [];
+    } catch (e) {
+      console.error("[nurse] 数据加载失败:", e);
+    }
     applySettingsUI();
-    bindEvents();
     if (window.NurseConsultChat) window.NurseConsultChat.init();
     setupSwipeBack();
     setupModalSwipeDown();
