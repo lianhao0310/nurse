@@ -29,7 +29,7 @@
       version: 3, updatedAt: null, lastDecrement: null,
       settings: {
         ai: { enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" },
-        notifications: false, largeFont: false, aiChatPatientContext: true,
+        notifications: false, largeFont: false,
         dailyDone: {}, reminders: [],
         reminderTimes: { morning: "08:00", noon: "12:30", evening: "19:00" },
       },

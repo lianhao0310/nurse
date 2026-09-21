@@ -146,7 +146,6 @@
     $("#ai-fields").hidden = !s.ai.enabled;
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
-    $("#opt-ai-context").checked = s.aiChatPatientContext !== false;
     document.body.classList.toggle("large-font", !!s.largeFont);
     renderAISummary();
     renderRemindersList();
@@ -2232,14 +2231,9 @@
     DATA = await NurseStorage.load();
     document.body.classList.toggle("large-font", on);
   }
-  async function toggleAiContext() {
-    const on = $("#opt-ai-context").checked;
-    await NurseStorage.updateSettings({ aiChatPatientContext: on });
-    DATA = await NurseStorage.load();
-  }
   async function exportData() {
     try {
-      const dbJson = window.NurseDB ? await NurseDB.exportToJson() : null;
+      const dbJson = await NurseStorage.exportJSON();
       if (!dbJson) { toast("导出失败：数据库不可用"); return; }
       const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const filename = "nurse-backup-" + ts + ".db.json";
@@ -2268,6 +2262,17 @@
     } catch (e) { console.error("export failed:", e); toast("导出失败"); }
   }
   let pendingImportText = null;
+  async function _refreshAfterImport() {
+    DATA = await NurseStorage.load();
+    DATA.records = await NurseStorage.getRecords();
+    DATA.orders = await NurseStorage.getOrders();
+    DATA.reports = await NurseStorage.getReports();
+    DATA.consultChats = await NurseStorage.getConsultChats();
+    applySettingsUI();
+    renderHome();
+    renderRecords();
+    renderCabinet();
+  }
   async function importData(file) {
     try {
       const text = await new Promise((resolve, reject) => {
@@ -2277,32 +2282,49 @@
         fr.readAsText(file);
       });
       const parsed = JSON.parse(text);
-      if (!parsed || typeof parsed !== "object" || !parsed.database || !Array.isArray(parsed.tables)) {
+      if (!parsed || typeof parsed !== "object") {
+        toast("导入失败：文件格式不正确");
+        return;
+      }
+      if (parsed.database && Array.isArray(parsed.tables)) {
+        if (!confirm("检测到旧格式备份，将全量覆盖现有数据，确定继续？")) return;
+        if (window.NurseDB) {
+          await NurseDB.close();
+          await NurseDB.importFromJson(text);
+          await NurseDB.init();
+        }
+        await _refreshAfterImport();
+        toast("已导入并恢复");
+        return;
+      }
+      const modules = [
+        ["records", "问诊记录", Array.isArray(parsed.records) && parsed.records.length],
+        ["orders", "药单", Array.isArray(parsed.orders) && parsed.orders.length],
+        ["reports", "检查报告", Array.isArray(parsed.reports) && parsed.reports.length],
+        ["cabinet", "药箱", Array.isArray(parsed.cabinet) && parsed.cabinet.length],
+        ["consultChats", "AI 聊天", Array.isArray(parsed.consultChats) && parsed.consultChats.length],
+        ["settings", "个人设置", !!parsed.settings],
+      ].filter(function (m) { return m[2]; });
+      if (!modules.length) {
         toast("导入失败：文件格式不正确");
         return;
       }
       pendingImportText = text;
-      if (!confirm("导入备份将覆盖现有全部数据，确定继续？")) { pendingImportText = null; return; }
-      await confirmImport();
+      $("#import-list").innerHTML = modules.map(function (m) {
+        return '<label class="import-item"><input type="checkbox" data-import-key="' + m[0] + '" checked /><span>' + m[1] + "</span></label>";
+      }).join("");
+      $("#import-modal").hidden = false;
     } catch (e) { console.error("import failed:", e); toast("导入失败：文件格式不正确"); }
   }
   async function confirmImport() {
     if (!pendingImportText) return;
+    var selection = {};
+    $$('#import-list input[type="checkbox"]').forEach(function (cb) { selection[cb.dataset.importKey] = cb.checked; });
+    $("#import-modal").hidden = true;
+    if (!Object.values(selection).some(Boolean)) { toast("未勾选任何项，已取消"); pendingImportText = null; return; }
     try {
-      if (window.NurseDB) {
-        await NurseDB.close();
-        await NurseDB.importFromJson(pendingImportText);
-        await NurseDB.init();
-      }
-      DATA = await NurseStorage.load();
-      DATA.records = await NurseStorage.getRecords();
-      DATA.orders = await NurseStorage.getOrders();
-      DATA.reports = await NurseStorage.getReports();
-      DATA.consultChats = await NurseStorage.getConsultChats();
-      applySettingsUI();
-      renderHome();
-      renderRecords();
-      renderCabinet();
+      await NurseStorage.importJSON(pendingImportText, selection);
+      await _refreshAfterImport();
       toast("已导入并恢复");
     } catch (e) { console.error("import failed:", e); toast("导入失败"); }
     pendingImportText = null;
@@ -2681,7 +2703,6 @@
     ["#ai-baseurl", "#ai-model", "#ai-key"].forEach((s) => ($(s).onchange = saveAISettings));
     $("#opt-notify").onchange = toggleNotify;
     $("#opt-large").onchange = toggleLarge;
-    $("#opt-ai-context").onchange = toggleAiContext;
     $("#times-save").onclick = saveTimesModal;
     $("#times-cancel").onclick = closeTimesModal;
     $$("#times-modal [data-close-times]").forEach((el) => (el.onclick = closeTimesModal));

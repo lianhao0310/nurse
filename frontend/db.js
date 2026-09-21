@@ -340,13 +340,20 @@ CREATE INDEX IF NOT EXISTS idx_daily_done_date ON daily_done(date);
         ]);
       }
 
-      await _sqlite.createConnection({
-        database: DB_NAME,
-        encrypted: false,
-        mode: "no-encryption",
-        version: APP_SCHEMA_VERSION,
-        readonly: false,
-      });
+      let connExists = false;
+      try {
+        const check = await _sqlite.isConnection({ database: DB_NAME });
+        connExists = !!(check && check.result);
+      } catch (_) {}
+      if (!connExists) {
+        await _sqlite.createConnection({
+          database: DB_NAME,
+          encrypted: false,
+          mode: "no-encryption",
+          version: APP_SCHEMA_VERSION,
+          readonly: false,
+        });
+      }
       await _sqlite.open({ database: DB_NAME });
 
       await _runMigrations();

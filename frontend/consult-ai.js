@@ -136,7 +136,7 @@
 
     const history = _truncate(messages || []).map((m) => ({ role: m.role, content: m.content }));
     let systemContent = GENERAL_SKILL_PROMPT;
-    if (settings && settings.aiChatPatientContext !== false && data) {
+    if (data) {
       const ctx = buildPatientContext(data);
       if (ctx) systemContent = GENERAL_SKILL_PROMPT + "\n\n" + ctx;
     }
