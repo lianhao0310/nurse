@@ -27,7 +27,7 @@ llama_model_handle llama_bridge_load_model(const char* path, int context_length)
     g_model = llama_model_load_from_file(path, model_params);
     if (!g_model) return nullptr;
 
-    g_ctx = llama_bridge_new_context(g_model, context_length);
+    llama_bridge_new_context(g_model, context_length);
     return (llama_model_handle)g_model;
 }
 
