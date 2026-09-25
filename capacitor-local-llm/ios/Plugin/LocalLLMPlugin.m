@@ -3,6 +3,8 @@
 #import <Capacitor/Capacitor-Swift.h>
 #import <Capacitor/CAPBridgedJSTypes.h>
 
+// Capacitor CLI plugin discovery: CAP_PLUGIN(LocalLLMPlugin, LocalLLM, ...)
+
 @interface CAPPluginCall (LocalLLMHelpers)
 - (NSString* _Nullable)getString:(NSString* _Nonnull)key;
 - (int)getInt:(NSString* _Nonnull)key defaultValue:(int)defaultValue;
