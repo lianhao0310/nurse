@@ -12,11 +12,8 @@ Pod::Spec.new do |s|
   s.swift_version = '5.0'
   s.dependency 'Capacitor'
   s.vendored_libraries = 'ios/Plugin/llama/lib/*.a'
-  s.xcconfig = {
+  s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/ios/Plugin/llama/include" "$(PODS_TARGET_SRCROOT)/ios/Plugin"',
     'OTHER_LDFLAGS' => '-lc++ -framework Foundation -framework Metal -framework MetalKit'
-  }
-  s.pod_target_xcconfig = {
-    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/ios/Plugin/llama/include" "$(PODS_TARGET_SRCROOT)/ios/Plugin"'
   }
 end
