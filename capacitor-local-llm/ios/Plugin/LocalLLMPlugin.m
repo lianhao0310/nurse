@@ -1,6 +1,5 @@
 #import "LocalLLMPlugin.h"
 #import "llama_bridge.h"
-#include <string>
 
 static void token_callback(const char* token, void* user_data) {
     LocalLLMPlugin* plugin = (__bridge LocalLLMPlugin*)user_data;

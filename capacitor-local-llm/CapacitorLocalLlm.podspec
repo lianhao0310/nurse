@@ -6,7 +6,7 @@ Pod::Spec.new do |s|
   s.license = { :type => 'MIT' }
   s.author = { 'Nurse' => 'nurse@example.com' }
   s.source = { :path => '.' }
-  s.source_files = 'ios/Plugin/*.{h,mm}'
+  s.source_files = 'ios/Plugin/*.{h,m,mm}'
   s.public_header_files = 'ios/Plugin/*.h'
   s.ios.deployment_target = '13.0'
   s.swift_version = '5.0'
