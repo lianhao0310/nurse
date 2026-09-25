@@ -18,7 +18,9 @@
 static void token_callback(const char* token, void* user_data) {
     LocalLLMPlugin* plugin = (__bridge LocalLLMPlugin*)user_data;
     NSString* tokenStr = [NSString stringWithUTF8String:token];
-    [plugin notifyListeners:@"local-llm-token" data:@{@"token": tokenStr}];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [plugin notifyListeners:@"local-llm-token" data:@{@"token": tokenStr}];
+    });
 }
 
 @implementation LocalLLMPlugin

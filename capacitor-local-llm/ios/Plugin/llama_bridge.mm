@@ -35,9 +35,9 @@ llama_context_handle llama_bridge_new_context(llama_model_handle model, int cont
     if (!model) return nullptr;
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = context_length;
-    ctx_params.n_batch = 512;
-    ctx_params.n_threads = 4;
-    ctx_params.n_threads_batch = 4;
+    ctx_params.n_batch = 256;
+    ctx_params.n_threads = 2;
+    ctx_params.n_threads_batch = 2;
     g_ctx = llama_init_from_model((llama_model*)model, ctx_params);
     return (llama_context_handle)g_ctx;
 }
