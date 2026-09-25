@@ -1,3 +1,5 @@
+apply plugin: 'com.android.library'
+
 android {
     namespace "com.nurse.plugins.localllm"
     compileSdkVersion 34
