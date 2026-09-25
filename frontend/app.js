@@ -2169,10 +2169,19 @@
   function closeAIEdit() { $("#ai-edit").hidden = true; $("#ai-summary").hidden = false; renderAISummary(); }
   async function saveAISettings() {
     const mode = $("#ai-mode-local").checked ? "local" : "custom";
-    await NurseStorage.updateSettings({
+    const patch = {
       ai: { enabled: $("#ai-enabled").checked, baseUrl: $("#ai-baseurl").value.trim(), apiKey: $("#ai-key").value.trim(), model: $("#ai-model").value.trim() || "gpt-4o" },
       activeAIMode: mode,
-    });
+    };
+    const urlEl = $("#local-model-url");
+    if (urlEl) {
+      const newUrl = urlEl.value.trim();
+      const lm = DATA.settings.localModel || {};
+      if (newUrl && newUrl !== lm.ggufUrl) {
+        patch.localModel = { ...lm, ggufUrl: newUrl, downloaded: false, localPath: "" };
+      }
+    }
+    await NurseStorage.updateSettings(patch);
     DATA = await NurseStorage.load();
     $("#ai-mode-section").hidden = !DATA.settings.ai.enabled;
     const m = DATA.settings.activeAIMode || "custom";
@@ -2185,6 +2194,8 @@
   function updateLocalModelUI() {
     const lm = DATA.settings.localModel;
     if (!lm) return;
+    const urlEl = $("#local-model-url");
+    if (urlEl && !urlEl.value) urlEl.value = lm.ggufUrl || "";
     $("#local-model-name").textContent = lm.name || "未知模型";
     $("#local-model-size").textContent = lm.sizeBytes ? "~" + Math.round(lm.sizeBytes / 1000000) + "MB" : "";
     const statusEl = $("#local-model-status");
@@ -2774,6 +2785,11 @@
     $("#ai-mode-local").onchange = () => { $("#ai-fields").hidden = true; $("#ai-local-fields").hidden = false; updateLocalModelUI(); };
     const dlBtn = $("#local-model-download-btn");
     if (dlBtn) dlBtn.onclick = downloadLocalModel;
+    const urlInput = $("#local-model-url");
+    if (urlInput) urlInput.onchange = () => {
+      $("#local-model-status").textContent = "未下载";
+      dlBtn.hidden = false;
+    };
     $("#opt-notify").onchange = toggleNotify;
     $("#opt-large").onchange = toggleLarge;
     $("#times-save").onclick = saveTimesModal;

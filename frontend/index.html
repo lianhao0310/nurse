@@ -178,6 +178,10 @@
                     <p class="hint">支持 OpenAI 兼容接口（含支持图片识别的模型）。密钥仅保存在本机。</p>
                   </div>
                   <div id="ai-local-fields" class="ai-local-fields" hidden>
+                    <label class="field">
+                      <span>模型地址 (GGUF URL)</span>
+                      <input type="text" id="local-model-url" placeholder="https://hf-mirror.com/.../model-q4_k_m.gguf" />
+                    </label>
                     <div class="local-model-info">
                       <div class="local-model-info__row"><span>模型</span><span id="local-model-name">Qwen2.5-0.5B</span></div>
                       <div class="local-model-info__row"><span>大小</span><span id="local-model-size">~400MB</span></div>
