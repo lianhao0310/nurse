@@ -2225,7 +2225,7 @@
         const v = Math.round(pct * 100);
         progFill.style.width = v + "%";
         progText.textContent = v + "%";
-      });
+      }, DATA.settings);
       await NurseStorage.updateSettings({ localModel: { ...lm, downloaded: true, localPath: result.localPath } });
       DATA = await NurseStorage.load();
       updateLocalModelUI();
