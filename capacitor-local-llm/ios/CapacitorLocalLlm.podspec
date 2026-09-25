@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name = 'LocalLLM'
+  s.name = 'CapacitorLocalLlm'
   s.version = '0.1.0'
   s.summary = 'On-device LLM inference via llama.cpp'
   s.homepage = 'https://github.com/nurse/capacitor-local-llm'

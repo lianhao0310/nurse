@@ -17,7 +17,7 @@ def capacitor_pods
   pod 'CapacitorLocalNotifications', :path => '../../node_modules/@capacitor/local-notifications'
   pod 'CapacitorShare', :path => '../../node_modules/@capacitor/share'
   pod 'CapacitorSplashScreen', :path => '../../node_modules/@capacitor/splash-screen'
-  pod 'LocalLLM', :path => '../../capacitor-local-llm/ios'
+  pod 'CapacitorLocalLlm', :path => '../../capacitor-local-llm'
 end
 
 target 'App' do
