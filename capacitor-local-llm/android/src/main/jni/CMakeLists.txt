@@ -19,5 +19,6 @@ endif()
 find_library(log-lib log)
 
 target_link_libraries(llama_bridge
+    PRIVATE
     ${log-lib}
 )
