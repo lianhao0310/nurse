@@ -97,7 +97,6 @@
           path: filePath,
           directory: "DOCUMENTS",
           data: _uint8ToBase64(data),
-          encoding: "base64",
           recursive: true,
         });
         isFirstChunk = false;
@@ -106,7 +105,6 @@
           path: filePath,
           directory: "DOCUMENTS",
           data: _uint8ToBase64(data),
-          encoding: "base64",
         });
       }
       downloaded += data.length;
