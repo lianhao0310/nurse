@@ -3,6 +3,8 @@ project(llama_bridge)
 
 set(CMAKE_CXX_STANDARD 17)
 
+set_source_files_properties(llama_bridge.mm PROPERTIES LANGUAGE CXX)
+
 add_library(llama_bridge SHARED
     jni_bridge.cpp
     llama_bridge.mm

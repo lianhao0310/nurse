@@ -7,7 +7,7 @@ PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PLUGIN_DIR/ios/Plugin/llama"
 SRC_DIR="$BUILD_DIR/src"
 
-echo "=== Building llama.cpp for iOS (arm64 + x86_64 simulator) ==="
+echo "=== Building llama.cpp for iOS (arm64 device) ==="
 
 mkdir -p "$BUILD_DIR"
 
@@ -44,14 +44,11 @@ build_arch() {
 }
 
 build_arch "arm64"
-build_arch "x86_64"
 
-echo "Creating universal static libraries..."
+echo "Copying static libraries..."
 mkdir -p "$BUILD_DIR/lib"
 
-# Collect all unique .a filenames from both builds
-ALL_LIBS=$(find "$SRC_DIR/build-arm64" "$SRC_DIR/build-x86_64" \
-    "$BUILD_DIR/install-arm64" "$BUILD_DIR/install-x86_64" \
+ALL_LIBS=$(find "$SRC_DIR/build-arm64" "$BUILD_DIR/install-arm64" \
     -name "*.a" -type f 2>/dev/null | xargs -I{} basename {} | sort -u)
 
 if [ -z "$ALL_LIBS" ]; then
@@ -63,19 +60,8 @@ fi
 
 for lib in $ALL_LIBS; do
     ARM64_FILE=$(find "$SRC_DIR/build-arm64" "$BUILD_DIR/install-arm64" -name "$lib" -type f 2>/dev/null | head -1)
-    X86_FILE=$(find "$SRC_DIR/build-x86_64" "$BUILD_DIR/install-x86_64" -name "$lib" -type f 2>/dev/null | head -1)
-
-    echo "Merging $lib:"
-    echo "  arm64: $ARM64_FILE"
-    echo "  x86_64: $X86_FILE"
-
-    if [ -n "$ARM64_FILE" ] && [ -n "$X86_FILE" ]; then
-        lipo -create "$ARM64_FILE" "$X86_FILE" -output "$BUILD_DIR/lib/$lib"
-    elif [ -n "$ARM64_FILE" ]; then
-        cp "$ARM64_FILE" "$BUILD_DIR/lib/$lib"
-    elif [ -n "$X86_FILE" ]; then
-        cp "$X86_FILE" "$BUILD_DIR/lib/$lib"
-    fi
+    echo "Copying $lib: $ARM64_FILE"
+    cp "$ARM64_FILE" "$BUILD_DIR/lib/$lib"
 done
 
 echo "Copying headers..."
