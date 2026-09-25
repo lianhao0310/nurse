@@ -33,6 +33,7 @@ build_arch() {
         -DLLAMA_BUILD_EXAMPLES=OFF \
         -DLLAMA_BUILD_SERVER=OFF \
         -DGGML_METAL=ON \
+        -DGGML_BLAS=OFF \
         -DGGML_OPENMP=OFF \
         -DBUILD_SHARED_LIBS=OFF
     cmake --build . --config Release -j$(sysctl -n hw.ncpu)
