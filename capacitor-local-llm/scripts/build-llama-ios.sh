@@ -24,6 +24,7 @@ build_arch() {
     rm -rf "build-$ARCH"
     mkdir -p "build-$ARCH" && cd "build-$ARCH"
     cmake .. \
+        -DCMAKE_SYSTEM_NAME=iOS \
         -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
         -DCMAKE_BUILD_TYPE=Release \
