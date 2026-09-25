@@ -1,5 +1,6 @@
 #import "LocalLLMPlugin.h"
 #import "llama_bridge.h"
+#import <Capacitor/CAPBridgedJSTypes.h>
 
 static void token_callback(const char* token, void* user_data) {
     LocalLLMPlugin* plugin = (__bridge LocalLLMPlugin*)user_data;
@@ -8,6 +9,17 @@ static void token_callback(const char* token, void* user_data) {
 }
 
 @implementation LocalLLMPlugin
+
+- (NSString *)identifier { return @"LocalLLM"; }
+- (NSString *)jsName { return @"LocalLLM"; }
+- (NSArray<CAPPluginMethod *> *)pluginMethods {
+    NSMutableArray *methods = [NSMutableArray new];
+    [methods addObject:[[CAPPluginMethod alloc] initWithName:@"loadModel" returnType:CAPPluginReturnPromise]];
+    [methods addObject:[[CAPPluginMethod alloc] initWithName:@"generate" returnType:CAPPluginReturnPromise]];
+    [methods addObject:[[CAPPluginMethod alloc] initWithName:@"unload" returnType:CAPPluginReturnPromise]];
+    [methods addObject:[[CAPPluginMethod alloc] initWithName:@"isModelLoaded" returnType:CAPPluginReturnPromise]];
+    return methods;
+}
 
 - (NSString*)resolveAbsolutePath:(NSString*)path {
     if ([path hasPrefix:@"/"]) return path;
