@@ -12,7 +12,7 @@ add_library(llama_bridge SHARED
 set(LLAMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp)
 if(EXISTS ${LLAMA_DIR})
     add_compile_definitions(_GNU_SOURCE)
-    add_compile_definitions(POSIX_MADV_WILLNEED=3 POSIX_MADV_RANDOM=2)
+    add_compile_definitions(POSIX_MADV_WILLNEED=3 POSIX_MADV_RANDOM=2 posix_madvise=madvise)
     include(${LLAMA_DIR}/cmake/build-info.cmake OPTIONAL)
     add_subdirectory(${LLAMA_DIR} llama_build)
     target_link_libraries(llama_bridge PRIVATE llama ggml)

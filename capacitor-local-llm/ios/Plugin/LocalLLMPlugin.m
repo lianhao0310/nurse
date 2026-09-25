@@ -1,6 +1,17 @@
 #import "LocalLLMPlugin.h"
 #import "llama_bridge.h"
+#import <Capacitor/Capacitor-Swift.h>
 #import <Capacitor/CAPBridgedJSTypes.h>
+
+@interface CAPPluginCall (LocalLLMHelpers)
+- (NSString* _Nullable)getString:(NSString* _Nonnull)key;
+- (int)getInt:(NSString* _Nonnull)key defaultValue:(int)defaultValue;
+- (double)getDouble:(NSString* _Nonnull)key defaultValue:(double)defaultValue;
+- (NSArray* _Nullable)getArray:(NSString* _Nonnull)key defaultValue:(NSArray* _Nonnull)defaultValue;
+- (void)reject:(NSString* _Nonnull)message;
+- (void)resolve;
+- (void)resolve:(NSDictionary* _Nullable)data;
+@end
 
 static void token_callback(const char* token, void* user_data) {
     LocalLLMPlugin* plugin = (__bridge LocalLLMPlugin*)user_data;
