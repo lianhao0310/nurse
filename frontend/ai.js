@@ -681,6 +681,7 @@
       contextLength: lm.contextLength || 512,
       maxTokens: 512,
       temperature: 0.2,
+      expectedSize: lm.sizeBytes || 0,
     });
     var parsed = _extractJSON(text);
     return _coerce(parsed);
@@ -699,6 +700,7 @@
       contextLength: ctxLen,
       maxTokens: (options && options.maxTokens) || 512,
       temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
+      expectedSize: localModel.sizeBytes || 0,
     }, function (token) {
       full += token;
       if (onChunk) onChunk(full);

@@ -67,8 +67,13 @@
       downloaded = stat.size || 0;
     } catch (e) { }
 
-    if (totalSize && downloaded >= totalSize) {
+    if (totalSize && downloaded === totalSize) {
       return { localPath: filePath, size: downloaded };
+    }
+
+    if (downloaded > 0 && totalSize && downloaded !== totalSize) {
+      try { await fs.deleteFile({ path: filePath, directory: "DOCUMENTS" }); } catch (e) { }
+      downloaded = 0;
     }
 
     var headers = {};
@@ -123,6 +128,18 @@
     if (!ggufPath) throw new Error("未指定模型路径");
 
     if (!_loaded) {
+      var fs = _getFilesystem();
+      if (fs && opts.expectedSize) {
+        try {
+          var stat = await fs.stat({ path: ggufPath, directory: "DOCUMENTS" });
+          if (stat.size !== opts.expectedSize) {
+            throw new Error("模型文件大小不匹配（" + stat.size + " vs " + opts.expectedSize + "），请重新下载模型");
+          }
+        } catch (e) {
+          if (e.message && e.message.indexOf("模型文件大小") >= 0) throw e;
+          throw new Error("模型文件不存在或不可访问，请先下载模型");
+        }
+      }
       await plugin.loadModel({
         ggufPath: ggufPath,
         contextLength: opts.contextLength || 512,
