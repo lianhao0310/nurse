@@ -1,0 +1,15 @@
+{
+  "name": "capacitor-local-llm",
+  "version": "0.1.0",
+  "description": "Capacitor plugin for on-device LLM inference via llama.cpp",
+  "main": "dist/index.js",
+  "files": ["dist/", "ios/", "android/", "scripts/"],
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  },
+  "scripts": {
+    "build:llama:ios": "bash scripts/build-llama-ios.sh",
+    "build:llama:android": "bash scripts/build-llama-android.sh"
+  }
+}

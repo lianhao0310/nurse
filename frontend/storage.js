@@ -29,6 +29,16 @@
       version: 3, updatedAt: null, lastDecrement: null,
       settings: {
         ai: { enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o" },
+        activeAIMode: null,
+        localModel: {
+          modelId: "qwen2.5-0.5b-instruct",
+          name: "Qwen2.5-0.5B",
+          ggufUrl: "https://hf-mirror.com/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+          sizeBytes: 400000000,
+          contextLength: 2048,
+          downloaded: false,
+          localPath: "",
+        },
         notifications: false, largeFont: false,
         dailyDone: {}, reminders: [],
         reminderTimes: { morning: "08:00", noon: "12:30", evening: "19:00" },
@@ -321,6 +331,8 @@
       for (const r of settingsRows) sm[r.key] = r.value;
       data.settings.notifications = sm.notifications === "true" || sm.notifications === true;
       data.settings.largeFont = sm.largeFont === "true" || sm.largeFont === true;
+      if (sm.activeAIMode) data.settings.activeAIMode = sm.activeAIMode;
+      if (sm.localModel) { try { data.settings.localModel = JSON.parse(sm.localModel); } catch (e) {} }
       data.settings.reminderTimes = _normReminderTimes({ morning: sm.reminderTimes_morning, noon: sm.reminderTimes_noon, evening: sm.reminderTimes_evening });
       data.lastDecrement = sm.lastDecrement || null;
 
@@ -687,6 +699,8 @@
     const _set = async (k, v) => { await DB.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", [k, String(v)]); };
     if (patch.notifications !== undefined) await _set("notifications", patch.notifications);
     if (patch.largeFont !== undefined) await _set("largeFont", patch.largeFont);
+    if (patch.activeAIMode !== undefined) await _set("activeAIMode", patch.activeAIMode || "");
+    if (patch.localModel !== undefined) await _set("localModel", JSON.stringify(patch.localModel));
     if (patch.reminderTimes) {
       await _set("reminderTimes_morning", patch.reminderTimes.morning || "08:00");
       await _set("reminderTimes_noon", patch.reminderTimes.noon || "12:30");
@@ -840,6 +854,8 @@
       }
       if (s.notifications !== undefined) patch.notifications = s.notifications;
       if (s.largeFont !== undefined) patch.largeFont = s.largeFont;
+      if (s.activeAIMode !== undefined) patch.activeAIMode = s.activeAIMode;
+      if (s.localModel && typeof s.localModel === "object") patch.localModel = s.localModel;
       if (s.reminderTimes) patch.reminderTimes = s.reminderTimes;
       if (Array.isArray(s.reminders)) patch.reminders = s.reminders;
       if (Object.keys(patch).length) await updateSettings(patch);

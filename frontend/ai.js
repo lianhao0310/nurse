@@ -180,6 +180,9 @@
 
   async function parse(opts) {
     const settings = opts.settings || {};
+    if (settings.activeAIMode === "local") {
+      return await _parseLocal(opts);
+    }
     const ai = settings.ai || {};
     if (!ai.enabled || !ai.apiKey) {
       throw new Error("AI 未启用或未配置 API Key");
@@ -589,6 +592,9 @@
   // options: { temperature }
   // 返回完整文本
   async function chatStream(messages, config, onChunk, options) {
+    if (options && options.localModel) {
+      return await _chatStreamLocal(messages, options.localModel, onChunk, options);
+    }
     const baseUrl = (config.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
     const model = config.model || "gpt-4o";
     if (!config.apiKey) throw new Error("未配置 API Key");
@@ -647,6 +653,57 @@
     const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
     if (onChunk) onChunk(content || "");
     return content || "";
+  }
+
+  function _truncateContext(messages, maxChars) {
+    var total = JSON.stringify(messages).length;
+    if (total <= maxChars) return messages;
+    var system = messages[0] && messages[0].role === "system" ? [messages[0]] : [];
+    var rest = messages[0] && messages[0].role === "system" ? messages.slice(1) : messages;
+    while (rest.length > 1 && JSON.stringify(system.concat(rest)).length > maxChars) {
+      rest.shift();
+    }
+    return system.concat(rest);
+  }
+
+  async function _parseLocal(opts) {
+    var settings = opts.settings || {};
+    var lm = settings.localModel;
+    if (!lm || !lm.downloaded) throw new Error("本地模型未下载，请先在设置中下载模型");
+    var llm = typeof window !== "undefined" && window.NurseLocalLLM;
+    if (!llm) throw new Error("本地推理模块未加载");
+    var transcript = opts.transcript || "";
+    if (!transcript.trim()) throw new Error("本地模式仅支持文字解析，请输入文字内容");
+    var prompt = SYSTEM_PROMPT + "\n\n【问诊文字】\n" + transcript.trim() + "\n\n请仅输出一个 JSON 对象，不要任何额外说明文字或代码围栏。";
+    var text = await llm.generate({
+      prompt: prompt,
+      ggufPath: lm.localPath,
+      contextLength: lm.contextLength || 2048,
+      maxTokens: 512,
+      temperature: 0.2,
+    });
+    var parsed = _extractJSON(text);
+    return _coerce(parsed);
+  }
+
+  async function _chatStreamLocal(messages, localModel, onChunk, options) {
+    var llm = typeof window !== "undefined" && window.NurseLocalLLM;
+    if (!llm) throw new Error("本地推理模块未加载");
+    if (!localModel.downloaded) throw new Error("本地模型未下载，请先在设置中下载模型");
+    var ctxLen = localModel.contextLength || 2048;
+    var msgs = _truncateContext(messages, ctxLen * 3);
+    var full = "";
+    var text = await llm.generate({
+      messages: msgs,
+      ggufPath: localModel.localPath,
+      contextLength: ctxLen,
+      maxTokens: (options && options.maxTokens) || 512,
+      temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
+    }, function (token) {
+      full += token;
+      if (onChunk) onChunk(full);
+    });
+    return full || text;
   }
 
   return { parse, isConfigured, SYSTEM_PROMPT, analyzeConsult, analyzeAdvice, transcribeAudio, analyzeReport, analyzePrescription, chatStream };

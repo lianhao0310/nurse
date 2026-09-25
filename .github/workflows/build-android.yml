@@ -41,6 +41,14 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
+      - name: Clone llama.cpp for Android NDK
+        run: |
+          if [ -f capacitor-local-llm/scripts/build-llama-android.sh ]; then
+            bash capacitor-local-llm/scripts/build-llama-android.sh
+          else
+            echo "capacitor-local-llm not found, skipping"
+          fi
+
       - name: Run unit tests (CI subset)
         run: npm run test:ci
 

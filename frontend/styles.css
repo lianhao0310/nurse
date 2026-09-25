@@ -440,6 +440,65 @@ textarea {
   margin-top: 4px;
   padding-top: 8px;
 }
+.ai-mode-section {
+  margin-top: 8px;
+}
+.ai-mode-switch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ai-mode-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.ai-mode-option input {
+  margin: 0;
+}
+.ai-mode-option:has(input:checked) {
+  border-color: var(--accent, #4f8df5);
+  background: rgba(79, 141, 245, 0.08);
+}
+.ai-local-fields {
+  border-top: 1px dashed var(--line);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.local-model-info {
+  margin: 8px 0;
+}
+.local-model-info__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85em;
+  padding: 3px 0;
+}
+.local-model-info__row span:first-child {
+  color: var(--ink-2);
+}
+.local-model-progress {
+  margin: 8px 0;
+}
+.local-model-progress__bar {
+  height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.local-model-progress__fill {
+  height: 100%;
+  background: var(--accent, #4f8df5);
+  width: 0%;
+  transition: width 0.2s;
+}
 .field {
   display: block;
   margin: 10px 0;

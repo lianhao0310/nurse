@@ -143,7 +143,13 @@
     $("#ai-baseurl").value = s.ai.baseUrl || "https://api.openai.com/v1";
     $("#ai-model").value = s.ai.model || "gpt-4o";
     $("#ai-key").value = s.ai.apiKey || "";
-    $("#ai-fields").hidden = !s.ai.enabled;
+    $("#ai-mode-section").hidden = !s.ai.enabled;
+    const mode = s.activeAIMode || "custom";
+    $("#ai-mode-custom").checked = mode === "custom";
+    $("#ai-mode-local").checked = mode === "local";
+    $("#ai-fields").hidden = mode !== "custom";
+    $("#ai-local-fields").hidden = mode !== "local";
+    updateLocalModelUI();
     $("#opt-notify").checked = !!s.notifications;
     $("#opt-large").checked = !!s.largeFont;
     document.body.classList.toggle("large-font", !!s.largeFont);
@@ -2147,16 +2153,79 @@
   function renderAISummary() {
     const txt = $("#ai-summary-text");
     if (!txt) return;
-    if (DATA.settings.ai.enabled) { txt.textContent = "已开启 · " + (DATA.settings.ai.model || "gpt-4o"); txt.classList.add("on"); }
+    const s = DATA.settings;
+    if (s.ai.enabled) {
+      if (s.activeAIMode === "local") {
+        const lm = s.localModel || {};
+        txt.textContent = "已开启 · 本地模型" + (lm.downloaded ? "（已就绪）" : "（未下载）");
+      } else {
+        txt.textContent = "已开启 · " + (s.ai.model || "gpt-4o");
+      }
+      txt.classList.add("on");
+    }
     else { txt.textContent = "未开启（使用本地引擎）"; txt.classList.remove("on"); }
   }
   function openAIEdit() { $("#ai-summary").hidden = true; $("#ai-edit").hidden = false; }
   function closeAIEdit() { $("#ai-edit").hidden = true; $("#ai-summary").hidden = false; renderAISummary(); }
   async function saveAISettings() {
-    await NurseStorage.updateSettings({ ai: { enabled: $("#ai-enabled").checked, baseUrl: $("#ai-baseurl").value.trim(), apiKey: $("#ai-key").value.trim(), model: $("#ai-model").value.trim() || "gpt-4o" } });
+    const mode = $("#ai-mode-local").checked ? "local" : "custom";
+    await NurseStorage.updateSettings({
+      ai: { enabled: $("#ai-enabled").checked, baseUrl: $("#ai-baseurl").value.trim(), apiKey: $("#ai-key").value.trim(), model: $("#ai-model").value.trim() || "gpt-4o" },
+      activeAIMode: mode,
+    });
     DATA = await NurseStorage.load();
-    $("#ai-fields").hidden = !DATA.settings.ai.enabled;
+    $("#ai-mode-section").hidden = !DATA.settings.ai.enabled;
+    const m = DATA.settings.activeAIMode || "custom";
+    $("#ai-fields").hidden = m !== "custom";
+    $("#ai-local-fields").hidden = m !== "local";
+    updateLocalModelUI();
     toast("AI 设置已保存");
+  }
+
+  function updateLocalModelUI() {
+    const lm = DATA.settings.localModel;
+    if (!lm) return;
+    $("#local-model-name").textContent = lm.name || "未知模型";
+    $("#local-model-size").textContent = lm.sizeBytes ? "~" + Math.round(lm.sizeBytes / 1000000) + "MB" : "";
+    const statusEl = $("#local-model-status");
+    const dlBtn = $("#local-model-download-btn");
+    if (lm.downloaded) {
+      statusEl.textContent = "已就绪";
+      dlBtn.hidden = true;
+    } else {
+      statusEl.textContent = "未下载";
+      dlBtn.hidden = false;
+    }
+  }
+
+  async function downloadLocalModel() {
+    const lm = DATA.settings.localModel;
+    if (!lm || lm.downloaded) return;
+    const llm = window.NurseLocalLLM;
+    if (!llm || typeof llm.downloadModel !== "function") { toast("本地推理模块未加载"); return; }
+    const progArea = $("#local-model-progress");
+    const progFill = $("#local-model-progress-fill");
+    const progText = $("#local-model-progress-text");
+    const dlBtn = $("#local-model-download-btn");
+    dlBtn.hidden = true;
+    progArea.hidden = false;
+    try {
+      const result = await llm.downloadModel(function(pct) {
+        const v = Math.round(pct * 100);
+        progFill.style.width = v + "%";
+        progText.textContent = v + "%";
+      });
+      await NurseStorage.updateSettings({ localModel: { ...lm, downloaded: true, localPath: result.localPath } });
+      DATA = await NurseStorage.load();
+      updateLocalModelUI();
+      renderAISummary();
+      toast("模型下载完成");
+    } catch (e) {
+      toast("下载失败：" + (e.message || e));
+      dlBtn.hidden = false;
+    } finally {
+      progArea.hidden = true;
+    }
   }
 
   function renderTcmAISummary() {}
@@ -2701,6 +2770,10 @@
     // 设置
     $("#ai-enabled").onchange = saveAISettings;
     ["#ai-baseurl", "#ai-model", "#ai-key"].forEach((s) => ($(s).onchange = saveAISettings));
+    $("#ai-mode-custom").onchange = () => { $("#ai-fields").hidden = false; $("#ai-local-fields").hidden = true; };
+    $("#ai-mode-local").onchange = () => { $("#ai-fields").hidden = true; $("#ai-local-fields").hidden = false; updateLocalModelUI(); };
+    const dlBtn = $("#local-model-download-btn");
+    if (dlBtn) dlBtn.onclick = downloadLocalModel;
     $("#opt-notify").onchange = toggleNotify;
     $("#opt-large").onchange = toggleLarge;
     $("#times-save").onclick = saveTimesModal;

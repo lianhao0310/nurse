@@ -151,20 +151,46 @@
                   <input type="checkbox" id="ai-enabled" />
                   <span class="switch"></span>
                 </label>
-                <div id="ai-fields" class="ai-fields" hidden>
-                  <label class="field">
-                    <span>接口地址 (Base URL)</span>
-                    <input type="text" id="ai-baseurl" placeholder="https://api.openai.com/v1" />
-                  </label>
-                  <label class="field">
-                    <span>模型 (Model)</span>
-                    <input type="text" id="ai-model" placeholder="gpt-4o" />
-                  </label>
-                  <label class="field">
-                    <span>API Key</span>
-                    <input type="password" id="ai-key" placeholder="sk-..." autocomplete="off" />
-                  </label>
-                  <p class="hint">支持 OpenAI 兼容接口（含支持图片识别的模型）。密钥仅保存在本机。</p>
+                <div id="ai-mode-section" class="ai-mode-section" hidden>
+                  <div class="ai-mode-switch">
+                    <label class="ai-mode-option">
+                      <input type="radio" name="ai-mode" value="custom" id="ai-mode-custom" checked />
+                      <span>☁️ 云端模型</span>
+                    </label>
+                    <label class="ai-mode-option">
+                      <input type="radio" name="ai-mode" value="local" id="ai-mode-local" />
+                      <span>📱 本地模型</span>
+                    </label>
+                  </div>
+                  <div id="ai-fields" class="ai-fields">
+                    <label class="field">
+                      <span>接口地址 (Base URL)</span>
+                      <input type="text" id="ai-baseurl" placeholder="https://api.openai.com/v1" />
+                    </label>
+                    <label class="field">
+                      <span>模型 (Model)</span>
+                      <input type="text" id="ai-model" placeholder="gpt-4o" />
+                    </label>
+                    <label class="field">
+                      <span>API Key</span>
+                      <input type="password" id="ai-key" placeholder="sk-..." autocomplete="off" />
+                    </label>
+                    <p class="hint">支持 OpenAI 兼容接口（含支持图片识别的模型）。密钥仅保存在本机。</p>
+                  </div>
+                  <div id="ai-local-fields" class="ai-local-fields" hidden>
+                    <div class="local-model-info">
+                      <div class="local-model-info__row"><span>模型</span><span id="local-model-name">Qwen2.5-0.5B</span></div>
+                      <div class="local-model-info__row"><span>大小</span><span id="local-model-size">~400MB</span></div>
+                      <div class="local-model-info__row"><span>状态</span><span id="local-model-status">未下载</span></div>
+                    </div>
+                    <button class="btn btn-primary block" id="local-model-download-btn" type="button">下载模型</button>
+                    <div id="local-model-progress" class="local-model-progress" hidden>
+                      <div class="local-model-progress__bar"><div id="local-model-progress-fill" class="local-model-progress__fill"></div></div>
+                      <span id="local-model-progress-text">准备中…</span>
+                    </div>
+                    <p class="hint">本地模型在设备端运行，断网可用，隐私数据不离开设备。仅支持文字解析。</p>
+                    <p class="hint" id="local-model-img-hint">本地模型不支持图片，切至云端模型可解析图片。</p>
+                  </div>
                 </div>
                 <button class="btn btn-primary block" id="ai-done-btn" type="button">完成</button>
               </div>
@@ -620,6 +646,7 @@
       <script src="image-store.js"></script>
       <script src="storage.js"></script>
       <script src="engine.js"></script>
+      <script src="local-llm.js"></script>
       <script src="ai.js"></script>
       <script src="consult-ai.js"></script>
       <script src="consult-chat.js"></script>

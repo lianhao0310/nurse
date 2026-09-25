@@ -1,0 +1,47 @@
+name: Build llama.cpp Native Libraries
+
+# 编译 llama.cpp 为 iOS 静态库和 Android JNI 源码
+# 产物上传为 artifact，供 build-ios.yml / build-android.yml 使用
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'capacitor-local-llm/scripts/**'
+    branches: [master, main]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build llama.cpp for iOS
+        run: bash capacitor-local-llm/scripts/build-llama-ios.sh
+
+      - name: Upload iOS libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-ios-libs
+          path: |
+            capacitor-local-llm/ios/Plugin/llama/lib/
+            capacitor-local-llm/ios/Plugin/llama/include/
+          retention-days: 30
+
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clone llama.cpp for Android NDK
+        run: bash capacitor-local-llm/scripts/build-llama-android.sh
+
+      - name: Upload Android llama.cpp source
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-android-src
+          path: capacitor-local-llm/android/src/main/jni/llama.cpp/
+          retention-days: 30

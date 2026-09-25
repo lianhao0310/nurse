@@ -49,6 +49,9 @@
   }
 
   function isConfigured(settings) {
+    if (settings && settings.activeAIMode === "local") {
+      return !!(settings.localModel && settings.localModel.downloaded);
+    }
     return !!getConfig(settings);
   }
 
@@ -131,9 +134,6 @@
   }
 
   async function chat(messages, settings, onChunk, data) {
-    const config = getConfig(settings);
-    if (!config) throw new Error("AI 未配置：请在设置页开启 AI 并配置 API Key");
-
     const history = _truncate(messages || []).map((m) => ({ role: m.role, content: m.content }));
     let systemContent = GENERAL_SKILL_PROMPT;
     if (data) {
@@ -143,6 +143,13 @@
     const fullMessages = [{ role: "system", content: systemContent }].concat(history);
     const ai = (typeof window !== "undefined" && window.NurseAI) || null;
     if (!ai || typeof ai.chatStream !== "function") throw new Error("ai.js 未加载");
+
+    if (settings && settings.activeAIMode === "local") {
+      return await ai.chatStream(fullMessages, null, onChunk, { temperature: 0.7, localModel: settings.localModel });
+    }
+
+    const config = getConfig(settings);
+    if (!config) throw new Error("AI 未配置：请在设置页开启 AI 并配置 API Key");
     return await ai.chatStream(fullMessages, config, onChunk, { temperature: 0.7 });
   }
 

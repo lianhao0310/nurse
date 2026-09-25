@@ -23,6 +23,7 @@
   let isSending = false;
   let toastTimer = null;
   let pendingImages = [];
+  let _currentSettings = null;
 
   const EMERGENCY_KEYS = [
     "胸痛", "胸闷持续", "昏迷", "晕厥", "大出血", "吐血", "便血",
@@ -214,7 +215,11 @@
     }
     const data = await NurseStorage.load();
     if (!window.NurseConsult.isConfigured(data.settings)) {
-      toast("需联网并配置 AI 后使用");
+      if (data.settings.activeAIMode === "local") {
+        toast("本地模型未下载，请先在设置中下载模型");
+      } else {
+        toast("需联网并配置 AI 后使用");
+      }
       return;
     }
     $$(".view").forEach((v) => (v.hidden = v.id !== "consult-view"));
@@ -305,6 +310,7 @@
     renderSending();
 
     const data = await NurseStorage.load();
+    _currentSettings = data.settings;
     try {
       const history = currentChat.messages.map((m) => ({ role: m.role, content: m.content }));
       const full = await window.NurseConsult.chat(history, data.settings, (partial) => {
@@ -365,7 +371,13 @@
     const imgBtn = $("#chat-image");
     const imgInput = $("#chat-image-input");
     if (imgBtn && imgInput) {
-      imgBtn.onclick = () => imgInput.click();
+      imgBtn.onclick = () => {
+        if (_currentSettings && _currentSettings.activeAIMode === "local") {
+          toast("本地模型不支持图片，切至云端模型可解析图片");
+          return;
+        }
+        imgInput.click();
+      };
       imgInput.onchange = async (e) => {
         const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith("image/"));
         e.target.value = "";
