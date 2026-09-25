@@ -6,7 +6,7 @@ Pod::Spec.new do |s|
   s.license = { :type => 'MIT' }
   s.author = { 'Nurse' => 'nurse@example.com' }
   s.source = { :path => '.' }
-  s.source_files = 'ios/Plugin/*.{h,m,cpp,mm}'
+  s.source_files = 'ios/Plugin/*.{h,mm}'
   s.public_header_files = 'ios/Plugin/*.h'
   s.ios.deployment_target = '13.0'
   s.swift_version = '5.0'
@@ -14,8 +14,6 @@ Pod::Spec.new do |s|
   s.vendored_libraries = 'ios/Plugin/llama/lib/*.a'
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/ios/Plugin/llama/include" "$(PODS_TARGET_SRCROOT)/ios/Plugin"',
-    'OTHER_LDFLAGS' => '-lc++ -framework Foundation -framework Metal -framework MetalKit',
-    'CLANG_ENABLE_MODULES' => 'YES',
-    'OTHER_CFLAGS' => '$(inherited) -fmodules -fcxx-modules'
+    'OTHER_LDFLAGS' => '-lc++ -framework Foundation -framework Metal -framework MetalKit'
   }
 end

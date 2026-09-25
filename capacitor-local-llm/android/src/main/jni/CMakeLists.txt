@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_library(llama_bridge SHARED
     jni_bridge.cpp
-    llama_bridge.cpp
+    llama_bridge.mm
 )
 
 # llama.cpp source (cloned by CI build script)
