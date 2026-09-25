@@ -17,6 +17,15 @@
   var MODEL_DIR = "local-models";
   var _loaded = false;
 
+  function _uint8ToBase64(u8) {
+    var binary = "";
+    var len = u8.length;
+    for (var i = 0; i < len; i++) {
+      binary += String.fromCharCode(u8[i]);
+    }
+    return btoa(binary);
+  }
+
   function _getPlugin() {
     if (typeof Capacitor === "undefined" || !Capacitor.Plugins) return null;
     return Capacitor.Plugins.LocalLLM || null;
@@ -87,7 +96,8 @@
         await fs.writeFile({
           path: filePath,
           directory: "DOCUMENTS",
-          data: new Blob([data]),
+          data: _uint8ToBase64(data),
+          encoding: "base64",
           recursive: true,
         });
         isFirstChunk = false;
@@ -95,7 +105,8 @@
         await fs.appendFile({
           path: filePath,
           directory: "DOCUMENTS",
-          data: new Blob([data]),
+          data: _uint8ToBase64(data),
+          encoding: "base64",
         });
       }
       downloaded += data.length;
