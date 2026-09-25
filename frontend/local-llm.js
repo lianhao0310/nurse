@@ -71,7 +71,7 @@
       return { localPath: filePath, size: downloaded };
     }
 
-    if (downloaded > 0 && totalSize && downloaded !== totalSize) {
+    if (downloaded > 0 && totalSize && downloaded > totalSize) {
       try { await fs.deleteFile({ path: filePath, directory: "DOCUMENTS" }); } catch (e) { }
       downloaded = 0;
     }
