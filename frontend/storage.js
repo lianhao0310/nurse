@@ -35,7 +35,7 @@
           name: "Qwen2.5-0.5B",
           ggufUrl: "https://hf-mirror.com/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
           sizeBytes: 491000000,
-          contextLength: 2048,
+          contextLength: 1024,
           downloaded: false,
           localPath: "",
         },

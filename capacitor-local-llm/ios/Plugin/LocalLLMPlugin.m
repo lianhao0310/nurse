@@ -54,12 +54,16 @@ static void token_callback(const char* token, void* user_data) {
         return;
     }
 
-    llama_model_handle model = llama_bridge_load_model([absPath UTF8String], contextLength);
-    if (!model) {
-        [call reject:@"Failed to load model (file may be corrupted or memory insufficient)"];
-        return;
-    }
-    [call resolve];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        llama_model_handle model = llama_bridge_load_model([absPath UTF8String], contextLength);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!model) {
+                [call reject:@"Failed to load model (file may be corrupted or memory insufficient)"];
+                return;
+            }
+            [call resolve];
+        });
+    });
 }
 
 - (void)generate:(CAPPluginCall*)call {
@@ -90,21 +94,25 @@ static void token_callback(const char* token, void* user_data) {
     }
     [fullPrompt appendString:@"Assistant: "];
 
-    void* userData = (__bridge void*)self;
-    int generated = llama_bridge_generate(
-        NULL, NULL,
-        [fullPrompt UTF8String],
-        maxTokens,
-        (float)temperature,
-        token_callback,
-        userData
-    );
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        void* userData = (__bridge void*)self;
+        int generated = llama_bridge_generate(
+            NULL, NULL,
+            [fullPrompt UTF8String],
+            maxTokens,
+            (float)temperature,
+            token_callback,
+            userData
+        );
 
-    if (generated < 0) {
-        [call reject:@"Generation failed"];
-        return;
-    }
-    [call resolve:@{@"text": @"", @"tokens": @(generated)}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generated < 0) {
+                [call reject:@"Generation failed"];
+                return;
+            }
+            [call resolve:@{@"text": @"", @"tokens": @(generated)}];
+        });
+    });
 }
 
 - (void)unload:(CAPPluginCall*)call {

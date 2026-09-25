@@ -6,6 +6,9 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+
 @CapacitorPlugin(name = "LocalLLM")
 public class LocalLLMPlugin extends Plugin {
 
@@ -18,6 +21,7 @@ public class LocalLLMPlugin extends Plugin {
     }
 
     private boolean modelLoaded = false;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @PluginMethod
     public void loadModel(PluginCall call) {
@@ -34,17 +38,19 @@ public class LocalLLMPlugin extends Plugin {
             return;
         }
 
-        try {
-            int result = nativeLoadModel(absPath, contextLength);
-            if (result != 0) {
-                call.reject("Failed to load model");
-                return;
+        executor.execute(() -> {
+            try {
+                int result = nativeLoadModel(absPath, contextLength);
+                if (result != 0) {
+                    call.reject("Failed to load model");
+                    return;
+                }
+                modelLoaded = true;
+                call.resolve();
+            } catch (UnsatisfiedLinkError e) {
+                call.reject("Native library not loaded: " + e.getMessage());
             }
-            modelLoaded = true;
-            call.resolve();
-        } catch (UnsatisfiedLinkError e) {
-            call.reject("Native library not loaded: " + e.getMessage());
-        }
+        });
     }
 
     @PluginMethod
@@ -57,14 +63,16 @@ public class LocalLLMPlugin extends Plugin {
         int maxTokens = call.getInt("maxTokens", 512);
         double temperature = call.getDouble("temperature", 0.7);
 
-        try {
-            String result = nativeGenerate(prompt, maxTokens, (float) temperature);
-            JSObject ret = new JSObject();
-            ret.put("text", result);
-            call.resolve(ret);
-        } catch (UnsatisfiedLinkError e) {
-            call.reject("Native library not loaded: " + e.getMessage());
-        }
+        executor.execute(() -> {
+            try {
+                String result = nativeGenerate(prompt, maxTokens, (float) temperature);
+                JSObject ret = new JSObject();
+                ret.put("text", result);
+                call.resolve(ret);
+            } catch (UnsatisfiedLinkError e) {
+                call.reject("Native library not loaded: " + e.getMessage());
+            }
+        });
     }
 
     @PluginMethod
