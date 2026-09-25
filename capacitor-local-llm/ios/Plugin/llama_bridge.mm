@@ -35,9 +35,9 @@ llama_context_handle llama_bridge_new_context(llama_model_handle model, int cont
     if (!model) return nullptr;
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = context_length;
-    ctx_params.n_batch = 256;
-    ctx_params.n_threads = 2;
-    ctx_params.n_threads_batch = 2;
+    ctx_params.n_batch = 512;
+    ctx_params.n_threads = 4;
+    ctx_params.n_threads_batch = 4;
     g_ctx = llama_init_from_model((llama_model*)model, ctx_params);
     return (llama_context_handle)g_ctx;
 }
@@ -82,21 +82,29 @@ int llama_bridge_generate(
     }
     if (n_tokens <= 0) return -1;
 
-    for (int i = 0; i < n_tokens && i < n_ctx; i++) {
-        llama_batch batch = llama_batch_get_one(tokens.data() + i, 1);
-        if (llama_decode(lctx, batch)) return -1;
+    if (n_tokens > n_ctx) n_tokens = n_ctx;
+
+    int n_batch = 512;
+    llama_batch batch = llama_batch_init(n_batch, 0, 1);
+
+    for (int i = 0; i < n_tokens; i += n_batch) {
+        int n = std::min(n_batch, n_tokens - i);
+        batch.n_tokens = 0;
+        for (int j = 0; j < n; j++) {
+            batch_add(batch, tokens[i + j], i + j, {0}, false);
+        }
+        if (llama_decode(lctx, batch)) {
+            llama_batch_free(batch);
+            return -1;
+        }
     }
 
     llama_sampler_chain_params sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl, llama_sampler_init_typical(1.0f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.0f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-
-    llama_batch batch = llama_batch_init(max_tokens, 0, 1);
 
     auto token_to_str = [&](llama_token token) -> std::string {
         char buf[256];
@@ -111,7 +119,7 @@ int llama_bridge_generate(
 
     for (int i = 0; i < max_tokens; i++) {
         batch.n_tokens = 0;
-        batch_add(batch, last_token, n_tokens + i, { 0 }, true);
+        batch_add(batch, last_token, n_tokens + i, {0}, true);
         if (llama_decode(lctx, batch)) break;
 
         last_token = llama_sampler_sample(smpl, lctx, -1);

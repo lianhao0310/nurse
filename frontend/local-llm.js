@@ -127,7 +127,7 @@
     if (!_loaded) {
       await plugin.loadModel({
         ggufPath: ggufPath,
-        contextLength: opts.contextLength || 1024,
+        contextLength: opts.contextLength || 512,
         gpuLayers: opts.gpuLayers || 0,
       });
       _loaded = true;
