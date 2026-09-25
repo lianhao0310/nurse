@@ -1,4 +1,4 @@
-#import <Capacitor/Capacitor.h>
+@import Capacitor;
 
 CAP_PLUGIN(LocalLLMPlugin, "LocalLLM",
     CAP_PLUGIN_METHOD(loadModel, CAPPluginReturnPromise);

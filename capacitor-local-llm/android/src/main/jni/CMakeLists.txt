@@ -11,6 +11,7 @@ add_library(llama_bridge SHARED
 # llama.cpp source (cloned by CI build script)
 set(LLAMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp)
 if(EXISTS ${LLAMA_DIR})
+    add_compile_definitions(_GNU_SOURCE)
     include(${LLAMA_DIR}/cmake/build-info.cmake OPTIONAL)
     add_subdirectory(${LLAMA_DIR} llama_build)
     target_link_libraries(llama_bridge PRIVATE llama ggml)

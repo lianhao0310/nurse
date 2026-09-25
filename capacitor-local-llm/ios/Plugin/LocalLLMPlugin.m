@@ -67,7 +67,7 @@ static void token_callback(const char* token, void* user_data) {
 
     void* userData = (__bridge void*)self;
     int generated = llama_bridge_generate(
-        nullptr, nullptr,
+        NULL, NULL,
         [fullPrompt UTF8String],
         maxTokens,
         (float)temperature,
@@ -83,7 +83,7 @@ static void token_callback(const char* token, void* user_data) {
 }
 
 - (void)unload:(CAPPluginCall*)call {
-    llama_bridge_free_model(nullptr);
+    llama_bridge_free_model(NULL);
     [call resolve];
 }
 
