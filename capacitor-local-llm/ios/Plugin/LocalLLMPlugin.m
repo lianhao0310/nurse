@@ -70,7 +70,7 @@ static void status_callback(const char* status, void* user_data) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!model) {
                 NSLog(@"[LocalLLM] loadModel FAILED");
-                [call reject:@"Failed to load model (file may be corrupted or memory insufficient)"];
+                [call reject:@"模型加载失败（内存不足或文件损坏），请尝试重启 app 后重试"];
                 return;
             }
             NSLog(@"[LocalLLM] loadModel SUCCESS");

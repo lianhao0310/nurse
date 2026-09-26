@@ -665,7 +665,7 @@
       prompt: prompt,
       ggufPath: lm.localPath,
       contextLength: lm.contextLength || 256,
-      maxTokens: 256,
+      maxTokens: 128,
       temperature: 0.2,
       expectedSize: lm.sizeBytes || 0,
     });
@@ -684,7 +684,7 @@
       messages: msgs,
       ggufPath: localModel.localPath,
       contextLength: ctxLen,
-      maxTokens: (options && options.maxTokens) || 256,
+      maxTokens: (options && options.maxTokens) || 128,
       temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
       expectedSize: localModel.sizeBytes || 0,
       onStatus: (options && options.onStatus) || null,

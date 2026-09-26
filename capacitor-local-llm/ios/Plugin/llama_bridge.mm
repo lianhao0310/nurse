@@ -41,6 +41,12 @@ llama_model_handle llama_bridge_load_model(const char* path, int context_length)
 
     size_t avail_mem = _available_memory();
     fprintf(stderr, "[llama] available memory: %zu MB\n", avail_mem / (1024*1024));
+    
+    if (avail_mem < 400 * 1024 * 1024) {
+        fprintf(stderr, "[llama] insufficient memory: %zu MB\n", avail_mem / (1024*1024));
+        return nullptr;
+    }
+    
     fprintf(stderr, "[llama] loading model: %s (ctx=%d)\n", path, context_length);
 
     double t0 = _now();
@@ -64,7 +70,7 @@ llama_context_handle llama_bridge_new_context(llama_model_handle model, int cont
     if (!model) return nullptr;
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = context_length;
-    ctx_params.n_batch = 512;
+    ctx_params.n_batch = 256;
     ctx_params.n_threads = 2;
     ctx_params.n_threads_batch = 2;
     g_ctx = llama_init_from_model((llama_model*)model, ctx_params);
@@ -120,7 +126,7 @@ int llama_bridge_generate(
         status_callback(buf, user_data);
     }
 
-    int n_batch = 512;
+    int n_batch = 256;
     llama_batch batch = llama_batch_init(n_batch, 0, 1);
 
     double t_prompt = _now();
@@ -162,7 +168,16 @@ int llama_bridge_generate(
     llama_token eos_token = llama_vocab_eos(vocab);
 
     double t_gen = _now();
+    double timeout = 45.0;
     for (int i = 0; i < max_tokens; i++) {
+        if (_now() - t_gen > timeout) {
+            if (status_callback) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "超时%.0fs，已生成%d tokens", timeout, generated);
+                status_callback(buf, user_data);
+            }
+            break;
+        }
         batch.n_tokens = 0;
         batch_add(batch, last_token, n_tokens + i, {0}, true);
         if (llama_decode(lctx, batch)) break;
@@ -173,7 +188,7 @@ int llama_bridge_generate(
         std::string piece = token_to_str(last_token);
         if (callback) callback(piece.c_str(), user_data);
         generated++;
-        if (generated % 10 == 0) {
+        if (generated % 5 == 0) {
             double elapsed = _now() - t_gen;
             if (status_callback) {
                 char buf[256];
