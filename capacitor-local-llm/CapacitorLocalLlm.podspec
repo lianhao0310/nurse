@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   s.vendored_libraries = 'ios/Plugin/llama/lib/*.a'
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/ios/Plugin/llama/include" "$(PODS_TARGET_SRCROOT)/ios/Plugin"',
-    'OTHER_LDFLAGS' => '-lc++ -framework Foundation -framework Accelerate',
+    'OTHER_LDFLAGS' => '-lc++ -framework Foundation -framework Accelerate -framework Metal -framework MetalKit',
     'CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES' => 'YES'
   }
 end

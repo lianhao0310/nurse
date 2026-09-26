@@ -32,7 +32,7 @@ build_arch() {
         -DLLAMA_BUILD_TESTS=OFF \
         -DLLAMA_BUILD_EXAMPLES=OFF \
         -DLLAMA_BUILD_SERVER=OFF \
-        -DGGML_METAL=OFF \
+        -DGGML_METAL=ON \
         -DGGML_BLAS=OFF \
         -DGGML_OPENMP=OFF \
         -DBUILD_SHARED_LIBS=OFF
