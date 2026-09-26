@@ -687,6 +687,7 @@
       maxTokens: (options && options.maxTokens) || 256,
       temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
       expectedSize: localModel.sizeBytes || 0,
+      onStatus: (options && options.onStatus) || null,
     }, function (token) {
       full += token;
       if (onChunk) onChunk(full);

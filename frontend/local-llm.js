@@ -171,11 +171,20 @@
     var listenerId = "local-llm-token-" + Date.now();
     var fullText = "";
 
+    var tokenListener = null;
+    var statusListener = null;
+
     if (onToken && typeof Capacitor !== "undefined" && Capacitor.addListener) {
-      var listener = await Capacitor.addListener("local-llm-token", function (event) {
+      tokenListener = await Capacitor.addListener("local-llm-token", function (event) {
         var token = event && event.token ? event.token : "";
         fullText += token;
         onToken(token);
+      });
+    }
+
+    if (opts.onStatus && typeof Capacitor !== "undefined" && Capacitor.addListener) {
+      statusListener = await Capacitor.addListener("local-llm-status", function (event) {
+        if (event && event.status) opts.onStatus(event.status);
       });
     }
 
@@ -189,7 +198,8 @@
       });
       if (result && result.text && !fullText) fullText = result.text;
     } finally {
-      if (listener && typeof listener.remove === "function") await listener.remove();
+      if (tokenListener && typeof tokenListener.remove === "function") await tokenListener.remove();
+      if (statusListener && typeof statusListener.remove === "function") await statusListener.remove();
     }
 
     return fullText;

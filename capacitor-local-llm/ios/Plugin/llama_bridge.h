@@ -22,6 +22,7 @@ int llama_bridge_generate(
     int max_tokens,
     float temperature,
     void (*callback)(const char* token, void* user_data),
+    void (*status_callback)(const char* status, void* user_data),
     void* user_data
 );
 

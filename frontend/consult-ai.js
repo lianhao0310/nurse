@@ -133,7 +133,7 @@
     return "【用户病情】\n" + parts.join("\n");
   }
 
-  async function chat(messages, settings, onChunk, data) {
+  async function chat(messages, settings, onChunk, data, onStatus) {
     const history = _truncate(messages || []).map((m) => ({ role: m.role, content: m.content }));
     let systemContent = GENERAL_SKILL_PROMPT;
     if (data) {
@@ -145,7 +145,7 @@
     if (!ai || typeof ai.chatStream !== "function") throw new Error("ai.js 未加载");
 
     if (settings && settings.activeAIMode === "local") {
-      return await ai.chatStream(fullMessages, null, onChunk, { temperature: 0.7, localModel: settings.localModel });
+      return await ai.chatStream(fullMessages, null, onChunk, { temperature: 0.7, localModel: settings.localModel, onStatus: onStatus });
     }
 
     const config = getConfig(settings);

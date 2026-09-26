@@ -142,6 +142,14 @@
     if (el) el.remove();
   }
 
+  function updateLoadingStatus(status) {
+    const el = $("#chat-loading");
+    if (!el) return;
+    const bubble = el.querySelector(".chat-bubble");
+    if (!bubble) return;
+    bubble.innerHTML = '<span class="chat-typing">' + esc(status) + '</span>';
+  }
+
   // ---------------- 历史列表 ----------------
   async function renderHistoryList() {
     const chats = await NurseStorage.getConsultChats();
@@ -315,7 +323,9 @@
       const history = currentChat.messages.map((m) => ({ role: m.role, content: m.content }));
       const full = await window.NurseConsult.chat(history, data.settings, (partial) => {
         updateLoadingText(partial);
-      }, data);
+      }, data, function(status) {
+        updateLoadingStatus(status);
+      });
       removeLoading();
       const aiMsg = { role: "assistant", content: full || "（回复为空）", ts: new Date().toISOString() };
       currentChat.messages.push(aiMsg);

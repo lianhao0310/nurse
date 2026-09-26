@@ -23,6 +23,14 @@ static void token_callback(const char* token, void* user_data) {
     });
 }
 
+static void status_callback(const char* status, void* user_data) {
+    LocalLLMPlugin* plugin = (__bridge LocalLLMPlugin*)user_data;
+    NSString* statusStr = [NSString stringWithUTF8String:status];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [plugin notifyListeners:@"local-llm-status" data:@{@"status": statusStr}];
+    });
+}
+
 @implementation LocalLLMPlugin
 
 - (NSString *)identifier { return @"LocalLLM"; }
@@ -108,6 +116,7 @@ static void token_callback(const char* token, void* user_data) {
             maxTokens,
             (float)temperature,
             token_callback,
+            status_callback,
             userData
         );
 

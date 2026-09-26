@@ -91,6 +91,7 @@ int llama_bridge_generate(
     int max_tokens,
     float temperature,
     void (*callback)(const char* token, void* user_data),
+    void (*status_callback)(const char* status, void* user_data),
     void* user_data
 ) {
     if (!g_ctx || !g_model || !prompt) return -1;
@@ -113,7 +114,11 @@ int llama_bridge_generate(
 
     if (n_tokens > n_ctx) n_tokens = n_ctx;
 
-    fprintf(stderr, "[llama] prompt tokens: %d, max_tokens: %d, ctx: %d\n", n_tokens, max_tokens, n_ctx);
+    if (status_callback) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "准备推理... 提示词 %d tokens", n_tokens);
+        status_callback(buf, user_data);
+    }
 
     int n_batch = 512;
     llama_batch batch = llama_batch_init(n_batch, 0, 1);
@@ -131,7 +136,12 @@ int llama_bridge_generate(
         }
     }
 
-    fprintf(stderr, "[llama] prompt decode done in %.2f s\n", _now() - t_prompt);
+    double prompt_time = _now() - t_prompt;
+    if (status_callback) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "提示词处理完成 %.1fs，开始生成...", prompt_time);
+        status_callback(buf, user_data);
+    }
 
     llama_sampler_chain_params sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
@@ -163,12 +173,22 @@ int llama_bridge_generate(
         std::string piece = token_to_str(last_token);
         if (callback) callback(piece.c_str(), user_data);
         generated++;
-        if (generated % 20 == 0) {
-            fprintf(stderr, "[llama] generated %d tokens in %.2f s (%.1f tok/s)\n", generated, _now() - t_gen, generated / (_now() - t_gen));
+        if (generated % 10 == 0) {
+            double elapsed = _now() - t_gen;
+            if (status_callback) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "生成中... %d tokens (%.1f tok/s)", generated, generated / elapsed);
+                status_callback(buf, user_data);
+            }
         }
     }
 
-    fprintf(stderr, "[llama] generation done: %d tokens in %.2f s\n", generated, _now() - t_gen);
+    double gen_time = _now() - t_gen;
+    if (status_callback) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "完成：生成 %d tokens，用时 %.1fs", generated, gen_time);
+        status_callback(buf, user_data);
+    }
 
     llama_batch_free(batch);
     llama_sampler_free(smpl);
