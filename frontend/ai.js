@@ -594,7 +594,7 @@
     try {
       resp = await _fetchWithRetry(baseUrl + "/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + ai.apiKey },
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + config.apiKey },
         body: JSON.stringify(body),
       });
     } catch (e) {
