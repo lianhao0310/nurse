@@ -130,14 +130,25 @@
     if (!_loaded) {
       var fs = _getFilesystem();
       if (fs && opts.expectedSize) {
+        var needDownload = false;
         try {
           var stat = await fs.stat({ path: ggufPath, directory: "DOCUMENTS" });
-          if (stat.size !== opts.expectedSize) {
-            throw new Error("模型文件大小不匹配（" + stat.size + " vs " + opts.expectedSize + "），请重新下载模型");
-          }
+          if (stat.size !== opts.expectedSize) needDownload = true;
         } catch (e) {
-          if (e.message && e.message.indexOf("模型文件大小") >= 0) throw e;
-          throw new Error("模型文件不存在或不可访问，请先下载模型");
+          needDownload = true;
+        }
+        if (needDownload) {
+          var dlSettings = (window.NurseStorage && typeof NurseStorage.load === "function")
+            ? await NurseStorage.load() : null;
+          if (dlSettings && dlSettings.settings && dlSettings.settings.localModel) {
+            await downloadModel(opts.onDownloadProgress || null, dlSettings.settings);
+            if (typeof NurseStorage.updateSettings === "function") {
+              var s = dlSettings.settings.localModel;
+              await NurseStorage.updateSettings({ localModel: { ...s, downloaded: true, localPath: ggufPath } });
+            }
+          } else {
+            throw new Error("模型文件不存在，请先在设置中下载模型");
+          }
         }
       }
       await plugin.loadModel({

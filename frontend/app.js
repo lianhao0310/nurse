@@ -2202,16 +2202,18 @@
     const dlBtn = $("#local-model-download-btn");
     if (lm.downloaded) {
       statusEl.textContent = "已就绪";
-      dlBtn.hidden = true;
+      dlBtn.hidden = false;
+      dlBtn.textContent = "重新下载";
     } else {
       statusEl.textContent = "未下载";
       dlBtn.hidden = false;
+      dlBtn.textContent = "下载模型";
     }
   }
 
   async function downloadLocalModel() {
     const lm = DATA.settings.localModel;
-    if (!lm || lm.downloaded) return;
+    if (!lm) return;
     const llm = window.NurseLocalLLM;
     if (!llm || typeof llm.downloadModel !== "function") { toast("本地推理模块未加载"); return; }
     const progArea = $("#local-model-progress");
