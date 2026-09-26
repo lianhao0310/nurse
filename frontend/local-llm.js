@@ -79,7 +79,16 @@
     var headers = {};
     if (downloaded > 0) headers["Range"] = "bytes=" + downloaded + "-";
 
-    var resp = await fetch(ggufUrl, { headers: headers });
+    var resp;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        resp = await fetch(ggufUrl, { headers: headers });
+        break;
+      } catch (e) {
+        if (attempt < 2) await new Promise(function(r) { setTimeout(r, 1000 * (attempt + 1)); });
+        else throw new Error("下载请求失败（网络不可用）: " + (e.message || e));
+      }
+    }
     if (!resp.ok && resp.status !== 206) throw new Error("下载请求失败: " + resp.status);
 
     var contentLength = totalSize;

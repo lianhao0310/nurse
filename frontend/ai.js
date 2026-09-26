@@ -16,6 +16,20 @@
 })(this, function () {
   "use strict";
 
+  async function _fetchWithRetry(url, opts, retries) {
+    retries = retries || 3;
+    var lastErr;
+    for (var i = 0; i < retries; i++) {
+      try {
+        return await fetch(url, opts);
+      } catch (e) {
+        lastErr = e;
+        if (i < retries - 1) await new Promise(function(r) { setTimeout(r, 1000 * (i + 1)); });
+      }
+    }
+    throw lastErr;
+  }
+
   const SYSTEM_PROMPT = `你是一名严谨、贴心的"Nurse"健康助手。用户会提供：①门诊问诊的录音转写文字（或自行输入），②可选的 检查报告 / 处方 照片。
 请从中提取结构化健康管理信息，仅输出一个 JSON 对象，不要任何额外说明文字。JSON 结构如下：
 {
@@ -152,7 +166,7 @@
       body.response_format = { type: "json_object" };
     } catch (e) {}
 
-    return fetch(baseUrl + "/chat/completions", {
+    return _fetchWithRetry(baseUrl + "/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -261,7 +275,7 @@
     } catch (e) {}
     let resp;
     try {
-      resp = await fetch(baseUrl + "/chat/completions", {
+      resp = await _fetchWithRetry(baseUrl + "/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + ai.apiKey },
         body: JSON.stringify(body),
@@ -275,12 +289,10 @@
     }
     if (!resp.ok) {
       let d = "";
-      try {
-        d = await resp.text();
-      } catch (e) {}
+      try { d = await resp.text(); } catch (e) {}
       if (resp.status === 401) throw new Error("API Key 无效或无权限（401）。");
       if (resp.status === 404) throw new Error("接口路径不存在（404），请检查 Base URL。");
-      throw new Error("接口返回 " + resp.status + "：" + d.slice(0, 200));
+      throw new Error("接口返回 " + resp.status + "：" + d.slice(0, 300));
     }
     const data = await resp.json();
     const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
@@ -316,7 +328,7 @@
     try { body.response_format = { type: "json_object" }; } catch (e) {}
     let resp;
     try {
-      resp = await fetch(baseUrl + "/chat/completions", {
+      resp = await _fetchWithRetry(baseUrl + "/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + ai.apiKey },
         body: JSON.stringify(body),
@@ -335,32 +347,6 @@
       if (resp.status === 404) throw new Error("接口路径不存在（404），请检查 Base URL。");
       throw new Error("接口返回 " + resp.status + "：" + d.slice(0, 300));
     }
-    // SSE streaming
-    if (resp.body && resp.body.getReader) {
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "", buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t || !t.startsWith("data:")) continue;
-          const data = t.slice(5).trim();
-          if (data === "[DONE]") continue;
-          try {
-            const json = JSON.parse(data);
-            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || "";
-            if (delta) { full += delta; if (onChunk) onChunk(full); }
-          } catch (e) {}
-        }
-      }
-      return _extractJSON(full);
-    }
-    // 回退：非 streaming
     const data = await resp.json();
     const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
     if (onChunk) onChunk(content || "");
@@ -477,7 +463,7 @@
     formData.append("model", "whisper-1");
     let r;
     try {
-      r = await fetch(baseUrl + "/audio/transcriptions", {
+      r = await _fetchWithRetry(baseUrl + "/audio/transcriptions", {
         method: "POST",
         headers: { Authorization: "Bearer " + ai.apiKey },
         body: formData,
@@ -606,9 +592,9 @@
     };
     let resp;
     try {
-      resp = await fetch(baseUrl + "/chat/completions", {
+      resp = await _fetchWithRetry(baseUrl + "/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + config.apiKey },
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + ai.apiKey },
         body: JSON.stringify(body),
       });
     } catch (e) {
