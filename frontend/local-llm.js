@@ -89,7 +89,25 @@
         else throw new Error("下载请求失败（网络不可用）: " + (e.message || e));
       }
     }
-    if (!resp.ok && resp.status !== 206) throw new Error("下载请求失败: " + resp.status);
+    if (!resp.ok && resp.status !== 206) {
+      if (resp.status === 416 && downloaded > 0) {
+        try { await fs.deleteFile({ path: filePath, directory: "DOCUMENTS" }); } catch (e) { }
+        downloaded = 0;
+        headers = {};
+        for (var attempt2 = 0; attempt2 < 3; attempt2++) {
+          try {
+            resp = await fetch(ggufUrl, { headers: headers });
+            break;
+          } catch (e) {
+            if (attempt2 < 2) await new Promise(function(r) { setTimeout(r, 1000 * (attempt2 + 1)); });
+            else throw new Error("下载请求失败（网络不可用）: " + (e.message || e));
+          }
+        }
+        if (!resp.ok && resp.status !== 206) throw new Error("下载请求失败: " + resp.status);
+      } else {
+        throw new Error("下载请求失败: " + resp.status);
+      }
+    }
 
     var contentLength = totalSize;
     if (resp.headers.get("Content-Range")) {
