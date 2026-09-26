@@ -48,7 +48,7 @@ static void token_callback(const char* token, void* user_data) {
         [call reject:@"ggufPath is required"];
         return;
     }
-    int contextLength = [call getInt:@"contextLength" defaultValue:2048];
+    int contextLength = [call getInt:@"contextLength" defaultValue:256];
 
     NSString* absPath = [self resolveAbsolutePath:ggufPath];
     if (![[NSFileManager defaultManager] fileExistsAtPath:absPath]) {
@@ -57,12 +57,15 @@ static void token_callback(const char* token, void* user_data) {
     }
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSLog(@"[LocalLLM] loadModel start: %@ ctx=%d", absPath, contextLength);
         llama_model_handle model = llama_bridge_load_model([absPath UTF8String], contextLength);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!model) {
+                NSLog(@"[LocalLLM] loadModel FAILED");
                 [call reject:@"Failed to load model (file may be corrupted or memory insufficient)"];
                 return;
             }
+            NSLog(@"[LocalLLM] loadModel SUCCESS");
             [call resolve];
         });
     });
@@ -97,6 +100,7 @@ static void token_callback(const char* token, void* user_data) {
     [fullPrompt appendString:@"Assistant: "];
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSLog(@"[LocalLLM] generate start: maxTokens=%d temp=%.2f promptLen=%lu", maxTokens, temperature, (unsigned long)fullPrompt.length);
         void* userData = (__bridge void*)self;
         int generated = llama_bridge_generate(
             NULL, NULL,
@@ -108,6 +112,7 @@ static void token_callback(const char* token, void* user_data) {
         );
 
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"[LocalLLM] generate done: %d tokens", generated);
             if (generated < 0) {
                 [call reject:@"Generation failed"];
                 return;

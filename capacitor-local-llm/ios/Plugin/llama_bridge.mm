@@ -3,9 +3,26 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <sys/time.h>
+#include <mach/mach.h>
 
 static llama_model* g_model = nullptr;
 static llama_context* g_ctx = nullptr;
+
+static double _now() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
+}
+
+static size_t _available_memory() {
+    vm_statistics_data_t vm_stats;
+    mach_msg_type_number_t count = sizeof(vm_stats) / sizeof(natural_t);
+    if (host_statistics(mach_host_self(), HOST_VM_INFO, (host_info_t)&vm_stats, &count) == KERN_SUCCESS) {
+        return (size_t)vm_stats.free_count * (size_t)vm_page_size;
+    }
+    return 0;
+}
 
 static inline void batch_add(llama_batch & batch, llama_token id, llama_pos pos, const std::vector<llama_seq_id> & seq_ids, bool logits) {
     batch.token[batch.n_tokens] = id;
@@ -22,12 +39,24 @@ llama_model_handle llama_bridge_load_model(const char* path, int context_length)
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
     if (g_ctx) { llama_free(g_ctx); g_ctx = nullptr; }
 
+    size_t avail_mem = _available_memory();
+    fprintf(stderr, "[llama] available memory: %zu MB\n", avail_mem / (1024*1024));
+    fprintf(stderr, "[llama] loading model: %s (ctx=%d)\n", path, context_length);
+
+    double t0 = _now();
+
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = 99;
     g_model = llama_model_load_from_file(path, model_params);
-    if (!g_model) return nullptr;
+    if (!g_model) {
+        fprintf(stderr, "[llama] model load FAILED\n");
+        return nullptr;
+    }
+
+    fprintf(stderr, "[llama] model loaded in %.2f s, gpu_layers=%d\n", _now() - t0, model_params.n_gpu_layers);
 
     llama_bridge_new_context(g_model, context_length);
+    fprintf(stderr, "[llama] context created, total load time: %.2f s\n", _now() - t0);
     return (llama_model_handle)g_model;
 }
 
@@ -84,9 +113,12 @@ int llama_bridge_generate(
 
     if (n_tokens > n_ctx) n_tokens = n_ctx;
 
+    fprintf(stderr, "[llama] prompt tokens: %d, max_tokens: %d, ctx: %d\n", n_tokens, max_tokens, n_ctx);
+
     int n_batch = 512;
     llama_batch batch = llama_batch_init(n_batch, 0, 1);
 
+    double t_prompt = _now();
     for (int i = 0; i < n_tokens; i += n_batch) {
         int n = std::min(n_batch, n_tokens - i);
         batch.n_tokens = 0;
@@ -98,6 +130,8 @@ int llama_bridge_generate(
             return -1;
         }
     }
+
+    fprintf(stderr, "[llama] prompt decode done in %.2f s\n", _now() - t_prompt);
 
     llama_sampler_chain_params sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
@@ -117,6 +151,7 @@ int llama_bridge_generate(
     llama_token last_token = tokens[n_tokens - 1];
     llama_token eos_token = llama_vocab_eos(vocab);
 
+    double t_gen = _now();
     for (int i = 0; i < max_tokens; i++) {
         batch.n_tokens = 0;
         batch_add(batch, last_token, n_tokens + i, {0}, true);
@@ -128,7 +163,12 @@ int llama_bridge_generate(
         std::string piece = token_to_str(last_token);
         if (callback) callback(piece.c_str(), user_data);
         generated++;
+        if (generated % 20 == 0) {
+            fprintf(stderr, "[llama] generated %d tokens in %.2f s (%.1f tok/s)\n", generated, _now() - t_gen, generated / (_now() - t_gen));
+        }
     }
+
+    fprintf(stderr, "[llama] generation done: %d tokens in %.2f s\n", generated, _now() - t_gen);
 
     llama_batch_free(batch);
     llama_sampler_free(smpl);
