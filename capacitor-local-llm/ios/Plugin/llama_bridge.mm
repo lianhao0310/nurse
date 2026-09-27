@@ -108,6 +108,10 @@ int llama_bridge_generate(
     const llama_vocab* vocab = llama_model_get_vocab(mdl);
     int n_ctx = llama_n_ctx(lctx);
 
+    // Reserve room for generated tokens: prompt must fit in n_ctx - max_tokens
+    int max_prompt = n_ctx - max_tokens - 4;
+    if (max_prompt < 8) max_prompt = 8;
+
     std::string text(prompt);
     std::vector<llama_token> tokens;
     tokens.resize(text.size() + 2);
@@ -118,13 +122,23 @@ int llama_bridge_generate(
     }
     if (n_tokens <= 0) return -1;
 
-    if (n_tokens > n_ctx) n_tokens = n_ctx;
+    // Keep the TAIL (most recent content) when prompt exceeds budget
+    if (n_tokens > max_prompt) {
+        std::vector<llama_token> tail(tokens.end() - max_prompt, tokens.end());
+        tokens = tail;
+        n_tokens = max_prompt;
+        fprintf(stderr, "[llama] prompt truncated to %d tokens (ctx=%d, max_tokens=%d)\n", n_tokens, n_ctx, max_tokens);
+    }
 
     if (status_callback) {
         char buf[256];
         snprintf(buf, sizeof(buf), "准备推理... 提示词 %d tokens", n_tokens);
         status_callback(buf, user_data);
     }
+
+    // Clear stale KV cache from previous generations
+    llama_memory_t mem = llama_get_memory(lctx);
+    if (mem) llama_memory_clear(mem, true);
 
     int n_batch = 128;
     llama_batch batch = llama_batch_init(n_batch, 0, 1);
@@ -180,6 +194,15 @@ int llama_bridge_generate(
     double t_gen = _now();
     double timeout = 45.0;
     for (int i = 0; i < max_tokens; i++) {
+        // Hard guard: never decode beyond context (prevents GGML abort / crash)
+        if (n_tokens + i >= n_ctx) {
+            if (status_callback) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "上下文已满，生成 %d tokens", generated);
+                status_callback(buf, user_data);
+            }
+            break;
+        }
         if (_now() - t_gen > timeout) {
             if (status_callback) {
                 char buf[256];

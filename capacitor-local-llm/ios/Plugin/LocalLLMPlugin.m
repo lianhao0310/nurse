@@ -2,8 +2,11 @@
 #import "llama_bridge.h"
 #import <Capacitor/Capacitor-Swift.h>
 #import <Capacitor/CAPBridgedJSTypes.h>
+#import <atomic>
 
 // Capacitor CLI plugin discovery: CAP_PLUGIN(LocalLLMPlugin, LocalLLM, ...)
+
+static std::atomic<bool> s_generating(false);
 
 @interface CAPPluginCall (LocalLLMHelpers)
 - (NSString* _Nullable)getString:(NSString* _Nonnull)key;
@@ -85,6 +88,12 @@ static void status_callback(const char* status, void* user_data) {
         return;
     }
 
+    bool expected = false;
+    if (!s_generating.compare_exchange_strong(expected, true)) {
+        [call reject:@"上一条回复仍在生成中，请稍候"];
+        return;
+    }
+
     NSString* prompt = [call getString:@"prompt" defaultValue:@""];
     int maxTokens = [call getInt:@"maxTokens" defaultValue:512];
     double temperature = [call getDouble:@"temperature" defaultValue:0.7];
@@ -121,6 +130,7 @@ static void status_callback(const char* status, void* user_data) {
         );
 
         dispatch_async(dispatch_get_main_queue(), ^{
+            s_generating.store(false);
             NSLog(@"[LocalLLM] generate done: %d tokens", generated);
             if (generated < 0) {
                 [call reject:@"Generation failed"];
