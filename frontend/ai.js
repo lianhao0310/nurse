@@ -664,8 +664,8 @@
     var text = await llm.generate({
       prompt: prompt,
       ggufPath: lm.localPath,
-      contextLength: lm.contextLength || 256,
-      maxTokens: 128,
+      contextLength: lm.contextLength || 128,
+      maxTokens: 64,
       temperature: 0.2,
       expectedSize: lm.sizeBytes || 0,
     });
@@ -677,14 +677,14 @@
     var llm = typeof window !== "undefined" && window.NurseLocalLLM;
     if (!llm) throw new Error("本地推理模块未加载");
     if (!localModel.downloaded) throw new Error("本地模型未下载，请先在设置中下载模型");
-    var ctxLen = localModel.contextLength || 256;
+    var ctxLen = localModel.contextLength || 128;
     var msgs = _truncateContext(messages, ctxLen * 3);
     var full = "";
     var text = await llm.generate({
       messages: msgs,
       ggufPath: localModel.localPath,
       contextLength: ctxLen,
-      maxTokens: (options && options.maxTokens) || 128,
+      maxTokens: (options && options.maxTokens) || 64,
       temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
       expectedSize: localModel.sizeBytes || 0,
       onStatus: (options && options.onStatus) || null,

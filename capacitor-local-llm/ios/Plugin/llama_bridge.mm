@@ -52,7 +52,7 @@ llama_model_handle llama_bridge_load_model(const char* path, int context_length)
     double t0 = _now();
 
     llama_model_params model_params = llama_model_default_params();
-    model_params.n_gpu_layers = 99;
+    model_params.n_gpu_layers = 0;
     g_model = llama_model_load_from_file(path, model_params);
     if (!g_model) {
         fprintf(stderr, "[llama] model load FAILED\n");
@@ -70,7 +70,7 @@ llama_context_handle llama_bridge_new_context(llama_model_handle model, int cont
     if (!model) return nullptr;
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = context_length;
-    ctx_params.n_batch = 256;
+    ctx_params.n_batch = 128;
     ctx_params.n_threads = 2;
     ctx_params.n_threads_batch = 2;
     g_ctx = llama_init_from_model((llama_model*)model, ctx_params);
@@ -126,11 +126,21 @@ int llama_bridge_generate(
         status_callback(buf, user_data);
     }
 
-    int n_batch = 256;
+    int n_batch = 128;
     llama_batch batch = llama_batch_init(n_batch, 0, 1);
 
     double t_prompt = _now();
+    double prompt_timeout = 30.0;
     for (int i = 0; i < n_tokens; i += n_batch) {
+        if (_now() - t_prompt > prompt_timeout) {
+            if (status_callback) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "提示词处理超时%.0fs", prompt_timeout);
+                status_callback(buf, user_data);
+            }
+            llama_batch_free(batch);
+            return generated > 0 ? generated : -1;
+        }
         int n = std::min(n_batch, n_tokens - i);
         batch.n_tokens = 0;
         for (int j = 0; j < n; j++) {
