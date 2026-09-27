@@ -139,7 +139,7 @@ int llama_bridge_generate(
                 status_callback(buf, user_data);
             }
             llama_batch_free(batch);
-            return generated > 0 ? generated : -1;
+            return -1;
         }
         int n = std::min(n_batch, n_tokens - i);
         batch.n_tokens = 0;
