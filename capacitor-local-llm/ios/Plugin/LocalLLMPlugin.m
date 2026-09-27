@@ -2,11 +2,11 @@
 #import "llama_bridge.h"
 #import <Capacitor/Capacitor-Swift.h>
 #import <Capacitor/CAPBridgedJSTypes.h>
-#import <atomic>
 
 // Capacitor CLI plugin discovery: CAP_PLUGIN(LocalLLMPlugin, LocalLLM, ...)
 
-static std::atomic<bool> s_generating(false);
+static dispatch_semaphore_t s_genLock;
+static dispatch_once_t s_genLockOnce;
 
 @interface CAPPluginCall (LocalLLMHelpers)
 - (NSString* _Nullable)getString:(NSString* _Nonnull)key;
@@ -88,8 +88,8 @@ static void status_callback(const char* status, void* user_data) {
         return;
     }
 
-    bool expected = false;
-    if (!s_generating.compare_exchange_strong(expected, true)) {
+    dispatch_once(&s_genLockOnce, ^{ s_genLock = dispatch_semaphore_create(1); });
+    if (dispatch_semaphore_wait(s_genLock, DISPATCH_TIME_NOW) != 0) {
         [call reject:@"上一条回复仍在生成中，请稍候"];
         return;
     }
@@ -130,7 +130,7 @@ static void status_callback(const char* status, void* user_data) {
         );
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            s_generating.store(false);
+            dispatch_semaphore_signal(s_genLock);
             NSLog(@"[LocalLLM] generate done: %d tokens", generated);
             if (generated < 0) {
                 [call reject:@"Generation failed"];
