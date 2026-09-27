@@ -82,7 +82,18 @@ int llama_bridge_generate(
     }
     if (n_tokens <= 0) return -1;
 
-    for (int i = 0; i < n_tokens && i < n_ctx; i++) {
+    // Reserve room for generated tokens: prompt must fit in n_ctx - max_tokens
+    int max_prompt = n_ctx - max_tokens - 4;
+    if (max_prompt < 8) max_prompt = 8;
+    if (n_tokens > max_prompt) {
+        std::vector<llama_token> tail(tokens.end() - max_prompt, tokens.end());
+        tokens = tail;
+        n_tokens = max_prompt;
+    }
+
+    llama_kv_cache_clear(lctx);
+
+    for (int i = 0; i < n_tokens; i++) {
         llama_batch batch = llama_batch_get_one(tokens.data() + i, 1);
         if (llama_decode(lctx, batch)) return -1;
     }
@@ -110,6 +121,8 @@ int llama_bridge_generate(
     llama_token eos_token = llama_vocab_eos(vocab);
 
     for (int i = 0; i < max_tokens; i++) {
+        // Hard guard: never decode beyond context (prevents abort / crash)
+        if (n_tokens + i >= n_ctx) break;
         batch.n_tokens = 0;
         batch_add(batch, last_token, n_tokens + i, { 0 }, true);
         if (llama_decode(lctx, batch)) break;

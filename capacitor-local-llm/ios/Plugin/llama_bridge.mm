@@ -137,8 +137,7 @@ int llama_bridge_generate(
     }
 
     // Clear stale KV cache from previous generations
-    llama_memory_t mem = llama_get_memory(lctx);
-    if (mem) llama_memory_clear(mem, true);
+    llama_kv_cache_clear(lctx);
 
     int n_batch = 128;
     llama_batch batch = llama_batch_init(n_batch, 0, 1);
