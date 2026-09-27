@@ -668,6 +668,7 @@
       maxTokens: 64,
       temperature: 0.2,
       expectedSize: lm.sizeBytes || 0,
+      sizeRef: lm,
     });
     var parsed = _extractJSON(text);
     return _coerce(parsed);
@@ -687,6 +688,7 @@
       maxTokens: (options && options.maxTokens) || 64,
       temperature: (options && typeof options.temperature === "number") ? options.temperature : 0.7,
       expectedSize: localModel.sizeBytes || 0,
+      sizeRef: localModel,
       onStatus: (options && options.onStatus) || null,
     }, function (token) {
       full += token;

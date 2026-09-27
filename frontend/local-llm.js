@@ -147,6 +147,21 @@
     return { localPath: filePath, size: downloaded };
   }
 
+  async function _headContentSize(url) {
+    try {
+      var resp = await fetch(url, { method: "HEAD" });
+      if (resp.ok) {
+        var len = parseInt(resp.headers.get("Content-Length") || "0", 10);
+        if (len > 0) return len;
+      }
+    } catch (e) { }
+    return 0;
+  }
+
+  function _reportStatus(opts, msg) {
+    if (opts.onStatus && typeof opts.onStatus === "function") opts.onStatus(msg);
+  }
+
   async function generate(opts, onToken) {
     var plugin = _getPlugin();
     if (!plugin) throw new Error("本地推理插件未安装。请安装 capacitor-local-llm 插件后重试。");
@@ -160,10 +175,18 @@
         var needDownload = false;
         try {
           var stat = await fs.stat({ path: ggufPath, directory: "DOCUMENTS" });
-          if (stat.size >= 100 * 1024 * 1024) {
-            // 文件足够大即视为可用模型；自动校正错误的 expectedSize（防止反复重新下载）
-            if (opts.expectedSize !== stat.size) {
+          var expected = opts.expectedSize || 0;
+          if (expected > 0 && stat.size === expected) {
+            needDownload = false;
+          } else {
+            // 大小不匹配：用服务器真实大小复核，绝不加载可疑文件（残缺 GGUF 会导致 mmap SIGBUS 闪退）
+            _reportStatus(opts, "校验模型文件...");
+            var lm = opts.sizeRef || null;
+            var ggufUrl = lm && lm.ggufUrl;
+            var realSize = ggufUrl ? await _headContentSize(ggufUrl) : 0;
+            if (realSize > 0 && stat.size === realSize) {
               opts.expectedSize = stat.size;
+              needDownload = false;
               if (window.NurseStorage && typeof NurseStorage.load === "function") {
                 try {
                   var st = await NurseStorage.load();
@@ -175,22 +198,31 @@
                   }
                 } catch (e) { }
               }
+            } else {
+              needDownload = true;
             }
-          } else if (opts.expectedSize && stat.size !== opts.expectedSize) {
-            needDownload = true;
           }
         } catch (e) {
-          needDownload = !!opts.expectedSize;
+          needDownload = !!(opts.expectedSize && opts.expectedSize > 0);
         }
         if (needDownload) {
+          _reportStatus(opts, "模型文件缺失或不完整，正在重新下载...");
           var dlSettings = (window.NurseStorage && typeof NurseStorage.load === "function")
             ? await NurseStorage.load() : null;
           if (dlSettings && dlSettings.settings && dlSettings.settings.localModel) {
-            var dlResult = await downloadModel(opts.onDownloadProgress || null, dlSettings.settings);
+            var lastPct = -1;
+            var dlResult = await downloadModel(function (p) {
+              var pct = Math.floor((p || 0) * 100);
+              if (pct !== lastPct) {
+                lastPct = pct;
+                _reportStatus(opts, "正在下载模型 " + pct + "%（一次性，请保持网络畅通）");
+              }
+              if (typeof opts.onDownloadProgress === "function") opts.onDownloadProgress(p);
+            }, dlSettings.settings);
             if (typeof NurseStorage.updateSettings === "function") {
               var s = dlSettings.settings.localModel;
-              var realSize = (dlResult && dlResult.size) || s.sizeBytes;
-              await NurseStorage.updateSettings({ localModel: { ...s, downloaded: true, localPath: ggufPath, sizeBytes: realSize } });
+              var realSize2 = (dlResult && dlResult.size) || s.sizeBytes;
+              await NurseStorage.updateSettings({ localModel: { ...s, downloaded: true, localPath: ggufPath, sizeBytes: realSize2 } });
             }
           } else {
             throw new Error("模型文件不存在，请先在设置中下载模型");
