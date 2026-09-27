@@ -156,22 +156,41 @@
 
     if (!_loaded) {
       var fs = _getFilesystem();
-      if (fs && opts.expectedSize) {
+      if (fs) {
         var needDownload = false;
         try {
           var stat = await fs.stat({ path: ggufPath, directory: "DOCUMENTS" });
-          if (stat.size !== opts.expectedSize) needDownload = true;
+          if (stat.size >= 100 * 1024 * 1024) {
+            // 文件足够大即视为可用模型；自动校正错误的 expectedSize（防止反复重新下载）
+            if (opts.expectedSize !== stat.size) {
+              opts.expectedSize = stat.size;
+              if (window.NurseStorage && typeof NurseStorage.load === "function") {
+                try {
+                  var st = await NurseStorage.load();
+                  var lmCfg = st && st.settings && st.settings.localModel;
+                  if (lmCfg && lmCfg.sizeBytes !== stat.size) {
+                    await NurseStorage.updateSettings({
+                      localModel: { ...lmCfg, sizeBytes: stat.size, downloaded: true, localPath: ggufPath },
+                    });
+                  }
+                } catch (e) { }
+              }
+            }
+          } else if (opts.expectedSize && stat.size !== opts.expectedSize) {
+            needDownload = true;
+          }
         } catch (e) {
-          needDownload = true;
+          needDownload = !!opts.expectedSize;
         }
         if (needDownload) {
           var dlSettings = (window.NurseStorage && typeof NurseStorage.load === "function")
             ? await NurseStorage.load() : null;
           if (dlSettings && dlSettings.settings && dlSettings.settings.localModel) {
-            await downloadModel(opts.onDownloadProgress || null, dlSettings.settings);
+            var dlResult = await downloadModel(opts.onDownloadProgress || null, dlSettings.settings);
             if (typeof NurseStorage.updateSettings === "function") {
               var s = dlSettings.settings.localModel;
-              await NurseStorage.updateSettings({ localModel: { ...s, downloaded: true, localPath: ggufPath } });
+              var realSize = (dlResult && dlResult.size) || s.sizeBytes;
+              await NurseStorage.updateSettings({ localModel: { ...s, downloaded: true, localPath: ggufPath, sizeBytes: realSize } });
             }
           } else {
             throw new Error("模型文件不存在，请先在设置中下载模型");
